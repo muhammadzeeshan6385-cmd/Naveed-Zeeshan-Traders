@@ -10,7 +10,26 @@ const Products = ({ products, setProducts }) => {
   };
 
   const deleteProduct = (id) => {
-    setProducts(products.filter(p => p.id !== id));
+    if (window.confirm("Are you sure you want to delete this product?")) {
+      setProducts(products.filter(p => p.id !== id));
+    }
+  };
+
+  const handlePreview = (p) => {
+    alert(`Product Details:\n\nName: ${p.name}\nCategory: ${p.category}\nPurchase Rate: Rs. ${p.pRate}\nSale Rate: Rs. ${p.sRate}`);
+  };
+
+  const handleEdit = (p) => {
+    const newName = prompt("Edit Product Name:", p.name);
+    const newCategory = prompt("Edit Category:", p.category);
+    const newPRate = prompt("Edit Purchase Rate:", p.pRate);
+    const newSRate = prompt("Edit Sale Rate:", p.sRate);
+
+    if (newName || newCategory || newPRate || newSRate) {
+      setProducts(products.map(item => 
+        item.id === p.id ? { ...item, name: newName || item.name, category: newCategory || item.category, pRate: newPRate || item.pRate, sRate: newSRate || item.sRate } : item
+      ));
+    }
   };
 
   return (
@@ -31,7 +50,7 @@ const Products = ({ products, setProducts }) => {
             <th className="p-3">Category</th>
             <th className="p-3">Purchase Rate</th>
             <th className="p-3">Sale Rate</th>
-            <th className="p-3">Action</th>
+            <th className="p-3 text-center">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -41,7 +60,11 @@ const Products = ({ products, setProducts }) => {
               <td className="p-3">{p.category}</td>
               <td className="p-3">Rs. {p.pRate}</td>
               <td className="p-3 font-bold text-blue-800">Rs. {p.sRate}</td>
-              <td className="p-3"><button onClick={() => deleteProduct(p.id)} className="text-red-600">Delete</button></td>
+              <td className="p-3 flex justify-center gap-2">
+                <button onClick={() => handlePreview(p)} className="text-blue-600 bg-blue-100 px-2 py-1 rounded text-xs font-bold">Preview</button>
+                <button onClick={() => handleEdit(p)} className="text-yellow-600 bg-yellow-100 px-2 py-1 rounded text-xs font-bold">Edit</button>
+                <button onClick={() => deleteProduct(p.id)} className="text-red-600 bg-red-100 px-2 py-1 rounded text-xs font-bold">Delete</button>
+              </td>
             </tr>
           ))}
         </tbody>
