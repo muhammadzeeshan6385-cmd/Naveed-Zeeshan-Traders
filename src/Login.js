@@ -26,12 +26,11 @@ const Login = ({ onLogin, companyName }) => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-4">
-      {/* Yahan Card se pehle logo add kiya gaya hai */}
-      <Card className="w-full max-w-md border-emerald-500/20" title={companyName} subtitle="Secure distributor login">
+      <Card className="w-full max-w-md border-emerald-500/20">
         
-        {/* Naya Logo Section */}
+        {/* Yahan hum ne size bara kar diya hai (300px) */}
         <div className="flex justify-center mb-6">
-           <img src="/logo.png" alt="Logo" style={{ width: '220px' }} />
+           <img src="/logo.png" alt="Logo" style={{ width: '300px', height: 'auto' }} />
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
