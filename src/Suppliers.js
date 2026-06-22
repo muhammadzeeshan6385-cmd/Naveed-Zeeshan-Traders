@@ -1,32 +1,67 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Button, Card, DataTable, Input, PageShell } from './components/ui';
+import { generateId } from './utils/helpers';
 
-const Suppliers = ({ suppliers, setSuppliers }) => {
-  const [form, setForm] = useState({ name: '', company: '', phone: '', balance: 0 });
+const Suppliers = ({ suppliers, setSuppliers, purchases = [] }) => {
+  const [form, setForm] = useState({ name: '', company: '', phone: '', address: '' });
 
   const addSupplier = () => {
-    setSuppliers([...suppliers, form]);
-    setForm({ name: '', company: '', phone: '', balance: 0 });
+    if (!form.name.trim()) {
+      window.alert('Supplier name is required.');
+      return;
+    }
+
+    setSuppliers([
+      ...suppliers,
+      {
+        id: generateId(),
+        name: form.name.trim(),
+        company: form.company.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+      },
+    ]);
+    setForm({ name: '', company: '', phone: '', address: '' });
   };
 
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200">
-      <h2 className="text-2xl font-bold mb-6 text-blue-800">Suppliers Management</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input className="border p-3 rounded" placeholder="Supplier Name" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} />
-        <input className="border p-3 rounded" placeholder="Company/Firm Name" value={form.company} onChange={(e) => setForm({...form, company: e.target.value})} />
-        <input className="border p-3 rounded" placeholder="Phone Number" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
-      </div>
-      <button onClick={addSupplier} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">Add Supplier</button>
+  const supplierRows = useMemo(
+    () =>
+      suppliers.map((supplier) => {
+        const purchaseTotal = purchases
+          .filter((purchase) => purchase.supplier === supplier.name)
+          .reduce((sum, purchase) => sum + Number(purchase.total || 0), 0);
+        return { ...supplier, purchaseTotal };
+      }),
+    [suppliers, purchases]
+  );
 
-      <table className="w-full mt-8 border-collapse">
-        <thead className="bg-gray-100"><tr><th className="p-2">Name</th><th>Company</th><th>Phone</th></tr></thead>
-        <tbody>
-          {suppliers.map((s, i) => (
-            <tr key={i} className="border-t"><td className="p-2">{s.name}</td><td>{s.company}</td><td>{s.phone}</td></tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+  return (
+    <PageShell title="Suppliers" subtitle="Manage manufacturers, vendors, and purchase relationships">
+      <Card title="Add Supplier">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Input label="Supplier Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input label="Company / Firm" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+          <Input label="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          <Input label="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+        </div>
+        <Button className="mt-4" onClick={addSupplier}>
+          Save Supplier
+        </Button>
+      </Card>
+
+      <Card title="Supplier Directory">
+        <DataTable
+          columns={[
+            { key: 'name', label: 'Name' },
+            { key: 'company', label: 'Company' },
+            { key: 'phone', label: 'Phone' },
+            { key: 'purchaseTotal', label: 'Purchase Volume', render: (row) => `Rs. ${Number(row.purchaseTotal).toLocaleString()}` },
+          ]}
+          rows={supplierRows}
+        />
+      </Card>
+    </PageShell>
   );
 };
+
 export default Suppliers;

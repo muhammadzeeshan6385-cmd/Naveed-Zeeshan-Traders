@@ -1,78 +1,92 @@
 import React, { useMemo } from 'react';
+import { Card, DataTable, PageShell, StatCard } from './components/ui';
+import { formatRs, getSaleTotal, getSaleCustomer, getTotalOutstanding, todayISO } from './utils/helpers';
 
-const Dashboard = ({ sales = [], expenses = [], payments = [], customers = [] }) => {
-  
+const Dashboard = ({ sales = [], expenses = [], payments = [], customers = [], products = [], getStock }) => {
   const stats = useMemo(() => {
-    const totalSale = sales.reduce((sum, s) => sum + (Number(s.qty || 0) * Number(s.price || 0)), 0);
-    const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    
+    const totalSale = sales.reduce((sum, sale) => sum + getSaleTotal(sale), 0);
+    const totalExpense = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+    const totalRecovery = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const todaySales = sales
+      .filter((sale) => (sale.date || todayISO()) === todayISO())
+      .reduce((sum, sale) => sum + getSaleTotal(sale), 0);
+    const lowStockCount = products.filter((product) => getStock(product.name) <= Number(product.minStock || 5)).length;
+
     return {
-      sale: totalSale.toLocaleString(),
-      expense: totalExpense.toLocaleString(),
-      profit: (totalSale - totalExpense).toLocaleString(),
-      recovery: totalRecovery.toLocaleString(),
-      balance: (totalSale - totalRecovery).toLocaleString()
+      totalSale,
+      totalExpense,
+      totalRecovery,
+      todaySales,
+      outstanding: getTotalOutstanding(sales, payments),
+      profit: totalSale - totalExpense,
+      lowStockCount,
     };
-  }, [sales, expenses, payments]);
+  }, [sales, expenses, payments, products, getStock]);
+
+  const recentSales = [...sales].slice(-8).reverse();
+  const recentExpenses = [...expenses].slice(-6).reverse();
 
   return (
-    <div className="w-full min-h-screen bg-gray-100 p-6 space-y-6">
-      {/* 1. Statistics Cards - Full Width */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-        {[
-          { title: 'Total Sales', val: stats.sale, color: 'bg-indigo-600' },
-          { title: 'Total Expenses', val: stats.expense, color: 'bg-rose-600' },
-          { title: 'Net Profit', val: stats.profit, color: 'bg-emerald-600' },
-          { title: 'Total Recovery', val: stats.recovery, color: 'bg-blue-600' },
-          { title: 'Outstanding', val: stats.balance, color: 'bg-amber-600' }
-        ].map((item, i) => (
-          <div key={i} className={`${item.color} text-white p-6 rounded-3xl shadow-2xl flex flex-col justify-between transform transition hover:scale-105`}>
-            <span className="text-sm font-medium opacity-80">{item.title}</span>
-            <span className="text-3xl font-black mt-2">Rs. {item.val}</span>
-          </div>
-        ))}
+    <PageShell title="Dashboard" subtitle="Live business overview for your distribution operations">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <StatCard title="Total Sales" value={formatRs(stats.totalSale)} tone="emerald" />
+        <StatCard title="Today's Sales" value={formatRs(stats.todaySales)} tone="blue" />
+        <StatCard title="Total Expenses" value={formatRs(stats.totalExpense)} tone="rose" />
+        <StatCard title="Net Profit" value={formatRs(stats.profit)} tone="violet" />
+        <StatCard title="Total Recovery" value={formatRs(stats.totalRecovery)} tone="blue" />
+        <StatCard title="Outstanding" value={formatRs(stats.outstanding)} tone="amber" />
       </div>
 
-      {/* 2. Main Analytics Section - Full Width */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Expenses List */}
-        <div className="xl:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-gray-200">
-          <h3 className="text-xl font-bold mb-4 text-gray-800">Recent Expenses</h3>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Card title="Recent Expenses" className="xl:col-span-1">
           <div className="space-y-3">
-            {expenses.slice(-6).reverse().map((e, i) => (
-              <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
-                <span className="font-medium text-gray-600">{e.category}</span>
-                <span className="text-rose-600 font-bold">-{Number(e.amount).toLocaleString()}</span>
+            {recentExpenses.length === 0 && <p className="text-sm text-slate-500">No expenses recorded yet.</p>}
+            {recentExpenses.map((expense) => (
+              <div key={expense.id} className="flex items-center justify-between rounded-xl bg-slate-950/70 px-4 py-3">
+                <div>
+                  <p className="font-medium text-slate-200">{expense.category}</p>
+                  <p className="text-xs text-slate-500">{expense.date}</p>
+                </div>
+                <span className="font-bold text-rose-300">{formatRs(expense.amount)}</span>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
 
-        {/* Sales Activity List */}
-        <div className="xl:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-gray-200">
-          <h3 className="text-xl font-bold mb-4 text-gray-800">Latest Sales Invoices</h3>
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-gray-400 border-b">
-                <th className="pb-3">Customer</th>
-                <th className="pb-3">Product</th>
-                <th className="pb-3 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sales.slice(-6).reverse().map((s, i) => (
-                <tr key={i} className="border-b last:border-0">
-                  <td className="py-4 font-medium">{s.customer}</td>
-                  <td className="py-4 text-gray-600">{s.product}</td>
-                  <td className="py-4 text-right font-bold text-emerald-600">Rs. {(s.qty * s.price).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card title="Latest Sales Invoices" className="xl:col-span-2">
+          <DataTable
+            columns={[
+              { key: 'invoiceNo', label: 'Invoice' },
+              { key: 'customer', label: 'Customer', render: (row) => getSaleCustomer(row) || 'Walk-in' },
+              {
+                key: 'total',
+                label: 'Total',
+                className: 'text-right',
+                render: (row) => <span className="font-semibold text-emerald-300">{formatRs(getSaleTotal(row))}</span>,
+              },
+            ]}
+            rows={recentSales}
+          />
+        </Card>
       </div>
-    </div>
+
+      <Card title="Business Alerts">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-xl bg-slate-950/70 p-4">
+            <p className="text-sm text-slate-400">Active Customers</p>
+            <p className="mt-2 text-2xl font-bold text-slate-100">{customers.length}</p>
+          </div>
+          <div className="rounded-xl bg-slate-950/70 p-4">
+            <p className="text-sm text-slate-400">Products in Catalog</p>
+            <p className="mt-2 text-2xl font-bold text-slate-100">{products.length}</p>
+          </div>
+          <div className="rounded-xl bg-slate-950/70 p-4">
+            <p className="text-sm text-slate-400">Low Stock Items</p>
+            <p className="mt-2 text-2xl font-bold text-amber-300">{stats.lowStockCount}</p>
+          </div>
+        </div>
+      </Card>
+    </PageShell>
   );
 };
 

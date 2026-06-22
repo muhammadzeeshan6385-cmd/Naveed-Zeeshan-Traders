@@ -1,34 +1,123 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
+import { generateId, todayISO } from './utils/helpers';
 
-const Purchase = () => {
-  const [invoices, setInvoices] = useState([]);
-  const [form, setForm] = useState({ product: '', qty: '', price: '' });
+const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], cashData, setCashData }) => {
+  const [form, setForm] = useState({
+    date: todayISO(),
+    supplier: '',
+    product: '',
+    qty: '',
+    price: '',
+    paymentType: 'Credit',
+    account: 'Cash',
+  });
+
+  const resetForm = () =>
+    setForm({
+      date: todayISO(),
+      supplier: '',
+      product: '',
+      qty: '',
+      price: '',
+      paymentType: 'Credit',
+      account: 'Cash',
+    });
 
   const addPurchase = () => {
-    const total = form.qty * form.price;
-    setInvoices([...invoices, { ...form, total }]);
-    setForm({ product: '', qty: '', price: '' });
+    if (!form.supplier || !form.product || !form.qty || !form.price) {
+      window.alert('Supplier, product, quantity, and price are required.');
+      return;
+    }
+
+    const qty = Number(form.qty);
+    const price = Number(form.price);
+    const total = qty * price;
+    const entry = {
+      id: generateId(),
+      date: form.date,
+      supplier: form.supplier,
+      product: form.product,
+      qty,
+      price,
+      total,
+      paymentType: form.paymentType,
+    };
+
+    setPurchases([...purchases, entry]);
+
+    if (form.paymentType === 'Cash') {
+      setCashData([
+        ...cashData,
+        {
+          id: generateId(),
+          date: form.date,
+          account: form.account,
+          amount: -total,
+          description: `Purchase: ${form.product} from ${form.supplier}`,
+          type: 'payment',
+        },
+      ]);
+    }
+
+    resetForm();
   };
 
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-md mt-8 border border-green-200">
-      <h2 className="text-2xl font-bold text-green-800 mb-4">Purchase Invoice</h2>
-      <div className="grid grid-cols-3 gap-4 mb-4">
-        <input className="border p-2 rounded" placeholder="Product Name" value={form.product} onChange={(e) => setForm({...form, product: e.target.value})} />
-        <input className="border p-2 rounded" placeholder="Qty" type="number" value={form.qty} onChange={(e) => setForm({...form, qty: e.target.value})} />
-        <input className="border p-2 rounded" placeholder="Price" type="number" value={form.price} onChange={(e) => setForm({...form, price: e.target.value})} />
-        <button onClick={addPurchase} className="bg-green-600 text-white p-2 rounded col-span-3">Add to Invoice</button>
-      </div>
+  const recentPurchases = useMemo(() => [...purchases].slice(-20).reverse(), [purchases]);
 
-      <table className="w-full text-left mt-4 border-collapse">
-        <tr className="bg-green-800 text-white"><th className="p-2">Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
-        {invoices.map((inv, i) => (
-          <tr key={i} className="border-b">
-            <td className="p-2">{inv.product}</td><td>{inv.qty}</td><td>{inv.price}</td><td>{inv.total}</td>
-          </tr>
-        ))}
-      </table>
-    </div>
+  return (
+    <PageShell title="Purchases" subtitle="Record stock-in from suppliers and sync inventory automatically">
+      <Card title="Purchase Entry">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          <Select label="Supplier" value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })}>
+            <option value="">Select supplier</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.name}>
+                {supplier.name}
+              </option>
+            ))}
+          </Select>
+          <Select label="Product" value={form.product} onChange={(e) => setForm({ ...form, product: e.target.value })}>
+            <option value="">Select product</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.name}>
+                {product.name}
+              </option>
+            ))}
+          </Select>
+          <Input label="Quantity" type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
+          <Input label="Purchase Rate" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+          <Select label="Payment Type" value={form.paymentType} onChange={(e) => setForm({ ...form, paymentType: e.target.value })}>
+            <option value="Credit">Credit</option>
+            <option value="Cash">Cash</option>
+          </Select>
+          {form.paymentType === 'Cash' && (
+            <Select label="Paid From" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
+              <option value="Cash">Cash</option>
+              <option value="Bank">Bank</option>
+            </Select>
+          )}
+        </div>
+        <Button className="mt-4" onClick={addPurchase}>Save Purchase</Button>
+      </Card>
+
+      <Card title="Recent Purchases">
+        <DataTable
+          columns={[
+            { key: 'date', label: 'Date' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'product', label: 'Product' },
+            { key: 'qty', label: 'Qty' },
+            { key: 'price', label: 'Rate' },
+            { key: 'total', label: 'Total', render: (row) => `Rs. ${Number(row.total).toLocaleString()}` },
+            { key: 'paymentType', label: 'Payment' },
+          ]}
+          rows={recentPurchases}
+        />
+      </Card>
+    </PageShell>
   );
 };
+
 export default Purchase;

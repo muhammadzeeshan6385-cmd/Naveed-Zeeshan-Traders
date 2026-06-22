@@ -1,91 +1,188 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
+import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, todayISO } from './utils/helpers';
 
-const Sales = ({ products, customers }) => {
-  const [billData, setBillData] = useState({ 
-    billNo: "INV-" + Date.now().toString().slice(-4),
-    date: new Date().toLocaleString(),
-    customer: "Walk-in Customer",
-    type: "Cash",
-    items: [],
-    discount: 0
-  });
-  const [selectedProd, setSelectedProd] = useState(null);
-  const [qty, setQty] = useState(1);
+const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCashData, currentUser }) => {
+  const [invoiceNo, setInvoiceNo] = useState('INV-00001');
+  const [customer, setCustomer] = useState('');
+  const [paymentType, setPaymentType] = useState('Credit');
+  const [discount, setDiscount] = useState(0);
+  const [items, setItems] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState('');
 
-  const addItem = () => {
-    if (!selectedProd) return alert("Select product");
-    const newItem = { ...selectedProd, qty: parseInt(qty), total: parseFloat(selectedProd.sRate) * parseInt(qty) };
-    setBillData({...billData, items: [...billData.items, newItem]});
+  useEffect(() => {
+    setInvoiceNo(nextInvoiceNo(sales));
+  }, [sales]);
+
+  const gross = useMemo(() => items.reduce((sum, item) => sum + item.qty * item.rate, 0), [items]);
+  const netTotal = Math.max(gross - Number(discount || 0), 0);
+
+  const addProduct = (productName) => {
+    if (!productName) return;
+    const product = products.find((entry) => entry.name === productName);
+    if (!product) return;
+
+    const stock = getStock(product.name);
+    if (stock <= 0) {
+      window.alert(`${product.name} is out of stock.`);
+      return;
+    }
+
+    const existing = items.find((item) => item.name === product.name);
+    if (existing) {
+      setItems(
+        items.map((item) =>
+          item.name === product.name
+            ? { ...item, qty: item.qty + 1, total: (item.qty + 1) * item.rate }
+            : item
+        )
+      );
+    } else {
+      const rate = getProductSaleRate(product);
+      setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, qty: 1, total: rate }]);
+    }
+    setSelectedProduct('');
   };
 
-  const removeItem = (index) => {
-    const newItems = billData.items.filter((_, i) => i !== index);
-    setBillData({...billData, items: newItems});
+  const updateQty = (index, qty) => {
+    const safeQty = Math.max(Number(qty) || 0, 0);
+    const item = items[index];
+    const stock = getStock(item.name) + item.qty;
+    if (safeQty > stock) {
+      window.alert(`Only ${stock} units available for ${item.name}.`);
+      return;
+    }
+    setItems(items.map((entry, idx) => (idx === index ? { ...entry, qty: safeQty, total: safeQty * entry.rate } : entry)));
   };
 
-  const netTotal = billData.items.reduce((acc, item) => acc + item.total, 0) - billData.discount;
+  const removeItem = (index) => setItems(items.filter((_, idx) => idx !== index));
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank', 'width=600,height=800');
-    printWindow.document.write(`<html><head><title>Print Bill</title></head><body>
-      <div style="width:100%; padding:20px; font-family:Arial;">
-        <h2>Mughal Kiryana Store & Milk Shop</h2>
-        <p>Address: Fadda Bazar Mailsi</p>
-        <hr>
-        <p>Bill No: ${billData.billNo} | Date: ${billData.date}</p>
-        <table style="width:100%"><tr><th>Product</th><th>Qty</th><th>Total</th></tr>
-        ${billData.items.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${i.total}</td></tr>`).join('')}
-        </table>
-        <h3>Discount: Rs. ${billData.discount}</h3>
-        <h2>Net Total: Rs. ${netTotal.toFixed(2)}</h2>
-      </div></body></html>`);
-    printWindow.print();
+  const saveInvoice = () => {
+    if (!customer) {
+      window.alert('Please select a customer.');
+      return;
+    }
+    if (items.length === 0) {
+      window.alert('Add at least one product.');
+      return;
+    }
+
+    const invoice = {
+      id: generateId(),
+      invoiceNo,
+      date: todayISO(),
+      customer,
+      paymentType,
+      items,
+      grossTotal: gross,
+      discount: Number(discount || 0),
+      netTotal,
+      paidAmount: paymentType === 'Cash' ? netTotal : 0,
+      balanceAmount: paymentType === 'Cash' ? 0 : netTotal,
+      createdBy: currentUser?.username || 'System',
+    };
+
+    setSales([...sales, invoice]);
+
+    if (paymentType === 'Cash') {
+      setCashData([
+        ...cashData,
+        {
+          id: generateId(),
+          date: todayISO(),
+          account: 'Cash',
+          amount: netTotal,
+          description: `Cash sale ${invoiceNo} - ${customer}`,
+          type: 'receipt',
+        },
+      ]);
+    }
+
+    setItems([]);
+    setCustomer('');
+    setDiscount(0);
+    setPaymentType('Credit');
+    window.alert(`Invoice ${invoiceNo} saved successfully.`);
   };
 
   return (
-    <div className="bg-white p-6 rounded shadow-md">
-      <h2 className="text-xl font-bold mb-4">Sales Billing System</h2>
-      
-      {/* Header Inputs */}
-      <div className="grid grid-cols-4 gap-2 mb-4">
-        <input className="border p-2" value={billData.billNo} disabled />
-        <input className="border p-2" value={billData.date} disabled />
-        <select className="border p-2" onChange={(e) => setBillData({...billData, customer: e.target.value})}>
-           {customers?.map(c => <option key={c.id}>{c.name}</option>)}
-        </select>
-        <select className="border p-2" onChange={(e) => setBillData({...billData, type: e.target.value})}>
-          <option>Cash</option><option>Khata</option>
-        </select>
-      </div>
+    <PageShell title="Sales Invoice" subtitle="Create distributor invoices with stock validation and ledger sync">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
+        <div className="space-y-6 xl:col-span-3">
+          <Card title="Invoice Details">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Input label="Invoice No" value={invoiceNo} disabled />
+              <Input label="Date" value={new Date().toLocaleDateString()} disabled />
+              <Select label="Customer" value={customer} onChange={(e) => setCustomer(e.target.value)}>
+                <option value="">Select customer</option>
+                {customers.map((entry) => (
+                  <option key={entry.id} value={entry.name}>
+                    {entry.name}
+                  </option>
+                ))}
+              </Select>
+              <Select label="Payment Type" value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
+                <option value="Credit">Credit</option>
+                <option value="Cash">Cash</option>
+              </Select>
+            </div>
+          </Card>
 
-      {/* Product Add */}
-      <div className="flex gap-2 mb-4">
-        <select className="border p-2 flex-grow" onChange={(e) => setSelectedProd(products.find(p => p.name === e.target.value))}>
-          <option>Select Product</option>
-          {products?.map(p => <option key={p.id}>{p.name}</option>)}
-        </select>
-        <input type="number" className="border p-2 w-16" value={qty} onChange={(e) => setQty(e.target.value)} />
-        <button onClick={addItem} className="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
-      </div>
+          <Card title="Products">
+            <Select label="Add Product" value={selectedProduct} onChange={(e) => addProduct(e.target.value)}>
+              <option value="">Search and select product</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.name}>
+                  {product.name} · Stock: {getStock(product.name)}
+                </option>
+              ))}
+            </Select>
 
-      {/* Table */}
-      <table className="w-full mb-4">
-        <tr className="bg-gray-100"><th>Product</th><th>Rate</th><th>Qty</th><th>Total</th><th>Action</th></tr>
-        {billData.items.map((item, index) => (
-          <tr key={index} className="text-center border-b">
-            <td>{item.name}</td><td>{item.sRate}</td><td>{item.qty}</td><td>{item.total}</td>
-            <td><button onClick={() => removeItem(index)} className="text-red-500">Delete</button></td>
-          </tr>
-        ))}
-      </table>
+            <div className="mt-4">
+              <DataTable
+                columns={[
+                  { key: 'name', label: 'Product' },
+                  { key: 'rate', label: 'Rate' },
+                  {
+                    key: 'qty',
+                    label: 'Qty',
+                    render: (row, index) => (
+                      <Input type="number" value={row.qty} onChange={(e) => updateQty(index, e.target.value)} className="max-w-24" />
+                    ),
+                  },
+                  { key: 'total', label: 'Total', render: (row) => formatRs(row.total) },
+                  {
+                    key: 'action',
+                    label: 'Action',
+                    render: (_, index) => (
+                      <Button variant="danger" onClick={() => removeItem(index)}>
+                        Remove
+                      </Button>
+                    ),
+                  },
+                ]}
+                rows={items}
+              />
+            </div>
+          </Card>
+        </div>
 
-      {/* Footer */}
-      <div className="text-right">
-        <input type="number" placeholder="Discount" className="border p-2 w-24 mr-4" onChange={(e) => setBillData({...billData, discount: parseFloat(e.target.value) || 0})} />
-        <h3 className="text-2xl font-bold">Net Total: Rs. {netTotal.toFixed(2)}</h3>
-        <button onClick={handlePrint} className="bg-green-600 text-white px-6 py-2 mt-4 rounded">Save & Print</button>
+        <Card title="Invoice Summary" className="h-fit">
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between text-slate-300">
+              <span>Gross Total</span>
+              <span>{formatRs(gross)}</span>
+            </div>
+            <Input label="Discount" type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+            <div className="border-t border-slate-700 pt-3 text-lg font-bold text-emerald-300">Net Total: {formatRs(netTotal)}</div>
+          </div>
+          <Button className="mt-6 w-full" onClick={saveInvoice}>
+            Save Invoice
+          </Button>
+        </Card>
       </div>
-    </div>
+    </PageShell>
   );
 };
+
 export default Sales;
