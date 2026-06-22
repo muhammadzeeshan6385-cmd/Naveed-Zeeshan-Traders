@@ -3,6 +3,7 @@ import { Card, Input, Button } from './components/ui';
 import { STORAGE_KEYS, DEFAULT_USERS } from './utils/constants';
 import { loadFromStorage } from './utils/storage';
 import { verifyPassword } from './utils/helpers';
+
 const Login = ({ onLogin, companyName }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -25,7 +26,14 @@ const Login = ({ onLogin, companyName }) => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-4">
+      {/* Yahan Card se pehle logo add kiya gaya hai */}
       <Card className="w-full max-w-md border-emerald-500/20" title={companyName} subtitle="Secure distributor login">
+        
+        {/* Naya Logo Section */}
+        <div className="flex justify-center mb-6">
+           <img src="/logo.png" alt="Logo" style={{ width: '220px' }} />
+        </div>
+
         <form onSubmit={handleLogin} className="space-y-4">
           <Input label="Username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Enter username" autoComplete="username" />
           <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" autoComplete="current-password" />
