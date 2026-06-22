@@ -1,4 +1,21 @@
+const LEGACY_KEY_MAP = {
+  products: 'products',
+  customers: 'customers',
+  suppliers: 'suppliers',
+  purchases: 'purchases',
+  sales: 'sales',
+  payments: 'payments',
+  expenses: 'expenses',
+  cashData: 'cashData',
+  users: 'users',
+  currentUser: 'currentUser',
+};
+
+export const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+export function loadFromStorage(key, fallback) {
   if (!isBrowser) return fallback;
+
   try {
     const raw = localStorage.getItem(key);
     if (raw !== null) {
@@ -7,6 +24,7 @@
   } catch {
     // fall through to legacy migration
   }
+
   const legacyKey = LEGACY_KEY_MAP[key.replace(/^nzt_/, '')];
   if (legacyKey) {
     try {
@@ -20,8 +38,10 @@
       return fallback;
     }
   }
+
   return fallback;
 }
+
 export function saveToStorage(key, value) {
   if (!isBrowser) return;
   try {
@@ -30,6 +50,7 @@ export function saveToStorage(key, value) {
     console.error(`Failed to persist ${key}`, error);
   }
 }
+
 export function removeFromStorage(key) {
   if (!isBrowser) return;
   localStorage.removeItem(key);
