@@ -28,16 +28,18 @@ const Login = ({ onLogin, companyName }) => {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 px-4">
       <Card className="w-full max-w-md border-emerald-500/20">
         
-        {/* Yahan size 350px kiya gaya hai jo laptop/desktop par professional lagega */}
-        <div className="flex justify-center mb-8">
+        {/* Logo Section: Center aur bara size */}
+        <div className="flex flex-col items-center justify-center mb-6 mt-4">
            <img 
              src="/logo.png" 
-             alt="Naveed & Zeeshan Traders" 
+             alt="Logo" 
              style={{ 
                width: '350px', 
+               maxWidth: '100%',
                height: 'auto',
-               filter: 'brightness(0) invert(1)', // Ye black text ko pure white kar dega
-               objectFit: 'contain'
+               filter: 'brightness(0) invert(1)',
+               display: 'block',
+               margin: '0 auto'
              }} 
            />
         </div>
