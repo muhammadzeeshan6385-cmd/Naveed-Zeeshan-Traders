@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react'; // useState add kiya hai
 import Login from './Login';
 import Products from './Products';
 import Purchase from './Purchase';
@@ -19,6 +19,7 @@ import { calculateStock } from './utils/helpers';
 import { removeFromStorage } from './utils/storage';
 
 function App() {
+  const [isDarkMode, setIsDarkMode] = useState(true); // Dark mode state
   const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
@@ -52,92 +53,69 @@ function App() {
 
   const renderModule = () => {
     switch (activeTab) {
-      case 'Dashboard':
-        return <Dashboard sales={sales} expenses={expenses} payments={payments} customers={customers} purchases={purchases} getStock={getStock} products={products} />;
-      case 'Products':
-        return <Products products={products} setProducts={setProducts} />;
-      case 'Inventory':
-        return <InventorySummary products={products} getStock={getStock} />;
-      case 'Customers':
-        return <CustomerForm customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
-      case 'Suppliers':
-        return <Suppliers suppliers={suppliers} setSuppliers={setSuppliers} purchases={purchases} />;
-      case 'Purchases':
-        return <Purchase purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} cashData={cashData} setCashData={setCashData} />;
-      case 'Sales':
-        return <Sales sales={sales} setSales={setSales} products={products} customers={customers} getStock={getStock} cashData={cashData} setCashData={setCashData} currentUser={currentUser} />;
-      case 'Recovery':
-        return <Recovery payments={payments} setPayments={setPayments} customers={customers} cashData={cashData} setCashData={setCashData} sales={sales} />;
-      case 'Khata':
-        return <KhataLedger customers={customers} sales={sales} payments={payments} />;
-      case 'Expenses':
-        return <Expenses expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} />;
-      case 'Cash/Bank':
-        return <CashBank cashData={cashData} setCashData={setCashData} />;
-      case 'Reports':
-        return <Reports sales={sales} expenses={expenses} payments={payments} cashData={cashData} products={products} purchases={purchases} customers={customers} />;
-      case 'Settings':
-        return (
-          <Settings
-            products={products}
-            customers={customers}
-            suppliers={suppliers}
-            purchases={purchases}
-            sales={sales}
-            payments={payments}
-            expenses={expenses}
-            cashData={cashData}
-            setProducts={setProducts}
-            setCustomers={setCustomers}
-            setSuppliers={setSuppliers}
-            setPurchases={setPurchases}
-            setSales={setSales}
-            setPayments={setPayments}
-            setExpenses={setExpenses}
-            setCashData={setCashData}
-          />
-        );
-      default:
-        return <Dashboard sales={sales} expenses={expenses} payments={payments} customers={customers} purchases={purchases} getStock={getStock} products={products} />;
+      case 'Dashboard': return <Dashboard sales={sales} expenses={expenses} payments={payments} customers={customers} purchases={purchases} getStock={getStock} products={products} />;
+      case 'Products': return <Products products={products} setProducts={setProducts} />;
+      case 'Inventory': return <InventorySummary products={products} getStock={getStock} />;
+      case 'Customers': return <CustomerForm customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
+      case 'Suppliers': return <Suppliers suppliers={suppliers} setSuppliers={setSuppliers} purchases={purchases} />;
+      case 'Purchases': return <Purchase purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} cashData={cashData} setCashData={setCashData} />;
+      case 'Sales': return <Sales sales={sales} setSales={setSales} products={products} customers={customers} getStock={getStock} cashData={cashData} setCashData={setCashData} currentUser={currentUser} />;
+      case 'Recovery': return <Recovery payments={payments} setPayments={setPayments} customers={customers} cashData={cashData} setCashData={setCashData} sales={sales} />;
+      case 'Khata': return <KhataLedger customers={customers} sales={sales} payments={payments} />;
+      case 'Expenses': return <Expenses expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} />;
+      case 'Cash/Bank': return <CashBank cashData={cashData} setCashData={setCashData} />;
+      case 'Reports': return <Reports sales={sales} expenses={expenses} payments={payments} cashData={cashData} products={products} purchases={purchases} customers={customers} />;
+      case 'Settings': return <Settings products={products} customers={customers} suppliers={suppliers} purchases={purchases} sales={sales} payments={payments} expenses={expenses} cashData={cashData} setProducts={setProducts} setCustomers={setCustomers} setSuppliers={setSuppliers} setPurchases={setPurchases} setSales={setSales} setPayments={setPayments} setExpenses={setExpenses} setCashData={setCashData} />;
+      default: return <Dashboard sales={sales} expenses={expenses} payments={payments} customers={customers} purchases={purchases} getStock={getStock} products={products} />;
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-950">
-      <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-800 bg-slate-900/95 p-5">
-        <div className="mb-8 border-b border-slate-800 pb-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-emerald-400">Distributor ERP</p>
-          <h2 className="mt-2 text-xl font-black text-white">{settings.companyName || COMPANY_NAME}</h2>
-          <p className="mt-1 text-sm text-slate-400">{currentUser.username} · {currentUser.role}</p>
-        </div>
+    <div className={isDarkMode ? 'dark' : ''}>
+      <div className="flex min-h-screen bg-white dark:bg-slate-950 transition-colors">
+        <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5">
+          <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">Distributor ERP</p>
+            <h2 className="mt-2 text-xl font-black text-slate-900 dark:text-white">{settings.companyName || COMPANY_NAME}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{currentUser.username} · {currentUser.role}</p>
+          </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto">
-          {visibleMenu.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveTab(item.id)}
-              className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
-                activeTab === item.id
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
+          <nav className="flex-1 space-y-1 overflow-y-auto">
+            {visibleMenu.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
+                  activeTab === item.id
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="mt-4 w-full rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-500"
-        >
-          Logout
-        </button>
-      </aside>
+          {/* Theme Toggle Button */}
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="mt-4 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            {isDarkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
+          </button>
 
-      <main className="flex-1 overflow-y-auto p-6 lg:p-8">{renderModule()}</main>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="mt-4 w-full rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-500"
+          >
+            Logout
+          </button>
+        </aside>
+
+        <main className="flex-1 overflow-y-auto p-6 lg:p-8 text-slate-900 dark:text-slate-100">{renderModule()}</main>
+      </div>
     </div>
   );
 }
