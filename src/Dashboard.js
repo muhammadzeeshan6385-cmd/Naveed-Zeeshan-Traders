@@ -1,19 +1,33 @@
-// Dashboard.js mein ye hissa replace kar dein
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <StatCard title="Total Sales" value={formatRs(stats.totalSale)} tone="emerald" />
-        <StatCard title="Today's Sales" value={formatRs(stats.todaySales)} tone="blue" />
-        <StatCard title="Total Expenses" value={formatRs(stats.totalExpense)} tone="rose" />
-        <StatCard title="Net Profit" value={formatRs(stats.profit)} tone="violet" />
-        <StatCard title="Total Recovery" value={formatRs(stats.totalRecovery)} tone="blue" />
-        <StatCard title="Outstanding" value={formatRs(stats.outstanding)} tone="amber" />
+import React from 'react';
+// Folder structure ke mutabiq sahi import path
+import { Card, StatCard, DataTable } from './components/ui/index';
+
+const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSaleTotal }) => {
+  
+  // Helper function agar aapne kahin aur define nahi kiya
+  const formatRs = (num) => `Rs. ${Number(num).toLocaleString()}`;
+
+  return (
+    <>
+      {/* 1. StatCards Section */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 mb-6">
+        <StatCard title="Total Sales" value={formatRs(stats?.totalSale || 0)} tone="emerald" />
+        <StatCard title="Today's Sales" value={formatRs(stats?.todaySales || 0)} tone="blue" />
+        <StatCard title="Total Expenses" value={formatRs(stats?.totalExpense || 0)} tone="rose" />
+        <StatCard title="Net Profit" value={formatRs(stats?.profit || 0)} tone="violet" />
+        <StatCard title="Total Recovery" value={formatRs(stats?.totalRecovery || 0)} tone="blue" />
+        <StatCard title="Outstanding" value={formatRs(stats?.outstanding || 0)} tone="amber" />
       </div>
 
+      {/* 2. Expenses and Invoices Section */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        {/* Card ka title aur text yahan se control hoga */}
-        <Card title="Recent Expenses" className="xl:col-span-1 text-slate-900 dark:text-white">
+        {/* Recent Expenses Card */}
+        <Card title="Recent Expenses" className="xl:col-span-1">
           <div className="space-y-3">
-            {recentExpenses.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">No expenses recorded yet.</p>}
-            {recentExpenses.map((expense) => (
+            {recentExpenses?.length === 0 && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">No expenses recorded yet.</p>
+            )}
+            {recentExpenses?.map((expense) => (
               <div key={expense.id} className="flex items-center justify-between rounded-xl bg-slate-100 dark:bg-slate-950/70 px-4 py-3">
                 <div>
                   <p className="font-medium text-slate-900 dark:text-slate-200">{expense.category}</p>
@@ -25,7 +39,8 @@
           </div>
         </Card>
 
-        <Card title="Latest Sales Invoices" className="xl:col-span-2 text-slate-900 dark:text-white">
+        {/* Latest Invoices Card */}
+        <Card title="Latest Sales Invoices" className="xl:col-span-2">
           <DataTable
             columns={[
               { key: 'invoiceNo', label: 'Invoice' },
@@ -34,10 +49,19 @@
                 key: 'total',
                 label: 'Total',
                 className: 'text-right',
-                render: (row) => <span className="font-semibold text-emerald-600 dark:text-emerald-300">{formatRs(getSaleTotal(row))}</span>,
+                render: (row) => (
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-300">
+                    {formatRs(getSaleTotal(row))}
+                  </span>
+                ),
               },
             ]}
-            rows={recentSales}
+            rows={recentSales || []}
           />
         </Card>
       </div>
+    </>
+  );
+};
+
+export default Dashboard;
