@@ -42,12 +42,12 @@ const Dashboard = ({ sales = [], expenses = [], payments = [], customers = [], p
           <div className="space-y-3">
             {recentExpenses.length === 0 && <p className="text-sm text-slate-500">No expenses recorded yet.</p>}
             {recentExpenses.map((expense) => (
-              <div key={expense.id} className="flex items-center justify-between rounded-xl bg-slate-950/70 px-4 py-3">
+              <div key={expense.id} className="flex items-center justify-between rounded-xl bg-slate-100 dark:bg-slate-950/70 px-4 py-3">
                 <div>
-                  <p className="font-medium text-slate-200">{expense.category}</p>
+                  <p className="font-medium text-slate-900 dark:text-slate-200">{expense.category}</p>
                   <p className="text-xs text-slate-500">{expense.date}</p>
                 </div>
-                <span className="font-bold text-rose-300">{formatRs(expense.amount)}</span>
+                <span className="font-bold text-rose-600 dark:text-rose-300">{formatRs(expense.amount)}</span>
               </div>
             ))}
           </div>
@@ -62,7 +62,7 @@ const Dashboard = ({ sales = [], expenses = [], payments = [], customers = [], p
                 key: 'total',
                 label: 'Total',
                 className: 'text-right',
-                render: (row) => <span className="font-semibold text-emerald-300">{formatRs(getSaleTotal(row))}</span>,
+                render: (row) => <span className="font-semibold text-emerald-600 dark:text-emerald-300">{formatRs(getSaleTotal(row))}</span>,
               },
             ]}
             rows={recentSales}
@@ -72,18 +72,16 @@ const Dashboard = ({ sales = [], expenses = [], payments = [], customers = [], p
 
       <Card title="Business Alerts">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-xl bg-slate-950/70 p-4">
-            <p className="text-sm text-slate-400">Active Customers</p>
-            <p className="mt-2 text-2xl font-bold text-slate-100">{customers.length}</p>
-          </div>
-          <div className="rounded-xl bg-slate-950/70 p-4">
-            <p className="text-sm text-slate-400">Products in Catalog</p>
-            <p className="mt-2 text-2xl font-bold text-slate-100">{products.length}</p>
-          </div>
-          <div className="rounded-xl bg-slate-950/70 p-4">
-            <p className="text-sm text-slate-400">Low Stock Items</p>
-            <p className="mt-2 text-2xl font-bold text-amber-300">{stats.lowStockCount}</p>
-          </div>
+          {[
+            { label: 'Active Customers', value: customers.length },
+            { label: 'Products in Catalog', value: products.length },
+            { label: 'Low Stock Items', value: stats.lowStockCount, color: 'text-amber-600 dark:text-amber-300' }
+          ].map((item, idx) => (
+            <div key={idx} className="rounded-xl bg-slate-100 dark:bg-slate-950/70 p-4">
+              <p className="text-sm text-slate-500 dark:text-slate-400">{item.label}</p>
+              <p className={`mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 ${item.color || ''}`}>{item.value}</p>
+            </div>
+          ))}
         </div>
       </Card>
     </PageShell>
