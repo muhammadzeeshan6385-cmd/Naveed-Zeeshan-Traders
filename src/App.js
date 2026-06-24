@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'; // useState add kiya hai
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import Login from './Login';
 import Products from './Products';
 import Purchase from './Purchase';
@@ -19,7 +19,11 @@ import { calculateStock } from './utils/helpers';
 import { removeFromStorage } from './utils/storage';
 
 function App() {
-  const [isDarkMode, setIsDarkMode] = useState(true); // Dark mode state
+  // Dark mode ko localStorage se load karein
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
+
   const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
@@ -31,6 +35,17 @@ function App() {
   const [payments, setPayments] = useLocalStorage(STORAGE_KEYS.payments, []);
   const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
+
+  // Theme toggle hone par HTML class update karein
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
 
   const getStock = useCallback(
     (productName) => calculateStock(productName, purchases, sales),
@@ -71,8 +86,8 @@ function App() {
   };
 
   return (
-    <div className={isDarkMode ? 'dark' : ''}>
-      <div className="flex min-h-screen bg-white dark:bg-slate-950 transition-colors">
+    <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300">
+      <div className="flex min-h-screen">
         <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5">
           <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5">
             <p className="text-xs uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">Distributor ERP</p>
@@ -97,10 +112,9 @@ function App() {
             ))}
           </nav>
 
-          {/* Theme Toggle Button */}
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
-            className="mt-4 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+            className="mt-4 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
           >
             {isDarkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
           </button>
