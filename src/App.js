@@ -17,9 +17,9 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { STORAGE_KEYS, MENU_ITEMS, DEFAULT_SETTINGS, COMPANY_NAME } from './utils/constants';
 import { calculateStock } from './utils/helpers';
 import { removeFromStorage } from './utils/storage';
+import { Logo } from './components/ui';
 
 function App() {
-  // Dark mode ko localStorage se load karein
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
@@ -36,7 +36,6 @@ function App() {
   const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
 
-  // Theme toggle hone par HTML class update karein
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -89,10 +88,26 @@ function App() {
     <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300">
       <div className="flex min-h-screen">
         <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5">
+          {/* Professional Header Section */}
           <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">Distributor ERP</p>
-            <h2 className="mt-2 text-xl font-black text-slate-900 dark:text-white">{settings.companyName || COMPANY_NAME}</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{currentUser.username} · {currentUser.role}</p>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 flex-shrink-0">
+                <Logo className="w-full h-full object-contain" />
+              </div>
+              <div className="overflow-hidden">
+                <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                  {settings.companyName || COMPANY_NAME}
+                </h2>
+                <p className="text-[10px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                  Distributor ERP
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800/50">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                {currentUser.username} | {currentUser.role}
+              </p>
+            </div>
           </div>
 
           <nav className="flex-1 space-y-1 overflow-y-auto">

@@ -1,5 +1,25 @@
 import React from 'react';
 
+// Logo Component - Naveed & Zeeshan Traders Mailsi
+export const Logo = ({ className = "w-[200px]" }) => {
+  return (
+    <>
+      {/* Light mode mein logo-dark.png */}
+      <img 
+        src="/logo-dark.png" 
+        alt="Naveed & Zeeshan Traders Mailsi" 
+        className={`${className} h-auto dark:hidden`} 
+      />
+      {/* Dark mode mein logo-light.png */}
+      <img 
+        src="/logo-light.png" 
+        alt="Naveed & Zeeshan Traders Mailsi" 
+        className={`${className} h-auto hidden dark:block`} 
+      />
+    </>
+  );
+};
+
 export const Card = ({ title, subtitle, children, className = '' }) => (
   <div className={`rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-6 shadow-xl backdrop-blur ${className}`}>
     {(title || subtitle) && (
