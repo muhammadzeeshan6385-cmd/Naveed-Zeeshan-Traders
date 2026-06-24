@@ -1,11 +1,11 @@
 import React from 'react';
 
 export const Card = ({ title, subtitle, children, className = '' }) => (
-  <div className={`rounded-2xl border border-slate-700/80 bg-slate-900/80 p-6 shadow-xl backdrop-blur ${className}`}>
+  <div className={`rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-6 shadow-xl backdrop-blur ${className}`}>
     {(title || subtitle) && (
       <div className="mb-5">
-        {title && <h2 className="text-xl font-bold text-slate-100">{title}</h2>}
-        {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}
+        {title && <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{title}</h2>}
+        {subtitle && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
     )}
     {children}
@@ -15,9 +15,9 @@ export const Card = ({ title, subtitle, children, className = '' }) => (
 export const Button = ({ children, variant = 'primary', className = '', ...props }) => {
   const variants = {
     primary: 'bg-emerald-600 hover:bg-emerald-500 text-white',
-    secondary: 'bg-slate-700 hover:bg-slate-600 text-slate-100',
+    secondary: 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-slate-100',
     danger: 'bg-rose-600 hover:bg-rose-500 text-white',
-    ghost: 'bg-transparent hover:bg-slate-800 text-slate-300',
+    ghost: 'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300',
   };
 
   return (
@@ -32,9 +32,9 @@ export const Button = ({ children, variant = 'primary', className = '', ...props
 
 export const Input = ({ label, className = '', ...props }) => (
   <label className="block space-y-1.5">
-    {label && <span className="text-sm font-medium text-slate-300">{label}</span>}
+    {label && <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>}
     <input
-      className={`w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2.5 text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${className}`}
+      className={`w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 px-3 py-2.5 text-slate-900 dark:text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${className}`}
       {...props}
     />
   </label>
@@ -42,9 +42,9 @@ export const Input = ({ label, className = '', ...props }) => (
 
 export const Select = ({ label, children, className = '', ...props }) => (
   <label className="block space-y-1.5">
-    {label && <span className="text-sm font-medium text-slate-300">{label}</span>}
+    {label && <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>}
     <select
-      className={`w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2.5 text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${className}`}
+      className={`w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 px-3 py-2.5 text-slate-900 dark:text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${className}`}
       {...props}
     >
       {children}
@@ -54,25 +54,25 @@ export const Select = ({ label, children, className = '', ...props }) => (
 
 export const StatCard = ({ title, value, tone = 'emerald' }) => {
   const tones = {
-    emerald: 'from-emerald-600/20 to-emerald-900/20 border-emerald-500/30 text-emerald-300',
-    rose: 'from-rose-600/20 to-rose-900/20 border-rose-500/30 text-rose-300',
-    blue: 'from-blue-600/20 to-blue-900/20 border-blue-500/30 text-blue-300',
-    amber: 'from-amber-600/20 to-amber-900/20 border-amber-500/30 text-amber-300',
-    violet: 'from-violet-600/20 to-violet-900/20 border-violet-500/30 text-violet-300',
+    emerald: 'bg-emerald-50 dark:bg-slate-900 border-emerald-200 dark:border-emerald-500/30 text-emerald-900 dark:text-emerald-300',
+    rose: 'bg-rose-50 dark:bg-slate-900 border-rose-200 dark:border-rose-500/30 text-rose-900 dark:text-rose-300',
+    blue: 'bg-blue-50 dark:bg-slate-900 border-blue-200 dark:border-blue-500/30 text-blue-900 dark:text-blue-300',
+    amber: 'bg-amber-50 dark:bg-slate-900 border-amber-200 dark:border-amber-500/30 text-amber-900 dark:text-amber-300',
+    violet: 'bg-violet-50 dark:bg-slate-900 border-violet-200 dark:border-violet-500/30 text-violet-900 dark:text-violet-300',
   };
 
   return (
-    <div className={`rounded-2xl border bg-gradient-to-br p-5 ${tones[tone]}`}>
-      <p className="text-sm text-slate-400">{title}</p>
-      <p className="mt-2 text-2xl font-black text-slate-50">{value}</p>
+    <div className={`rounded-2xl border p-5 ${tones[tone]}`}>
+      <p className="text-sm text-slate-600 dark:text-slate-400">{title}</p>
+      <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-50">{value}</p>
     </div>
   );
 };
 
 export const DataTable = ({ columns, rows, emptyMessage = 'No records found.' }) => (
-  <div className="overflow-x-auto rounded-xl border border-slate-700">
+  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
     <table className="min-w-full text-left text-sm">
-      <thead className="bg-slate-800/80 text-slate-300">
+      <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
         <tr>
           {columns.map((column) => (
             <th key={column.key} className={`px-4 py-3 font-semibold ${column.className || ''}`}>
@@ -90,7 +90,7 @@ export const DataTable = ({ columns, rows, emptyMessage = 'No records found.' })
           </tr>
         ) : (
           rows.map((row, rowIndex) => (
-            <tr key={row.id || rowIndex} className="border-t border-slate-800 text-slate-200">
+            <tr key={row.id || rowIndex} className="border-t border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
               {columns.map((column) => (
                 <td key={column.key} className={`px-4 py-3 ${column.className || ''}`}>
                   {column.render ? column.render(row, rowIndex) : row[column.key]}
@@ -107,8 +107,8 @@ export const DataTable = ({ columns, rows, emptyMessage = 'No records found.' })
 export const PageShell = ({ title, subtitle, children }) => (
   <div className="space-y-6">
     <div>
-      <h1 className="text-3xl font-black tracking-tight text-slate-50">{title}</h1>
-      {subtitle && <p className="mt-1 text-slate-400">{subtitle}</p>}
+      <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-slate-50">{title}</h1>
+      {subtitle && <p className="mt-1 text-slate-500 dark:text-slate-400">{subtitle}</p>}
     </div>
     {children}
   </div>
