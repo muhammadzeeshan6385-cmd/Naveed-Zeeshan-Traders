@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import { LogOut, Sun, Moon, User } from 'lucide-react'; // Imports updated
 import Login from './Login';
 import Products from './Products';
 import Purchase from './Purchase';
@@ -20,10 +21,7 @@ import { removeFromStorage } from './utils/storage';
 import { Logo } from './components/ui';
 
 function App() {
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    return localStorage.getItem('theme') === 'dark';
-  });
-
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
   const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
@@ -46,24 +44,15 @@ function App() {
     }
   }, [isDarkMode]);
 
-  const getStock = useCallback(
-    (productName) => calculateStock(productName, purchases, sales),
-    [purchases, sales]
-  );
-
-  const visibleMenu = useMemo(
-    () => MENU_ITEMS.filter((item) => !currentUser?.role || item.roles.includes(currentUser.role)),
-    [currentUser]
-  );
+  const getStock = useCallback((productName) => calculateStock(productName, purchases, sales), [purchases, sales]);
+  const visibleMenu = useMemo(() => MENU_ITEMS.filter((item) => !currentUser?.role || item.roles.includes(currentUser.role)), [currentUser]);
 
   const handleLogout = () => {
     setCurrentUser(null);
     removeFromStorage(STORAGE_KEYS.currentUser);
   };
 
-  if (!currentUser) {
-    return <Login onLogin={setCurrentUser} companyName={settings.companyName || COMPANY_NAME} />;
-  }
+  if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || COMPANY_NAME} />;
 
   const renderModule = () => {
     switch (activeTab) {
@@ -88,62 +77,42 @@ function App() {
     <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300">
       <div className="flex min-h-screen">
         <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5">
-          {/* Professional Header Section */}
           <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 flex-shrink-0">
-                <Logo className="w-full h-full object-contain" />
-              </div>
+              <div className="w-12 h-12 flex-shrink-0"><Logo className="w-full h-full object-contain" /></div>
               <div className="overflow-hidden">
-                <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">
-                  {settings.companyName || COMPANY_NAME}
-                </h2>
-                <p className="text-[10px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                  Distributor ERP
-                </p>
+                <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">{settings.companyName || COMPANY_NAME}</h2>
+                <p className="text-[10px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Distributor ERP</p>
               </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800/50">
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                {currentUser.username} | {currentUser.role}
-              </p>
             </div>
           </div>
-
           <nav className="flex-1 space-y-1 overflow-y-auto">
             {visibleMenu.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveTab(item.id)}
-                className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
-                  activeTab === item.id
-                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
+              <button key={item.id} type="button" onClick={() => setActiveTab(item.id)} className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === item.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}>
                 {item.label}
               </button>
             ))}
           </nav>
-
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="mt-4 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-          >
-            {isDarkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="mt-4 w-full rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-500"
-          >
-            Logout
-          </button>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8 text-slate-900 dark:text-slate-100">{renderModule()}</main>
+        <div className="flex-1 flex flex-col h-screen overflow-hidden">
+          <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 bg-white dark:bg-slate-950">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser.username} | {currentUser.role}</p>
+            <div className="flex items-center gap-4">
+              <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition">{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
+              
+              {/* Professional Logout Icon Combined */}
+              <button onClick={handleLogout} className="flex items-center gap-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 px-3 py-2 rounded-lg transition text-sm font-semibold">
+                <div className="relative flex items-center">
+                  <User size={18} />
+                  <LogOut size={12} className="absolute -right-1 -bottom-1 bg-white dark:bg-slate-950 rounded-full" />
+                </div>
+                Logout
+              </button>
+            </div>
+          </header>
+          <main className="flex-1 overflow-y-auto p-6 lg:p-8 text-slate-900 dark:text-slate-100">{renderModule()}</main>
+        </div>
       </div>
     </div>
   );
