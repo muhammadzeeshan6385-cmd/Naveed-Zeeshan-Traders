@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
-import { LogOut, Sun, Moon, User } from 'lucide-react'; // Imports updated
+import { LogOut, Sun, Moon, User, Search } from 'lucide-react';
 import Login from './Login';
 import Products from './Products';
 import Purchase from './Purchase';
@@ -14,6 +14,7 @@ import Reports from './Reports';
 import CustomerForm from './components/CustomerForm';
 import Dashboard from './Dashboard';
 import Settings from './Settings';
+import SearchBill from './SearchBill';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { STORAGE_KEYS, MENU_ITEMS, DEFAULT_SETTINGS, COMPANY_NAME } from './utils/constants';
 import { calculateStock } from './utils/helpers';
@@ -63,6 +64,7 @@ function App() {
       case 'Suppliers': return <Suppliers suppliers={suppliers} setSuppliers={setSuppliers} purchases={purchases} />;
       case 'Purchases': return <Purchase purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} cashData={cashData} setCashData={setCashData} />;
       case 'Sales': return <Sales sales={sales} setSales={setSales} products={products} customers={customers} getStock={getStock} cashData={cashData} setCashData={setCashData} currentUser={currentUser} />;
+      case 'SearchBill': return <SearchBill sales={sales} />;
       case 'Recovery': return <Recovery payments={payments} setPayments={setPayments} customers={customers} cashData={cashData} setCashData={setCashData} sales={sales} />;
       case 'Khata': return <KhataLedger customers={customers} sales={sales} payments={payments} />;
       case 'Expenses': return <Expenses expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} />;
@@ -86,11 +88,28 @@ function App() {
               </div>
             </div>
           </div>
+          
           <nav className="flex-1 space-y-1 overflow-y-auto">
             {visibleMenu.map((item) => (
-              <button key={item.id} type="button" onClick={() => setActiveTab(item.id)} className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === item.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}>
-                {item.label}
-              </button>
+              <React.Fragment key={item.id}>
+                <button 
+                  type="button" 
+                  onClick={() => setActiveTab(item.id)} 
+                  className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === item.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                >
+                  {item.label}
+                </button>
+
+                {item.id === 'Sales' && (
+                  <button 
+                    type="button" 
+                    onClick={() => setActiveTab('SearchBill')} 
+                    className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === 'SearchBill' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                  >
+                    <div className="flex items-center gap-2"><Search size={16}/> Search Bills</div>
+                  </button>
+                )}
+              </React.Fragment>
             ))}
           </nav>
         </aside>
@@ -100,8 +119,6 @@ function App() {
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser.username} | {currentUser.role}</p>
             <div className="flex items-center gap-4">
               <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition">{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-              
-              {/* Professional Logout Icon Combined */}
               <button onClick={handleLogout} className="flex items-center gap-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 px-3 py-2 rounded-lg transition text-sm font-semibold">
                 <div className="relative flex items-center">
                   <User size={18} />
@@ -117,5 +134,4 @@ function App() {
     </div>
   );
 }
-
 export default App;

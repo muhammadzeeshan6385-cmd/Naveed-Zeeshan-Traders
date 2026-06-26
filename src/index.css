@@ -31,3 +31,28 @@
     @apply rounded-full bg-slate-700;
   }
 }
+
+/* Print Styling for Professional Invoices */
+@media print {
+  body * { 
+    visibility: hidden; 
+  }
+  
+  .print\:block, .print\:block * { 
+    visibility: visible; 
+  }
+  
+  .print\:block { 
+    position: absolute; 
+    left: 0; 
+    top: 0; 
+    width: 100%; 
+    color: black !important; /* Bill ka color black rakha hai print ke liye */
+    background-color: white !important;
+  }
+
+  /* Print ke liye background color white set karna zaroori hai */
+  body {
+    background-color: white !important;
+  }
+}
