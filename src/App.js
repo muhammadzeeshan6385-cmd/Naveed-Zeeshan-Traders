@@ -26,6 +26,8 @@ function App() {
   const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
+  
+  // Data States
   const [products, setProducts] = useLocalStorage(STORAGE_KEYS.products, []);
   const [customers, setCustomers] = useLocalStorage(STORAGE_KEYS.customers, []);
   const [suppliers, setSuppliers] = useLocalStorage(STORAGE_KEYS.suppliers, []);
@@ -34,6 +36,26 @@ function App() {
   const [payments, setPayments] = useLocalStorage(STORAGE_KEYS.payments, []);
   const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
+
+  // Stats Calculation Logic
+  const stats = useMemo(() => {
+    const totalSale = sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+    const todaySales = sales
+      .filter(s => new Date(s.date).toLocaleDateString() === new Date().toLocaleDateString())
+      .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+    const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const outstanding = totalSale - totalRecovery;
+    
+    return { 
+      totalSale, 
+      todaySales, 
+      totalExpense, 
+      profit: totalSale - totalExpense, 
+      totalRecovery, 
+      outstanding 
+    };
+  }, [sales, expenses, payments]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -57,7 +79,15 @@ function App() {
 
   const renderModule = () => {
     switch (activeTab) {
-      case 'Dashboard': return <Dashboard sales={sales} expenses={expenses} payments={payments} customers={customers} purchases={purchases} getStock={getStock} products={products} />;
+      case 'Dashboard': return (
+        <Dashboard 
+          stats={stats} 
+          recentExpenses={expenses.slice(-5).reverse()} 
+          recentSales={sales.slice(-5).reverse()} 
+          getSaleCustomer={(s) => s.customer} 
+          getSaleTotal={(s) => s.netTotal} 
+        />
+      );
       case 'Products': return <Products products={products} setProducts={setProducts} />;
       case 'Inventory': return <InventorySummary products={products} getStock={getStock} />;
       case 'Customers': return <CustomerForm customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
@@ -71,7 +101,7 @@ function App() {
       case 'Cash/Bank': return <CashBank cashData={cashData} setCashData={setCashData} />;
       case 'Reports': return <Reports sales={sales} expenses={expenses} payments={payments} cashData={cashData} products={products} purchases={purchases} customers={customers} />;
       case 'Settings': return <Settings products={products} customers={customers} suppliers={suppliers} purchases={purchases} sales={sales} payments={payments} expenses={expenses} cashData={cashData} setProducts={setProducts} setCustomers={setCustomers} setSuppliers={setSuppliers} setPurchases={setPurchases} setSales={setSales} setPayments={setPayments} setExpenses={setExpenses} setCashData={setCashData} />;
-      default: return <Dashboard sales={sales} expenses={expenses} payments={payments} customers={customers} purchases={purchases} getStock={getStock} products={products} />;
+      default: return <Dashboard stats={stats} recentExpenses={expenses.slice(-5).reverse()} recentSales={sales.slice(-5).reverse()} getSaleCustomer={(s) => s.customer} getSaleTotal={(s) => s.netTotal} />;
     }
   };
 
@@ -99,7 +129,6 @@ function App() {
                 >
                   {item.label}
                 </button>
-
                 {item.id === 'Sales' && (
                   <button 
                     type="button" 

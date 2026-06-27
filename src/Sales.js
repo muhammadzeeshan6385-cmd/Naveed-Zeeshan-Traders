@@ -6,6 +6,7 @@ import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, todayISO } fro
 const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCashData, currentUser }) => {
   const [invoiceNo, setInvoiceNo] = useState('');
   const [customer, setCustomer] = useState('');
+  const [walkInName, setWalkInName] = useState('');
   const [paymentType, setPaymentType] = useState('Credit');
   const [discountPercent, setDiscountPercent] = useState(0);
   const [items, setItems] = useState([]);
@@ -36,7 +37,6 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     if (!product) return;
     
     const ctnSize = Number(product.ctnSize) || 1;
-    const stock = getStock(product.name);
     const existing = items.find((item) => item.name === product.name);
     
     if (existing) {
@@ -124,14 +124,15 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   };
 
   const saveInvoice = () => {
-    if (!customer || items.length === 0) { window.alert('Please fill details.'); return; }
-    const invoice = { id: generateId(), invoiceNo, date: todayISO(), customer, paymentType, items, grossTotal: gross, discount: discountAmount, netTotal, createdBy: currentUser?.username || 'System' };
+    const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
+    if (!finalCustomer || items.length === 0) { window.alert('Please fill details.'); return; }
+    const invoice = { id: generateId(), invoiceNo, date: todayISO(), customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, netTotal, createdBy: currentUser?.username || 'System' };
     setSales([...sales, invoice]);
     if (paymentType === 'Cash') {
-      setCashData([...cashData, { id: generateId(), date: todayISO(), account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${customer}`, type: 'receipt' }]);
+      setCashData([...cashData, { id: generateId(), date: todayISO(), account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${finalCustomer}`, type: 'receipt' }]);
     }
     handlePrint(invoice);
-    setItems([]); setCustomer(''); setDiscountPercent(0); setPaymentType('Credit');
+    setItems([]); setCustomer(''); setWalkInName(''); setDiscountPercent(0); setPaymentType('Credit');
   };
 
   return (
@@ -144,8 +145,12 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
               <Input label="Date" value={new Date().toLocaleDateString()} disabled />
               <Select label="Customer" value={customer} onChange={(e) => setCustomer(e.target.value)}>
                 <option value="">Select customer</option>
+                <option value="Walk-in Customer">Walk-in Customer</option>
                 {customers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
               </Select>
+              {customer === 'Walk-in Customer' && (
+                <Input label="Customer Name" value={walkInName} onChange={(e) => setWalkInName(e.target.value)} />
+              )}
               <Select label="Payment Type" value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
                 <option value="Credit">Credit</option>
                 <option value="Cash">Cash</option>
@@ -161,7 +166,6 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
                 {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
               </Select>
             </div>
-            
             <DataTable columns={[
               { key: 'name', label: 'Product' },
               { key: 'rate', label: 'Rate' },
