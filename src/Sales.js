@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
-import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, todayISO } from './utils/helpers';
+import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, todayISO, getCreditSalesTotal } from './utils/helpers';
 
-const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCashData, currentUser }) => {
+const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCashData, currentUser, payments }) => {
   const [invoiceNo, setInvoiceNo] = useState('');
   const [customer, setCustomer] = useState('');
   const [walkInName, setWalkInName] = useState('');
@@ -14,7 +14,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
   useEffect(() => { setInvoiceNo(nextInvoiceNo(sales)); }, [sales]);
 
-  const gross = useMemo(() => items.reduce((sum, item) => sum + (item.qty * item.rate), 0), [items]);
+  const gross = useMemo(() => items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0), [items]);
   const discountAmount = (gross * discountPercent) / 100;
   const netTotal = gross - discountAmount;
 
@@ -37,13 +37,14 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     if (!product) return;
     
     const ctnSize = Number(product.ctnSize) || 1;
+    const purchaseRate = Number(product.purchaseRate) || 0;
     const existing = items.find((item) => item.name === product.name);
     
     if (existing) {
       setItems(items.map((i) => i.name === product.name ? { ...i, qty: i.qty + 1, total: (i.qty + 1) * i.rate } : i));
     } else {
       const rate = getProductSaleRate(product);
-      setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, qty: 1, ctnSize, total: rate }]);
+      setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, purchaseRate, qty: 1, ctnSize, total: rate }]);
     }
   };
 
@@ -67,6 +68,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
           <style>
             @page { size: A5; margin: 5mm; }
             body { font-family: sans-serif; width: 138mm; margin: 0; padding: 0; color: black; }
+            .bill-container { border: 2px solid #000; padding: 10px; min-height: 100mm; }
             .header-container { display: flex; align-items: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 10px; }
             .logo { width: 70px; }
             .title-section { flex: 1; text-align: center; }
@@ -81,8 +83,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             .label-col { text-align: right; padding: 4px; font-size: 12px; font-weight: bold; border: 1px solid #000; }
             .amount-col { text-align: center; padding: 4px; font-size: 12px; font-weight: bold; border: 1px solid #000; }
           </style>
-        </head>
-        <body>
+        </thead>
+        <tbody>
+         <div class="bill-container">
           <div class="header-container">
             <img src="/logo-dark.png" class="logo" />
             <div class="title-section">
@@ -97,15 +100,14 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
           </div>
           <table>
-            <thead><tr><th>Ser</th><th>Product Name</th><th>Ctn</th><th>Piece</th><th>Rate</th><th>Total</th></tr></thead>
+            <thead><tr><th>Ser</th><th>Product Name</th><th>Piece</th><th>Rate</th><th>Total</th></tr></thead>
             <tbody>
               ${invoiceData.items.map((i, idx) => `
                 <tr>
                   <td>${idx + 1}</td>
                   <td class="product-name">${i.name}</td>
-                  <td>${Math.floor(i.qty / (i.ctnSize || 1))}</td>
-                  <td>${i.qty % (i.ctnSize || 1)}</td>
-                  <td>${formatRs(i.rate)}</td>
+                  <td>${i.qty}</td>
+                  <td>${formatRs(i.rate || 0)}</td>
                   <td>${formatRs(i.total)}</td>
                 </tr>`).join('')}
             </tbody>
@@ -114,7 +116,8 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             <table class="totals-table">
               <tr><td class="label-col">Grand Total:</td><td class="amount-col">${formatRs(invoiceData.grossTotal)}</td></tr>
               <tr><td class="label-col">Discount:</td><td class="amount-col">${formatRs(invoiceData.discount)}</td></tr>
-              <tr><td class="label-col">Payable Amount:</td><td class="amount-col">${formatRs(invoiceData.netTotal)}</td></tr>
+              <tr><td class="label-col">Prev Balance:</td><td class="amount-col">${formatRs(invoiceData.prevBalance || 0)}</td></tr>
+              <td class="label-col" style="border-top: 2px solid #000;">Payable Amount:</td><td class="amount-col" style="border-top: 2px solid #000;">${formatRs(Number(invoiceData.netTotal) + Number(invoiceData.prevBalance || 0))}</td></tr>
             </table>
           </div>
           <script>window.onload = () => { window.print(); window.close(); }</script>
@@ -126,7 +129,24 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   const saveInvoice = () => {
     const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
     if (!finalCustomer || items.length === 0) { window.alert('Please fill details.'); return; }
-    const invoice = { id: generateId(), invoiceNo, date: todayISO(), customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, netTotal, createdBy: currentUser?.username || 'System' };
+
+    for (let item of items) {
+      const product = products.find(p => p.id === item.productId);
+      const currentStock = getStock(product);
+      if (item.qty > currentStock) {
+        window.alert(`Insufficient stock for ${item.name}! Available: ${currentStock}`);
+        return;
+    }
+  }
+    const totalSales = getCreditSalesTotal(sales, finalCustomer);
+    const totalPaid = (payments || [])
+      .filter((p) => p.customer === finalCustomer)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    const prevBalance = totalSales - totalPaid; 
+
+    const invoice = { id: generateId(), invoiceNo, date: todayISO(), customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, prevBalance: prevBalance, netTotal, createdBy: currentUser?.username || 'System' };
+    
     setSales([...sales, invoice]);
     if (paymentType === 'Cash') {
       setCashData([...cashData, { id: generateId(), date: todayISO(), account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${finalCustomer}`, type: 'receipt' }]);
@@ -167,11 +187,10 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
               </Select>
             </div>
             <DataTable columns={[
+              { key: 'ser', label: 'Ser', render: (_, index) => index + 1 },
               { key: 'name', label: 'Product' },
-              { key: 'rate', label: 'Rate' },
-              { key: 'ctn', label: 'Ctn', render: (row) => Math.floor(row.qty / (row.ctnSize || 1)) },
-              { key: 'pcs', label: 'Piece', render: (row) => (row.qty % (row.ctnSize || 1)) },
-              { key: 'qty_input', label: 'Qty', render: (row) => <Input type="number" style={{ width: '60px' }} value={row.qty} onChange={(e) => updateQty(row.id, e.target.value)} /> },
+              { key: 'pcs_input', label: 'Piece', render: (row) => <Input type="number" style={{ width: '60px' }} value={row.qty} onChange={(e) => updateQty(row.id, e.target.value)} /> },
+              { key: 'rate', label: 'Rate', render: (row) => formatRs(row.rate) },
               { key: 'total', label: 'Total', render: (row) => formatRs(row.total) },
               { key: 'action', render: (row) => <button onClick={() => removeItem(row.id)}><Trash2 className="text-red-500" /></button> }
             ]} rows={items} />
@@ -183,7 +202,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             <div className="text-lg">Gross: {formatRs(gross)}</div>
             <Input label="Discount (%)" type="number" value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} />
             <div className="text-xl font-bold py-2">Payable: {formatRs(netTotal)}</div>
-            <Button onClick={saveInvoice} className="w-full bg-emerald-600">Save & Print</Button>
+            <Button onClick={saveInvoice} className="w-full bg-emerald-600 mt-3">Save & Print</Button>
           </Card>
         </div>
       </div>

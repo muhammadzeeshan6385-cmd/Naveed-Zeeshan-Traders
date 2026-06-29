@@ -1,26 +1,40 @@
-import React, { useMemo } from 'react';
-import { Card, DataTable, PageShell, StatCard } from './components/ui';
+import React, { useMemo, useState } from 'react';
+import { Button, Card, DataTable, PageShell, StatCard } from './components/ui';
 
-const InventorySummary = ({ products, getStock }) => {
-  const rows = useMemo(
-    () =>
-      products.map((product) => {
-        const stock = getStock(product.name);
-        const minStock = Number(product.minStock || 5);
-        return {
-          id: product.id,
-          name: product.name,
-          category: product.category || '-',
-          unit: product.unit || 'Piece',
-          stock,
-          minStock,
-          status: stock <= 0 ? 'Out of Stock' : stock <= minStock ? 'Low Stock' : 'Healthy',
-        };
-      }),
+const InventorySummary = ({ products, getStock, sales }) => {
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  const rows = useMemo(() => 
+    products.map((product) => {
+      const stock = getStock(product.name);
+      const minStock = Number(product.minStock || 5);
+      return {
+        id: product.id,
+        name: product.name,
+        category: product.category || '-',
+        unit: product.unit || 'Piece',
+        stock,
+        minStock,
+        status: stock <= 0 ? 'Out of Stock' : stock <= minStock ? 'Low Stock' : 'Healthy',
+      };
+    }),
     [products, getStock]
   );
 
   const lowStockCount = rows.filter((row) => row.status !== 'Healthy').length;
+
+  const getProductLedger = (productName, productId) => {
+    return (sales || []).flatMap(invoice =>
+      (invoice.items || [])
+        .filter(item => item.productId === productId)
+        .map(item => ({
+          date: invoice.date,
+          customer: invoice.customer,
+          qty: item.qty,
+          total: item.total
+        }))
+    );
+  };
 
   return (
     <PageShell title="Inventory" subtitle="Real-time stock levels based on purchases and sales">
@@ -38,23 +52,34 @@ const InventorySummary = ({ products, getStock }) => {
               key: 'status',
               label: 'Status',
               render: (row) => (
-                <span
-                  className={
-                    row.status === 'Healthy'
-                      ? 'text-emerald-300'
-                      : row.status === 'Low Stock'
-                        ? 'text-amber-300'
-                        : 'text-rose-300'
-                  }
-                >
+                <span className={row.status === 'Healthy' ? 'text-emerald-300' : row.status === 'Low Stock' ? 'text-amber-300' : 'text-rose-300'}>
                   {row.status}
                 </span>
               ),
             },
+            {
+              key: 'action',
+              label: 'Action',
+              render: (row) => <Button size="sm" onClick={() => setSelectedProduct(row)}>View Ledger</Button>
+            }
           ]}
           rows={rows}
         />
       </Card>
+
+      {selectedProduct && (
+        <Card title={`Ledger History: ${selectedProduct.name}`} className="mt-6">
+          <DataTable 
+            columns={[
+              { key: 'date', label: 'Date' },
+              { key: 'customer', label: 'Customer' },
+              { key: 'qty', label: 'Qty Sold' },
+              { key: 'total', label: 'Total Amount' }
+            ]} 
+            rows={getProductLedger(selectedProduct.name)} 
+          />
+        </Card>
+      )}
     </PageShell>
   );
 };

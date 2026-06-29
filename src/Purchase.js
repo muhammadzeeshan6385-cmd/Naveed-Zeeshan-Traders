@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, todayISO } from './utils/helpers';
 
-const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], cashData, setCashData }) => {
+const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setProducts, cashData, setCashData }) => {
   const [form, setForm] = useState({
     date: todayISO(),
     supplier: '',
@@ -33,6 +33,8 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], cash
     const qty = Number(form.qty);
     const price = Number(form.price);
     const total = qty * price;
+    
+    // 1. Purchase Record
     const entry = {
       id: generateId(),
       date: form.date,
@@ -46,6 +48,16 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], cash
 
     setPurchases([...purchases, entry]);
 
+    // 2. Logic: Product ka purchaseRate update karein (Force Number format)
+    if (setProducts) {
+      setProducts(prevProducts => 
+        prevProducts.map(p => 
+          p.name === form.product ? { ...p, purchaseRate: Number(price) } : p
+        )
+      );
+    }
+
+    // 3. Cash Data (agar Cash purchase hai)
     if (form.paymentType === 'Cash') {
       setCashData([
         ...cashData,
@@ -61,6 +73,7 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], cash
     }
 
     resetForm();
+    window.alert('Purchase saved and Product rate updated!');
   };
 
   const recentPurchases = useMemo(() => [...purchases].slice(-20).reverse(), [purchases]);
@@ -73,17 +86,13 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], cash
           <Select label="Supplier" value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })}>
             <option value="">Select supplier</option>
             {suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.name}>
-                {supplier.name}
-              </option>
+              <option key={supplier.id} value={supplier.name}>{supplier.name}</option>
             ))}
           </Select>
           <Select label="Product" value={form.product} onChange={(e) => setForm({ ...form, product: e.target.value })}>
             <option value="">Select product</option>
             {products.map((product) => (
-              <option key={product.id} value={product.name}>
-                {product.name}
-              </option>
+              <option key={product.id} value={product.name}>{product.name}</option>
             ))}
           </Select>
           <Input label="Quantity" type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />

@@ -27,7 +27,6 @@ function App() {
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
   
-  // Data States
   const [products, setProducts] = useLocalStorage(STORAGE_KEYS.products, []);
   const [customers, setCustomers] = useLocalStorage(STORAGE_KEYS.customers, []);
   const [suppliers, setSuppliers] = useLocalStorage(STORAGE_KEYS.suppliers, []);
@@ -37,23 +36,30 @@ function App() {
   const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
 
-  // Stats Calculation Logic
+  // Stats Calculation Logic: Updated to ensure Credit sales profit is included
   const stats = useMemo(() => {
     const totalSale = sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+    
+    // Profit Calculation: Invoice mein stored netProfit ka sum
+    const totalSalesProfit = sales.reduce((sum, s) => sum + Number(s.netProfit || 0), 0);
+    
     const todaySales = sales
       .filter(s => new Date(s.date).toLocaleDateString() === new Date().toLocaleDateString())
       .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+    
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    const outstanding = totalSale - totalRecovery;
+    
+    // Net Profit calculation (removed payments from dependency for accurate profit)
+    const netProfit = totalSalesProfit - totalExpense;
     
     return { 
       totalSale, 
       todaySales, 
       totalExpense, 
-      profit: totalSale - totalExpense, 
+      profit: netProfit, 
       totalRecovery, 
-      outstanding 
+      outstanding: totalSale - totalRecovery 
     };
   }, [sales, expenses, payments]);
 
@@ -79,20 +85,12 @@ function App() {
 
   const renderModule = () => {
     switch (activeTab) {
-      case 'Dashboard': return (
-        <Dashboard 
-          stats={stats} 
-          recentExpenses={expenses.slice(-5).reverse()} 
-          recentSales={sales.slice(-5).reverse()} 
-          getSaleCustomer={(s) => s.customer} 
-          getSaleTotal={(s) => s.netTotal} 
-        />
-      );
+      case 'Dashboard': return <Dashboard stats={stats} recentExpenses={expenses.slice(-5).reverse()} recentSales={sales.slice(-5).reverse()} getSaleCustomer={(s) => s.customer} getSaleTotal={(s) => s.netTotal} />;
       case 'Products': return <Products products={products} setProducts={setProducts} />;
       case 'Inventory': return <InventorySummary products={products} getStock={getStock} />;
       case 'Customers': return <CustomerForm customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
       case 'Suppliers': return <Suppliers suppliers={suppliers} setSuppliers={setSuppliers} purchases={purchases} />;
-      case 'Purchases': return <Purchase purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} cashData={cashData} setCashData={setCashData} />;
+      case 'Purchases': return <Purchase purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} setProducts={setProducts} cashData={cashData} setCashData={setCashData} />;
       case 'Sales': return <Sales sales={sales} setSales={setSales} products={products} customers={customers} getStock={getStock} cashData={cashData} setCashData={setCashData} currentUser={currentUser} />;
       case 'SearchBill': return <SearchBill sales={sales} />;
       case 'Recovery': return <Recovery payments={payments} setPayments={setPayments} customers={customers} cashData={cashData} setCashData={setCashData} sales={sales} />;
@@ -118,43 +116,21 @@ function App() {
               </div>
             </div>
           </div>
-          
           <nav className="flex-1 space-y-1 overflow-y-auto">
             {visibleMenu.map((item) => (
               <React.Fragment key={item.id}>
-                <button 
-                  type="button" 
-                  onClick={() => setActiveTab(item.id)} 
-                  className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === item.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
-                >
-                  {item.label}
-                </button>
-                {item.id === 'Sales' && (
-                  <button 
-                    type="button" 
-                    onClick={() => setActiveTab('SearchBill')} 
-                    className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === 'SearchBill' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
-                  >
-                    <div className="flex items-center gap-2"><Search size={16}/> Search Bills</div>
-                  </button>
-                )}
+                <button type="button" onClick={() => setActiveTab(item.id)} className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === item.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}>{item.label}</button>
+                {item.id === 'Sales' && (<button type="button" onClick={() => setActiveTab('SearchBill')} className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === 'SearchBill' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}><div className="flex items-center gap-2"><Search size={16}/> Search Bills</div></button>)}
               </React.Fragment>
             ))}
           </nav>
         </aside>
-
         <div className="flex-1 flex flex-col h-screen overflow-hidden">
           <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 bg-white dark:bg-slate-950">
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser.username} | {currentUser.role}</p>
             <div className="flex items-center gap-4">
               <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition">{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-              <button onClick={handleLogout} className="flex items-center gap-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 px-3 py-2 rounded-lg transition text-sm font-semibold">
-                <div className="relative flex items-center">
-                  <User size={18} />
-                  <LogOut size={12} className="absolute -right-1 -bottom-1 bg-white dark:bg-slate-950 rounded-full" />
-                </div>
-                Logout
-              </button>
+              <button onClick={handleLogout} className="flex items-center gap-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 px-3 py-2 rounded-lg transition text-sm font-semibold"><User size={18} /> Logout</button>
             </div>
           </header>
           <main className="flex-1 overflow-y-auto p-6 lg:p-8 text-slate-900 dark:text-slate-100">{renderModule()}</main>
