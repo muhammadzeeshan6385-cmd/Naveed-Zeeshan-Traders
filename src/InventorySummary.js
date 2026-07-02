@@ -23,8 +23,9 @@ const InventorySummary = ({ products, getStock, sales }) => {
 
   const lowStockCount = rows.filter((row) => row.status !== 'Healthy').length;
 
-  const getProductLedger = (productName, productId) => {
-    return (sales || []).flatMap(invoice =>
+  // Ledger function: Ab ye ID ke zariye sahi data dhoondhe ga
+  const getProductLedger = (productId) => {
+    return (sales || []).flatMap(invoice => 
       (invoice.items || [])
         .filter(item => item.productId === productId)
         .map(item => ({
@@ -60,7 +61,11 @@ const InventorySummary = ({ products, getStock, sales }) => {
             {
               key: 'action',
               label: 'Action',
-              render: (row) => <Button size="sm" onClick={() => setSelectedProduct(row)}>View Ledger</Button>
+              render: (row) => (
+                <Button size="sm" onClick={() => setSelectedProduct(row)}>
+                  View Ledger
+                </Button>
+              )
             }
           ]}
           rows={rows}
@@ -76,7 +81,8 @@ const InventorySummary = ({ products, getStock, sales }) => {
               { key: 'qty', label: 'Qty Sold' },
               { key: 'total', label: 'Total Amount' }
             ]} 
-            rows={getProductLedger(selectedProduct.name)} 
+            // Ab yahan sirf ID pass ho rahi hai jo ke best practice hai
+            rows={getProductLedger(selectedProduct.id)} 
           />
         </Card>
       )}

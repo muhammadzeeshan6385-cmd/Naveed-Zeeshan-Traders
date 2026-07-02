@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { LogOut, Sun, Moon, User, Search } from 'lucide-react';
 import Login from './Login';
 import Products from './Products';
@@ -17,7 +17,6 @@ import Settings from './Settings';
 import SearchBill from './SearchBill';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { STORAGE_KEYS, MENU_ITEMS, DEFAULT_SETTINGS, COMPANY_NAME } from './utils/constants';
-import { calculateStock } from './utils/helpers';
 import { removeFromStorage } from './utils/storage';
 import { Logo } from './components/ui';
 
@@ -36,45 +35,46 @@ function App() {
   const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
 
-  // Stats Calculation Logic: Updated to ensure Credit sales profit is included
   const stats = useMemo(() => {
     const totalSale = sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
-    
-    // Profit Calculation: Invoice mein stored netProfit ka sum
     const totalSalesProfit = sales.reduce((sum, s) => sum + Number(s.netProfit || 0), 0);
-    
     const todaySales = sales
       .filter(s => new Date(s.date).toLocaleDateString() === new Date().toLocaleDateString())
       .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
-    
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    
-    // Net Profit calculation (removed payments from dependency for accurate profit)
     const netProfit = totalSalesProfit - totalExpense;
-    
-    return { 
-      totalSale, 
-      todaySales, 
-      totalExpense, 
-      profit: netProfit, 
-      totalRecovery, 
-      outstanding: totalSale - totalRecovery 
-    };
+    return { totalSale, todaySales, totalExpense, profit: netProfit, totalRecovery, outstanding: totalSale - totalRecovery };
   }, [sales, expenses, payments]);
 
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDarkMode]);
+  // UPDATED: Robust stock calculation with sanitization
+  const getStock = useCallback((productName) => {
+    const target = String(productName || '').trim().toLowerCase();
+    
+    // Debugging: check karein ke purchases mein kya data hai
+    console.log("Looking for:", target);
+    console.log("Purchases data:", purchases);
 
-  const getStock = useCallback((productName) => calculateStock(productName, purchases, sales), [purchases, sales]);
-  const visibleMenu = useMemo(() => MENU_ITEMS.filter((item) => !currentUser?.role || item.roles.includes(currentUser.role)), [currentUser]);
+    const totalPurchased = purchases
+      .filter(p => String(p.name || p.productName || '').trim().toLowerCase() === target)
+      .reduce((sum, p) => sum + Number(p.qty || 0), 0);
+      
+    console.log("Total Purchased found:", totalPurchased);
+
+    const totalSold = sales
+      .flatMap(s => s.items || [])
+      .filter(i => String(i.name || '').trim().toLowerCase() === target)
+      .reduce((sum, i) => sum + Number(i.qty || 0), 0);
+    
+    console.log("Total Sold found:", totalSold);
+      
+    return Math.max(0, totalPurchased - totalSold);
+  }, [purchases, sales]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
 
   const handleLogout = () => {
     setCurrentUser(null);
@@ -87,7 +87,7 @@ function App() {
     switch (activeTab) {
       case 'Dashboard': return <Dashboard stats={stats} recentExpenses={expenses.slice(-5).reverse()} recentSales={sales.slice(-5).reverse()} getSaleCustomer={(s) => s.customer} getSaleTotal={(s) => s.netTotal} />;
       case 'Products': return <Products products={products} setProducts={setProducts} />;
-      case 'Inventory': return <InventorySummary products={products} getStock={getStock} />;
+      case 'Inventory': return <InventorySummary products={products} getStock={getStock} sales={sales} />;
       case 'Customers': return <CustomerForm customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
       case 'Suppliers': return <Suppliers suppliers={suppliers} setSuppliers={setSuppliers} purchases={purchases} />;
       case 'Purchases': return <Purchase purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} setProducts={setProducts} cashData={cashData} setCashData={setCashData} />;
@@ -112,12 +112,11 @@ function App() {
               <div className="w-12 h-12 flex-shrink-0"><Logo className="w-full h-full object-contain" /></div>
               <div className="overflow-hidden">
                 <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">{settings.companyName || COMPANY_NAME}</h2>
-                <p className="text-[10px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Distributor ERP</p>
               </div>
             </div>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto">
-            {visibleMenu.map((item) => (
+            {MENU_ITEMS.map((item) => (
               <React.Fragment key={item.id}>
                 <button type="button" onClick={() => setActiveTab(item.id)} className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === item.id ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}>{item.label}</button>
                 {item.id === 'Sales' && (<button type="button" onClick={() => setActiveTab('SearchBill')} className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${activeTab === 'SearchBill' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'}`}><div className="flex items-center gap-2"><Search size={16}/> Search Bills</div></button>)}
@@ -127,13 +126,10 @@ function App() {
         </aside>
         <div className="flex-1 flex flex-col h-screen overflow-hidden">
           <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 bg-white dark:bg-slate-950">
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser.username} | {currentUser.role}</p>
-            <div className="flex items-center gap-4">
-              <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition">{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-              <button onClick={handleLogout} className="flex items-center gap-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 px-3 py-2 rounded-lg transition text-sm font-semibold"><User size={18} /> Logout</button>
-            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser.username}</p>
+            <button onClick={handleLogout} className="text-rose-600 text-sm flex items-center gap-2"><LogOut size={16} /> Logout</button>
           </header>
-          <main className="flex-1 overflow-y-auto p-6 lg:p-8 text-slate-900 dark:text-slate-100">{renderModule()}</main>
+          <main className="flex-1 overflow-y-auto p-6">{renderModule()}</main>
         </div>
       </div>
     </div>

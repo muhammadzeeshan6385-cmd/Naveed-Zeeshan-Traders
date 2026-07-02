@@ -132,7 +132,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
     for (let item of items) {
       const product = products.find(p => p.id === item.productId);
-      const currentStock = getStock(product);
+      const currentStock = getStock(product.name);
       if (item.qty > currentStock) {
         window.alert(`Insufficient stock for ${item.name}! Available: ${currentStock}`);
         return;
