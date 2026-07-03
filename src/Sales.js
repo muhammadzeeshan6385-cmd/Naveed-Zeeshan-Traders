@@ -102,7 +102,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
           <table>
             <thead><tr><th>Ser</th><th>Product Name</th><th>Piece</th><th>Rate</th><th>Total</th></tr></thead>
             <tbody>
-              ${invoiceData.items.map((i, idx) => `
+              ${(invoiceData.items || []).map((i, idx) => `
                 <tr>
                   <td>${idx + 1}</td>
                   <td class="product-name">${i.name}</td>
@@ -120,6 +120,11 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
               <td class="label-col" style="border-top: 2px solid #000;">Payable Amount:</td><td class="amount-col" style="border-top: 2px solid #000;">${formatRs(Number(invoiceData.netTotal) + Number(invoiceData.prevBalance || 0))}</td></tr>
             </table>
           </div>
+          <div style="margin-top: 100px; display: flex; justify-content: flex-end;">
+            <div style="text-align: center; border-top: 1px solid #000; width: 200px; padding-top: 5px; font-size: 12px; font-weight: bold;">
+              Customer Signature
+            </div>
+          </div>    
           <script>window.onload = () => { window.print(); window.close(); }</script>
         </body>
       </html>

@@ -1,3 +1,4 @@
+import { LayoutDashboard, Package, ClipboardList, Users, Truck, ShoppingCart, CreditCard, HandCoins, BookOpenText, Receipt, Landmark, BarChart3, Settings } from 'lucide-react';
 export const COMPANY_NAME = 'Naveed Zeeshan Traders';
 export const APP_VERSION = '2.0.0';
 export const STORAGE_KEYS = {
@@ -23,17 +24,17 @@ export const DEFAULT_USERS = [
   { username: 'Admin', role: 'Admin', pass: 'MTIzNA==' },
 ];
 export const MENU_ITEMS = [
-  { id: 'Dashboard', label: 'Dashboard', roles: ['Admin', 'Manager', 'Accountant', 'Salesman'] },
-  { id: 'Products', label: 'Products', roles: ['Admin', 'Manager'] },
-  { id: 'Inventory', label: 'Inventory', roles: ['Admin', 'Manager', 'Accountant'] },
-  { id: 'Customers', label: 'Customers', roles: ['Admin', 'Manager', 'Salesman'] },
-  { id: 'Suppliers', label: 'Suppliers', roles: ['Admin', 'Manager'] },
-  { id: 'Purchases', label: 'Purchases', roles: ['Admin', 'Manager', 'Accountant'] },
-  { id: 'Sales', label: 'Sales', roles: ['Admin', 'Manager', 'Salesman'] },
-  { id: 'Recovery', label: 'Recovery', roles: ['Admin', 'Manager', 'Accountant'] },
-  { id: 'Khata', label: 'Khata', roles: ['Admin', 'Manager', 'Accountant'] },
-  { id: 'Expenses', label: 'Expenses', roles: ['Admin', 'Manager', 'Accountant'] },
-  { id: 'Cash/Bank', label: 'Cash / Bank', roles: ['Admin', 'Manager', 'Accountant'] },
-  { id: 'Reports', label: 'Reports', roles: ['Admin', 'Manager', 'Accountant'] },
-  { id: 'Settings', label: 'Settings', roles: ['Admin'] },
+  { id: 'Dashboard', label: 'Overview', icon: <LayoutDashboard size={18} /> },
+  { id: 'Products', label: 'Stock Items', icon: <Package size={18} /> },
+  { id: 'Inventory', label: 'Inventory Logs', icon: <ClipboardList size={18} /> },
+  { id: 'Customers', label: 'Client Directory', icon: <Users size={18} /> },
+  { id: 'Suppliers', label: 'Vendors', icon: <Truck size={18} /> },
+  { id: 'Purchases', label: 'Procurement', icon: <ShoppingCart size={18} /> },
+  { id: 'Sales', label: 'Sales Terminal', icon: <CreditCard size={18} /> },
+  { id: 'Recovery', label: 'Payment Recovery', icon: <HandCoins size={18} /> },
+  { id: 'Khata', label: 'Account Ledger', icon: <BookOpenText size={18} /> },
+  { id: 'Expenses', label: 'Business Expenses', icon: <Receipt size={18} /> },
+  { id: 'Cash/Bank', label: 'Finance Hub', icon: <Landmark size={18} /> },
+  { id: 'Reports', label: 'Analytics Report', icon: <BarChart3 size={18} /> },
+  { id: 'Settings', label: 'System Settings', icon: <Settings size={18} /> },
 ];
