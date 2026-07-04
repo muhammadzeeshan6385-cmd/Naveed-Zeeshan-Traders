@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { LogOut, Sun, Moon, Search } from 'lucide-react';
 import Login from './Login';
 import Products from './Products';
@@ -21,6 +21,31 @@ import { removeFromStorage } from './utils/storage';
 import { Logo } from './components/ui';
 
 function App() {
+  // --- Auto Logout Start ---
+  const logoutTimer = useRef();
+  const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 minutes
+
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    removeFromStorage(STORAGE_KEYS.currentUser);
+    window.location.reload();
+  }, []);
+
+  const resetTimer = useCallback(() => {
+    clearTimeout(logoutTimer.current);
+    logoutTimer.current = setTimeout(() => {
+      handleLogout();
+    }, INACTIVITY_LIMIT);
+  }, [handleLogout]);
+
+  useEffect(() => {
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(event => window.addEventListener(event, resetTimer));
+    resetTimer();
+    return () => events.forEach(event => window.removeEventListener(event, resetTimer));
+  }, [resetTimer]);
+  // --- Auto Logout End ---
+
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
   const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
@@ -64,11 +89,6 @@ function App() {
     document.documentElement.classList.toggle('dark', isDarkMode);
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    removeFromStorage(STORAGE_KEYS.currentUser);
-  };
 
   if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || COMPANY_NAME} />;
 
