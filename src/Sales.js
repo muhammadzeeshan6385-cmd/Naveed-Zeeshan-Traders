@@ -153,9 +153,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
     const prevBalance = totalSales - totalPaid; 
 
-    const invoice = { id: generateId(), invoiceNo, date: todayISO(), customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, prevBalance: prevBalance, netTotal, createdBy: currentUser?.username || 'System' };
+    const invoice = { id: generateId(), invoiceNo, date: currentDate, customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, prevBalance: prevBalance, netTotal, createdBy: currentUser?.username || 'System' };
     
-    setSales([...sales, invoice]);
+    setSales(prevSales => [...prevSales, invoice]);
     if (paymentType === 'Cash') {
       setCashData([...cashData, { id: generateId(), date: todayISO(), account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${finalCustomer}`, type: 'receipt' }]);
     }
