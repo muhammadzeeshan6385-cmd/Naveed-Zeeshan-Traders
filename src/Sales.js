@@ -132,13 +132,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   };
 
   const saveInvoice = () => {
-    const invoice = { 
-        id: generateId(), 
-        invoiceNo, 
-        date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-        customer: finalCustomer, 
-        // ... baki details
-    };
+    
     const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
     if (!finalCustomer || items.length === 0) { window.alert('Please fill details.'); return; }
 
