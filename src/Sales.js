@@ -150,9 +150,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
     const prevBalance = totalSales - totalPaid; 
 
-    const invoiceDate = new Date().toISOString().split('T')[0];
-
-    const invoice = { id: generateId(), invoiceNo, date: invoiceDate(), customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, prevBalance: prevBalance, netTotal, createdBy: currentUser?.username || 'System' };
+    const invoice = { id: generateId(), invoiceNo, date: todayISO(), customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, prevBalance: prevBalance, netTotal, createdBy: currentUser?.username || 'System' };
     
     setSales([...sales, invoice]);
     if (paymentType === 'Cash') {
