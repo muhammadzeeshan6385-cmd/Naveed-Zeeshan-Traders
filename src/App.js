@@ -96,7 +96,8 @@ function App() {
 
   const renderModule = () => {
     switch (activeTab) {
-      case 'Dashboard': return <Dashboard stats={stats} />;
+      // App.js ke renderModule function mein:
+case 'Dashboard': return <Dashboard stats={stats} recentExpenses={expenses.slice(-5)} recentSales={sales.slice(-5)} getSaleCustomer={(s) => s.customer} getSaleTotal={(s) => s.netTotal} />;
       case 'Products': return <Products title="Stock Items" products={products} setProducts={setProducts} />;
       case 'Inventory': return <InventorySummary title="Inventory Logs" products={products} getStock={getStock} sales={sales} />;
       case 'Customers': return <CustomerForm title="Client Directory" customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
