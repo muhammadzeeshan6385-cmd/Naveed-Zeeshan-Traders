@@ -62,15 +62,9 @@ function App() {
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
 
   const stats = useMemo(() => {
-    // Aaj ki date string (2026-07-05)
+    // Aaj ki date ka format wahi rakhein jo aapke bills mein save ho raha hai
     const today = new Date().toISOString().split('T')[0];
-    
     const totalSale = sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
-    
-    // Today's Sales calculation - Date match logic
-    const todaySales = sales.reduce((sum, s) => {
-      // Sahi tariqe se date compare karna
-      const sDate = s.date ? s.date.split('T')[0] : '';
     const totalSalesProfit = sales.reduce((sum, s) => sum + Number(s.netProfit || 0), 0);
     const todaySales = sales
       .filter(s => s.date === today)
