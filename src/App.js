@@ -67,7 +67,7 @@ function App() {
     const totalSale = sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
     const totalSalesProfit = sales.reduce((sum, s) => sum + Number(s.netProfit || 0), 0);
     const todaySales = sales
-      .filter(s => s.date && s.date.includes(today))
+      .filter(s => s.date === today)
       .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
