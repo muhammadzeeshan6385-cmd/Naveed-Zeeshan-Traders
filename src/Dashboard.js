@@ -3,7 +3,14 @@ import { Card, StatCard, DataTable } from './components/ui/index';
 import { formatRs } from './utils/helpers'; // Assuming helpers are imported correctly
 
 const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSaleTotal, sales }) => {
-  
+  const Dashboard = ({ stats }) => {
+  return (
+    <div className="grid ...">
+       <StatCard title="Today's Sales" value={formatRs(stats?.todaySales || 0)} tone="blue" />
+       {/* ... baki cards */}
+    </div>
+  );
+};
   // Today's Sales ko ensure karne ke liye yahan recalculate kar rahe hain
   const todaysSalesValue = useMemo(() => {
     // Direct calculation agar stats.todaySales null ya 0 dikhaye
