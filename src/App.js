@@ -62,18 +62,52 @@ function App() {
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
 
   const stats = useMemo(() => {
-    // Aaj ki date ka format wahi rakhein jo aapke bills mein save ho raha hai
     const today = new Date().toISOString().split('T')[0];
-    const totalSale = sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
-    const totalSalesProfit = sales.reduce((sum, s) => sum + Number(s.netProfit || 0), 0);
-    const todaySales = sales
-      .filter(s => s.date === today)
-      .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+    
+    let totalSale = 0;
+    let totalCost = 0;
+    let todaySales = 0;
+
+    sales.forEach(s => {
+      const net = Number(s.netTotal || 0);
+      totalSale += net;
+      
+      // Today's sales count logic
+      if (s.date && s.date.includes(today)) {
+        todaySales += net;
+      }
+
+      // Cost of goods sold (COGS) calculation with master products fallback logic
+      if (s.items && Array.isArray(s.items)) {
+        s.items.forEach(item => {
+          let pRate = Number(item.purchaseRate);
+          
+          // Agar item me purchaseRate nahi hai (purana saved record), to master list se check karein
+          if (!pRate || pRate === 0) {
+            const originalProduct = products.find(p => p.id === item.productId || p.name === item.name);
+            pRate = originalProduct ? Number(originalProduct.purchaseRate || 0) : 0;
+          }
+          
+          totalCost += (pRate * Number(item.qty || 0));
+        });
+      }
+    });
+
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    const netProfit = totalSalesProfit - totalExpense;
-    return { totalSale, todaySales, totalExpense, profit: netProfit, totalRecovery, outstanding: totalSale - totalRecovery };
-  }, [sales, expenses, payments]);
+    
+    // Formula: Sale Price - Purchase Price - Expense
+    const netProfit = totalSale - totalCost - totalExpense;
+
+    return { 
+      totalSale, 
+      todaySales, 
+      totalExpense, 
+      profit: netProfit, 
+      totalRecovery, 
+      outstanding: totalSale - totalRecovery 
+    };
+  }, [sales, expenses, payments, products]);
 
   const getStock = useCallback((productName) => {
     const target = String(productName || '').trim().toLowerCase();
@@ -96,8 +130,17 @@ function App() {
 
   const renderModule = () => {
     switch (activeTab) {
-      // App.js ke renderModule function mein:
-case 'Dashboard': return <Dashboard stats={stats} recentExpenses={expenses.slice(-5)} recentSales={sales.slice(-5)} getSaleCustomer={(s) => s.customer} getSaleTotal={(s) => s.netTotal} />;
+      case 'Dashboard': 
+        return (
+          <Dashboard 
+            stats={stats} 
+            recentExpenses={expenses.slice(-5)} 
+            recentSales={sales.slice(-5)} 
+            getSaleCustomer={(s) => s.customer} 
+            getSaleTotal={(s) => s.netTotal} 
+            sales={sales} 
+          />
+        );
       case 'Products': return <Products title="Stock Items" products={products} setProducts={setProducts} />;
       case 'Inventory': return <InventorySummary title="Inventory Logs" products={products} getStock={getStock} sales={sales} />;
       case 'Customers': return <CustomerForm title="Client Directory" customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
@@ -111,7 +154,7 @@ case 'Dashboard': return <Dashboard stats={stats} recentExpenses={expenses.slice
       case 'Cash/Bank': return <CashBank title="Finance Hub" cashData={cashData} setCashData={setCashData} />;
       case 'Reports': return <Reports selectedReport={selectedReport} sales={sales} expenses={expenses} payments={payments} cashData={cashData} purchases={purchases} products={products} customers={customers} />;
       case 'Settings': return <Settings title="System Settings" products={products} setProducts={setProducts} />;
-      default: return <Dashboard stats={stats} />;
+      default: return <Dashboard stats={stats} sales={sales} />;
     }
   };
 

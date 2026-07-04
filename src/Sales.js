@@ -41,7 +41,8 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     const existing = items.find((item) => item.name === product.name);
     
     if (existing) {
-      setItems(items.map((i) => i.name === product.name ? { ...i, qty: i.qty + 1, total: (i.qty + 1) * i.rate } : i));
+      // FIX: Items list map karte waqt purchaseRate ko preserve rakha gaya hai taake profit break na ho
+      setItems(items.map((i) => i.name === product.name ? { ...i, purchaseRate: i.purchaseRate || purchaseRate, qty: i.qty + 1, total: (i.qty + 1) * i.rate } : i));
     } else {
       const rate = getProductSaleRate(product);
       setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, purchaseRate, qty: 1, ctnSize, total: rate }]);
@@ -83,8 +84,8 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             .label-col { text-align: right; padding: 4px; font-size: 12px; font-weight: bold; border: 1px solid #000; }
             .amount-col { text-align: center; padding: 4px; font-size: 12px; font-weight: bold; border: 1px solid #000; }
           </style>
-        </thead>
-        <tbody>
+        </head>
+        <body>
          <div class="bill-container">
           <div class="header-container">
             <img src="/logo-dark.png" class="logo" />
@@ -132,11 +133,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   };
 
   const saveInvoice = () => {
-    
     const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
     if (!finalCustomer || items.length === 0) { window.alert('Please fill details.'); return; }
 
-    // Date ko clean format mein len (YYYY-MM-DD)
     const currentDate = new Date().toISOString().split('T')[0];
 
     for (let item of items) {
@@ -145,8 +144,8 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
       if (item.qty > currentStock) {
         window.alert(`Insufficient stock for ${item.name}! Available: ${currentStock}`);
         return;
+      }
     }
-  }
     const totalSales = getCreditSalesTotal(sales, finalCustomer);
     const totalPaid = (payments || [])
       .filter((p) => p.customer === finalCustomer)
@@ -157,8 +156,10 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     const invoice = { id: generateId(), invoiceNo, date: currentDate, customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, prevBalance: prevBalance, netTotal, createdBy: currentUser?.username || 'System' };
     
     setSales(prevSales => [...prevSales, invoice]);
+    
     if (paymentType === 'Cash') {
-      setCashData([...cashData, { id: generateId(), date: todayISO(), account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${finalCustomer}`, type: 'receipt' }]);
+      // FIX: setCashData ko safe functional variant diya taake cash state instant updates handle kare
+      setCashData(prevCash => [...prevCash, { id: generateId(), date: currentDate, account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${finalCustomer}`, type: 'receipt' }]);
     }
     handlePrint(invoice);
     setItems([]); setCustomer(''); setWalkInName(''); setDiscountPercent(0); setPaymentType('Credit');
