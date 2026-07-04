@@ -6,6 +6,7 @@ const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
   
   // Today's Sales ko ensure karne ke liye yahan recalculate kar rahe hain
   const todaysSalesValue = useMemo(() => {
+    // Direct calculation agar stats.todaySales null ya 0 dikhaye
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
     return (sales || []).reduce((sum, s) => {
       // Date comparison: agar sale ki date aaj ki date se match karti hai
