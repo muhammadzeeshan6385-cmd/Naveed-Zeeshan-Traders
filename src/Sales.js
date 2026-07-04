@@ -135,6 +135,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
     if (!finalCustomer || items.length === 0) { window.alert('Please fill details.'); return; }
 
+    // Date ko clean format mein len (YYYY-MM-DD)
+    const currentDate = new Date().toISOString().split('T')[0];
+
     for (let item of items) {
       const product = products.find(p => p.id === item.productId);
       const currentStock = getStock(product.name);
