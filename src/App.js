@@ -71,8 +71,6 @@ function App() {
     const todaySales = sales.reduce((sum, s) => {
       // Sahi tariqe se date compare karna
       const sDate = s.date ? s.date.split('T')[0] : '';
-      return sDate === today ? sum + Number(s.netTotal || 0) : sum;
-    }, 0);
     const totalSalesProfit = sales.reduce((sum, s) => sum + Number(s.netProfit || 0), 0);
     const todaySales = sales
       .filter(s => s.date === today)
