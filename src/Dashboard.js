@@ -1,18 +1,28 @@
-import React from 'react';
-// Folder structure ke mutabiq sahi import path
+import React, { useMemo } from 'react';
 import { Card, StatCard, DataTable } from './components/ui/index';
+import { formatRs } from './utils/helpers'; // Assuming helpers are imported correctly
 
-const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSaleTotal }) => {
+const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSaleTotal, sales }) => {
   
-  // Helper function agar aapne kahin aur define nahi kiya
-  const formatRs = (num) => `Rs. ${Number(num).toLocaleString()}`;
+  // Today's Sales ko ensure karne ke liye yahan recalculate kar rahe hain
+  const todaysSalesValue = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    return (sales || []).reduce((sum, s) => {
+      // Date comparison: agar sale ki date aaj ki date se match karti hai
+      if (s.date && s.date.includes(today)) {
+        return sum + Number(s.netTotal || 0);
+      }
+      return sum;
+    }, 0);
+  }, [sales]);
 
   return (
     <>
       {/* 1. StatCards Section */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 mb-6">
         <StatCard title="Total Sales" value={formatRs(stats?.totalSale || 0)} tone="emerald" />
-        <StatCard title="Today's Sales" value={formatRs(stats?.todaySales || 0)} tone="blue" />
+        {/* Yahan hum calculated todaysSalesValue use kar rahe hain */}
+        <StatCard title="Today's Sales" value={formatRs(todaysSalesValue)} tone="blue" />
         <StatCard title="Total Expenses" value={formatRs(stats?.totalExpense || 0)} tone="rose" />
         <StatCard title="Net Profit" value={formatRs(stats?.profit || 0)} tone="violet" />
         <StatCard title="Total Recovery" value={formatRs(stats?.totalRecovery || 0)} tone="blue" />
@@ -21,7 +31,6 @@ const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
 
       {/* 2. Expenses and Invoices Section */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        {/* Recent Expenses Card */}
         <Card title="Recent Expenses" className="xl:col-span-1">
           <div className="space-y-3">
             {recentExpenses?.length === 0 && (
@@ -39,7 +48,6 @@ const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
           </div>
         </Card>
 
-        {/* Latest Invoices Card */}
         <Card title="Latest Sales Invoices" className="xl:col-span-2">
           <DataTable
             columns={[
