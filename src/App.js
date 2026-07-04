@@ -62,10 +62,12 @@ function App() {
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
 
   const stats = useMemo(() => {
+    // Aaj ki date ka format wahi rakhein jo aapke bills mein save ho raha hai
+    const today = new Date().toISOString().split('T')[0];
     const totalSale = sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
     const totalSalesProfit = sales.reduce((sum, s) => sum + Number(s.netProfit || 0), 0);
     const todaySales = sales
-      .filter(s => new Date(s.date).toLocaleDateString() === new Date().toLocaleDateString())
+      .filter(s => s.date && s.date.includes(today))
       .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
