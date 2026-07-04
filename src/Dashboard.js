@@ -10,7 +10,7 @@ const Dashboard = ({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
     return (sales || []).reduce((sum, s) => {
       // Date comparison: agar sale ki date aaj ki date se match karti hai
-      if (saleDate === today) {
+      if (s.date && s.date.includes(today)) {
         return sum + Number(s.netTotal || 0);
       }
       return sum;
