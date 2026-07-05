@@ -29,10 +29,10 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
         <div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            Operational Overview
+            Overview
           </h1>
           <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
-            Mughal Kiryana & Traders Portal
+            Naveed & Zeeshan Traders
           </p>
         </div>
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-2xl">
