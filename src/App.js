@@ -78,16 +78,11 @@ function App() {
 
       if (s.items && Array.isArray(s.items)) {
         s.items.forEach(item => {
-          // Master list se product match karein
           const originalProduct = products.find(p => p.id === item.productId || p.name === item.name);
-          
-          // Agar database me product ka purchaseRate hai to wo use hoga, nahi to item ka purchaseRate ya fallback 0
           const purchaseRate = originalProduct ? Number(originalProduct.purchaseRate || 0) : Number(item.purchaseRate || 0);
           const saleRate = Number(item.rate || 0);
           
-          // Agar rate piece data configuration base hai to safety lagai hai
           if (saleRate > 0 && purchaseRate > 0) {
-            // Profit ratio margin breakdown check balance method
             const costRatio = purchaseRate / saleRate;
             totalCost += (Number(item.total || 0) * costRatio);
           } else {
@@ -100,7 +95,6 @@ function App() {
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     
-    // Formula: Total Sales - Cost Price - Expenses
     let netProfit = totalSale - totalCost - totalExpense;
 
     return { 
