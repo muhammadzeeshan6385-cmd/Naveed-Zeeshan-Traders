@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Card, Input, Button } from './components/ui/index';
 import { STORAGE_KEYS, DEFAULT_USERS } from './utils/constants';
 import { loadFromStorage } from './utils/storage';
 import { verifyPassword } from './utils/helpers';
@@ -25,90 +24,91 @@ const Login = ({ onLogin }) => {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-[#070b12] overflow-hidden px-4 select-none">
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-[#051124] overflow-hidden px-4 select-none">
       
-      {/* Outer Wrapper jo Circle aur Card ko exact center me balance rakhta hai */}
-      <div className="relative flex items-center justify-center w-full max-w-[550px] aspect-square">
+      {/* 1. Main Outer Neon Circle Border */}
+      <div className="absolute w-[95vw] h-[95vw] max-w-[480px] max-h-[480px] rounded-full border-2 border-cyan-400/40 shadow-[0_0_20px_rgba(34,211,238,0.2)] flex items-center justify-center">
         
-        {/* --- Cyberpunk Reels Style Circular Dashes & Rings --- */}
-        {/* Outer Tech Notch Ring */}
-        <div className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-500/20 animate-[spin_80s_linear_infinite]" />
+        {/* 2. Thick Dashed Animated Ring (Exact Reel Look) */}
+        <div className="absolute inset-4 rounded-full border-[10px] border-dashed border-emerald-400/40 animate-[spin_50s_linear_infinite] shadow-[0_0_15px_rgba(52,211,153,0.15)]" />
         
-        {/* Main Thick Dashed Glow Ring (Jo reel me logo k gird ghoom rhi hai) */}
-        <div className="absolute inset-4 rounded-full border-[14px] border-dashed border-emerald-500/15 animate-[spin_40s_linear_infinite_reverse] shadow-[inset_0_0_30px_rgba(16,185,129,0.05),0_0_30px_rgba(16,185,129,0.05)]" />
+        {/* 3. Inner Dotted Accent Circle */}
+        <div className="absolute inset-10 rounded-full border border-dotted border-cyan-400/20 animate-[spin_25s_linear_infinite_reverse]" />
         
-        {/* Inner Dotted Indicator */}
-        <div className="absolute inset-12 rounded-full border-[3px] border-dotted border-cyan-400/30 animate-[spin_20s_linear_infinite]" />
-        
-        {/* Central Ambient Radial Glow */}
-        <div className="absolute w-[70%] h-[70%] bg-gradient-to-tr from-emerald-500/10 via-cyan-500/5 to-transparent rounded-full blur-[60px]" />
+        {/* Deep Central Blue Glow */}
+        <div className="absolute w-[60%] h-[60%] bg-cyan-500/10 rounded-full blur-[50px] pointer-events-none" />
 
-        {/* --- Main Login Card (Bilkul Circle ke center me adjusted) --- */}
-        <div className="absolute w-[82%] aspect-square flex flex-col justify-center backdrop-blur-md bg-slate-950/75 rounded-full p-10 border border-slate-800/60 shadow-[0_0_50px_rgba(0,0,0,0.8)] transition-all duration-500 hover:border-emerald-500/20">
+        {/* Content Area (No Card Backing - Completely Transparent Integration) */}
+        <div className="relative z-10 w-full max-w-[290px] flex flex-col items-center">
           
-          {/* Logo Section */}
-          <div className="flex flex-col items-center justify-center mb-6 mt-4">
-            {/* Light mode logo */}
+          {/* Logo Branding */}
+          <div className="flex flex-col items-center justify-center mb-6">
             <img 
               src="/logo-dark.png" 
               alt="Logo" 
-              className="w-[170px] h-auto dark:hidden transition-transform duration-300 hover:scale-105" 
+              className="w-[160px] h-auto dark:hidden" 
             />
-            {/* Dark mode logo */}
             <img 
               src="/logo-light.png" 
               alt="Logo" 
-              className="w-[170px] h-auto hidden dark:block transition-transform duration-300 hover:scale-105 filter drop-shadow-[0_4px_10px_rgba(16,185,129,0.1)]" 
+              className="w-[160px] h-auto hidden dark:block filter drop-shadow-[0_2px_8px_rgba(34,211,238,0.3)]" 
             />
-            
-            <h2 className="text-cyan-400 font-bold text-[9px] tracking-[0.25em] uppercase mt-2 animate-pulse">
-              Secure Terminal
-            </h2>
           </div>
 
-          {/* Form Content */}
-          <form onSubmit={handleLogin} className="space-y-3 max-w-[260px] mx-auto w-full">
+          {/* Core Input Form */}
+          <form onSubmit={handleLogin} className="w-full space-y-5">
+            
+            {/* Username Input with Floating Neon Border */}
             <div className="relative">
-              <Input 
-                label="Username" 
+              <label className="absolute left-4 -top-2 bg-[#051124] px-1 text-[10px] font-bold text-emerald-400/80 tracking-wider">
+                Username
+              </label>
+              <input 
+                type="text"
                 value={username} 
                 onChange={(e) => setUsername(e.target.value)} 
                 placeholder="Enter username" 
                 autoComplete="username"
-                className="w-full bg-slate-900/60 border-slate-800/80 text-slate-100 placeholder-slate-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 rounded-xl px-3 py-2 text-xs transition-all"
+                required
+                className="w-full bg-transparent border-2 border-emerald-500/50 text-white rounded-full px-5 py-2.5 text-xs font-semibold tracking-wide outline-none focus:border-emerald-400 focus:shadow-[0_0_15px_rgba(52,211,153,0.4)] transition-all"
               />
             </div>
 
+            {/* Password Input with Floating Neon Border */}
             <div className="relative">
-              <Input 
-                label="Password" 
+              <label className="absolute left-4 -top-2 bg-[#051124] px-1 text-[10px] font-bold text-cyan-400/80 tracking-wider">
+                Password
+              </label>
+              <input 
                 type="password" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 placeholder="Enter password" 
                 autoComplete="current-password"
-                className="w-full bg-slate-900/60 border-slate-800/80 text-slate-100 placeholder-slate-600 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 rounded-xl px-3 py-2 text-xs transition-all"
+                required
+                className="w-full bg-transparent border-2 border-cyan-500/50 text-white rounded-full px-5 py-2.5 text-xs font-semibold tracking-wide outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all"
               />
             </div>
             
             {error && (
-              <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-1.5 text-[10px] text-rose-400 font-semibold text-center animate-pulse">
+              <p className="text-[10px] text-rose-400 font-bold tracking-wide text-center bg-rose-950/40 py-1 rounded-md border border-rose-500/20 animate-pulse">
                 {error}
-              </div>
+              </p>
             )}
             
-            <div className="pt-1">
-              <Button 
+            {/* Full Neon Cyan Glossy Login Button */}
+            <div className="pt-2">
+              <button 
                 type="submit" 
-                className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold text-xs tracking-wider py-2.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.15)] transition-all duration-300 transform active:scale-[0.97]"
+                className="w-full bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs uppercase tracking-[0.2em] py-3 rounded-full shadow-[0_0_20px_rgba(34,211,238,0.6)] hover:shadow-[0_0_35px_rgba(34,211,238,0.8)] transition-all duration-300 transform active:scale-95"
               >
-                Sign In Terminal
-              </Button>
+                Login
+              </button>
             </div>
-            
-            {/* Footer Text */}
-            <p className="text-center text-[9px] text-slate-600 tracking-widest pt-1">
-              DEFAULT: ADMIN / 1234
+
+            {/* System Info Link Text */}
+            <p className="text-center text-[9px] text-slate-500 font-bold tracking-widest pt-1 uppercase">
+              Node Node: Admin / 1234
             </p>
           </form>
 
