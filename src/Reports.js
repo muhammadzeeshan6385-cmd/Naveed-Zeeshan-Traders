@@ -122,8 +122,27 @@ function Reports({
     return { revenue, cogs, gross: revenue - cogs, net: (revenue - cogs) - totalExpenses };
   }, [filteredSales, totalExpenses, totalSales, activeInventory]);
 
-  const handlePrint = () => { 
-    window.print(); 
+  // BULLETPROOF DOM ROUTING PRINT FIX: 
+  // Yeh tareeqa parent layouts aur sidebars ke block hone wale crash ko 100% bypass karta hai
+  const handlePrint = () => {
+    const reportElement = document.getElementById('printable-sheet');
+    if (!reportElement) return;
+
+    // Save original app container content and layout states
+    const originalContent = document.body.innerHTML;
+    const reportContent = reportElement.innerHTML;
+
+    // Rewrite document body to only contain our focused report view
+    document.body.innerHTML = `<div style="padding:20px; background:#ffffff; color:#000000; width:100%; font-family:sans-serif;">${reportContent}</div>`;
+    
+    // Trigger window printing directly on isolated layout
+    window.print();
+
+    // Re-hydrate the original dashboard application as it was
+    document.body.innerHTML = originalContent;
+    
+    // Force complete refresh to hook up react virtual DOM listeners back safely
+    window.location.reload();
   };
 
   return (
@@ -473,49 +492,13 @@ function Reports({
         </div>
       )}
 
-      {/* FIXED CSS OVERRIDES FOR BLANK PRINT PREVENTION */}
+      {/* ADDITIONAL STYLING TO ENSURE CLEAN RENDER COPIES */}
       <style jsx global>{`
         @media print {
-          /* Reset nested layouts that overflow or get hidden in root layout */
-          html, body, #root, __next, main, .report-main-wrapper {
+          body {
             background: #ffffff !important;
             color: #000000 !important;
-            height: auto !important;
-            min-height: auto !important;
-            overflow: visible !important;
-            position: static !important;
-            transform: none !important;
           }
-
-          /* Hide sidebar, buttons, and other unwanted system interfaces */
-          .no-print, [class*="sidebar"], [class*="nav"], button {
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-          }
-
-          /* Bring sheet element directly to the front line */
-          #printable-sheet, .printable-actual-content {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            max-w: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            background: #ffffff !important;
-          }
-
-          /* Colors validation for printable items */
-          .bg-slate-50, .bg-slate-100 { background-color: #f8fafc !important; }
-          .bg-emerald-50 { background-color: #ecfdf5 !important; }
-          .bg-rose-50 { background-color: #fff1f2 !important; }
-          
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
