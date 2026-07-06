@@ -127,11 +127,11 @@ function Reports({
   };
 
   return (
-    <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800 printable-container">
+    <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800 report-main-wrapper">
 
       {/* --- DATE DURATION POPUP MODAL --- */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 no-print">
           <div className="bg-white text-slate-900 w-full max-w-md p-6 rounded-3xl border border-slate-200 shadow-2xl relative">
             <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
               <X size={18} />
@@ -188,7 +188,7 @@ function Reports({
 
       {/* --- FORMULATION WHITE PAPER FORM SHEET --- */}
       {showReportView ? (
-        <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-12 rounded-[1.5rem] border border-slate-300 shadow-2xl max-w-5xl mx-auto printable-sheet-style">
+        <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-12 rounded-[1.5rem] border border-slate-300 shadow-2xl max-w-5xl mx-auto printable-actual-content">
           
           {/* Header Block */}
           <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
@@ -473,46 +473,53 @@ function Reports({
         </div>
       )}
 
-      {/* FIXED: Complete color rendering enforcement to prevent blank pages during background stream downloads */}
+      {/* FIXED CSS OVERRIDES FOR BLANK PRINT PREVENTION */}
       <style jsx global>{`
-        /* Force color output for print processing and download outputs */
-        .printable-sheet-style {
-          background-color: #ffffff !important;
-          color: #0F172A !important;
-          opacity: 1 !important;
-          visibility: visible !important;
-          display: block !important;
-        }
-
         @media print {
-          body, html, #root {
+          /* Reset nested layouts that overflow or get hidden in root layout */
+          html, body, #root, __next, main, .report-main-wrapper {
             background: #ffffff !important;
             color: #000000 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
+            position: static !important;
+            transform: none !important;
           }
-          .no-print, .no-print * {
+
+          /* Hide sidebar, buttons, and other unwanted system interfaces */
+          .no-print, [class*="sidebar"], [class*="nav"], button {
             display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
           }
-          #printable-sheet, .printable-sheet-style {
-            border: none !important;
-            padding: 0 !important;
-            box-shadow: none !important;
-            background: #ffffff !important;
-            color: #000000 !important;
+
+          /* Bring sheet element directly to the front line */
+          #printable-sheet, .printable-actual-content {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
             max-w: 100% !important;
+            padding: 0 !important;
             margin: 0 !important;
-            opacity: 1 !important;
+            border: none !important;
+            box-shadow: none !important;
+            display: block !important;
             visibility: visible !important;
+            opacity: 1 !important;
+            background: #ffffff !important;
           }
-          /* Ensure all inner content table sections print beautifully without background blending errors */
-          .bg-slate-50, .bg-emerald-50, .bg-rose-50, .bg-slate-100 {
-            background-color: #f8fafc !important;
+
+          /* Colors validation for printable items */
+          .bg-slate-50, .bg-slate-100 { background-color: #f8fafc !important; }
+          .bg-emerald-50 { background-color: #ecfdf5 !important; }
+          .bg-rose-50 { background-color: #fff1f2 !important; }
+          
+          * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .text-slate-900 { color: #0f172a !important; }
-          .text-slate-800 { color: #1e293b !important; }
         }
       `}</style>
 
