@@ -30,13 +30,13 @@ function Reports({
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [showReportView, setShowReportView] = useState(false);
 
-  // 1. Sidebar trigger integration natively via multiple channels
+  // 1. Sidebar trigger system integrated natively to intercept all 6 sub bar items
   useEffect(() => {
     if (currentSidebarSelection) {
       handleReportTrigger(currentSidebarSelection);
     }
 
-    // Auto-intercept sidebar navigation clicks dynamically 
+    // Dynamic interceptor for the left sidebar sub bar links clicks directly
     const interceptSidebarClicks = (e) => {
       const targetText = e.target.textContent || e.target.innerText || '';
       const upperText = targetText.toUpperCase();
@@ -127,24 +127,13 @@ function Reports({
     return { revenue, cogs, gross: revenue - cogs, net: (revenue - cogs) - totalExpenses };
   }, [filteredSales, totalExpenses, totalSales]);
 
-  // FIX: Robust native handler for handling clean document views
+  // NATIVE ENGINE PRINT AND DOWNLOAD TO PREVENT BLANK RENDER
   const handlePrint = () => { 
     window.print(); 
   };
 
   return (
     <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800">
-      
-      {/* --- IN-PAGE SUB BAR NAVIGATION LINK ACCESS (IF SIDEBAR IS LIMITED) --- */}
-      <div className="no-print bg-slate-900 text-white p-3 rounded-xl flex flex-wrap gap-2 items-center mb-2 border border-slate-800">
-        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-2 border-r border-slate-700 pr-2">Quick Sub Menu:</span>
-        <button onClick={() => handleReportTrigger('sales')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'sales' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Sales Report</button>
-        <button onClick={() => handleReportTrigger('expense')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'expense' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Expense Report</button>
-        <button onClick={() => handleReportTrigger('recovery')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'recovery' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Recovery Report</button>
-        <button onClick={() => handleReportTrigger('purchase')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'purchase' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Purchase Report</button>
-        <button onClick={() => handleReportTrigger('profit')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'profit_loss' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Profit & Loss</button>
-        <button onClick={() => handleReportTrigger('inventory')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'inventory' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Stock Inventory</button>
-      </div>
 
       {/* --- DATE DURATION POPUP MODAL --- */}
       {isModalOpen && (
@@ -210,13 +199,18 @@ function Reports({
           {/* Header Block */}
           <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
             <div className="flex items-center gap-3">
-              {/* Public Folder Business Asset Logo */}
-              <img 
-                src="/logo.png" 
-                alt="Logo" 
-                className="w-12 h-12 object-contain rounded-lg error-fallback" 
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
+              {/* Public Folder Direct Fallback Safe Asset Routing */}
+              <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
+                <img 
+                  src={window.location.origin + "/logo.png"} 
+                  alt="Logo" 
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    // Fallback visually if server compilation is building asset arrays
+                    e.target.src = "/logo.png";
+                  }}
+                />
+              </div>
               <div>
                 <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
                   NAVEED & ZEESHAN TRADERS, MAILSI
@@ -482,15 +476,15 @@ function Reports({
         <div className="no-print flex flex-col items-center justify-center border-2 border-dashed border-slate-800/40 rounded-[1.5rem] p-24 text-center text-slate-500">
           <FileText size={48} className="stroke-1 mb-4 text-slate-600 animate-pulse" />
           <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-            Please select a category from the left Analytics Report sub-menu or the Quick Bar above.
+            Please select a category from the Left Analytics Report sub-menu list.
           </p>
           <p className="text-[11px] text-slate-600 mt-1">
-            The date criteria prompt will configure and pull live metrics onto the formal document form sheet.
+            The system duration criteria prompt will calculate and pull live records directly on the sheet.
           </p>
         </div>
       )}
 
-      {/* CSS Layout Overrides For Zero-Bleed Professional Printing & Download Sheet View */}
+      {/* CSS Layout Overrides For Zero-Bleed Professional Printing & Global Layout Actions */}
       <style jsx global>{`
         @media print {
           body, html, #root {
