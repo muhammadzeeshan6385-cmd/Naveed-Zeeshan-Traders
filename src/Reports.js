@@ -123,12 +123,10 @@ function Reports({
   }, [filteredSales, totalExpenses, totalSales, activeInventory]);
 
   // NO-RELOAD HIGH-PERFORMANCE PRINT PIPELINE:
-  // Yeh function bina page ko reload kiye virtual iframe engine se print nikalega, blank wala masla hamesha k liye khatam!
   const handlePrint = () => {
     const reportElement = document.getElementById('printable-sheet');
     if (!reportElement) return;
 
-    // Create a temporary hidden iframe element
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
@@ -140,59 +138,47 @@ function Reports({
 
     const doc = iframe.contentWindow.document;
     
-    // Inject structural printing layout with exact Tailwind fallback colors
+    // Inject highly polished, professional A4 formatted business layout stylesheet
     doc.write(`
       <html>
         <head>
-          <title>Print Report</title>
+          <title>System Statement</title>
           <style>
-            body { font-family: system-ui, -apple-system, sans-serif; padding: 30px; background: #ffffff; color: #0f172a; }
-            .w-full { width: 100%; }
+            @page { size: A4 portrait; margin: 15mm; }
+            body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #ffffff; color: #1e293b; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .header-container { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; }
+            .brand-section { display: flex; align-items: center; gap: 16px; }
+            .brand-logo { width: 64px; height: 64px; object-fit: contain; border-radius: 8px; }
+            .brand-title { font-size: 20px; font-weight: 800; color: #0f172a; text-transform: uppercase; margin: 0; tracking-key: -0.02em; }
+            .brand-subtitle { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; margin: 2px 0 0 0; letter-spacing: 0.05em; }
+            .meta-section { text-align: right; }
+            .report-badge { font-size: 14px; font-weight: 900; background: #f1f5f9; color: #0f172a; text-transform: uppercase; padding: 4px 12px; border-radius: 6px; display: inline-block; margin: 0 0 8px 0; letter-spacing: 0.05em; }
+            .meta-text { font-size: 11px; color: #475569; margin: 2px 0; font-weight: 600; }
+            .meta-value { font-weight: 700; color: #0f172a; }
+            .metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+            .metrics-grid-quad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+            .metrics-grid-tri { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+            .card-box { background: #f8fafc !important; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 10px; }
+            .card-box-emerald { background: #f0fdf4 !important; border: 1px solid #bbf7d0; padding: 12px 16px; border-radius: 10px; }
+            .card-box-rose { background: #fff5f5 !important; border: 1px solid #fecaca; padding: 12px 16px; border-radius: 10px; }
+            .card-label { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px; }
+            .card-amount { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; }
+            .text-emerald { color: #16a34a !important; }
+            .text-rose { color: #dc2626 !important; }
+            .text-cyan { color: #0891b2 !important; }
+            table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 8px; }
+            th { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #475569; border-bottom: 2px solid #cbd5e1; padding: 8px 10px; letter-spacing: 0.03em; }
+            td { font-size: 11px; font-weight: 500; color: #334155; border-bottom: 1px solid #e2e8f0; padding: 8px 10px; }
+            tr:hover td { background: #f8fafc; }
+            .font-bold-table { font-weight: 700; color: #0f172a; }
             .text-right { text-align: right; }
-            .flex { display: flex; }
-            .justify-between { justify-content: space-between; }
-            .items-start { align-items: flex-start; }
-            .items-center { align-items: center; }
-            .gap-3 { gap: 12px; }
-            .grid { display: grid; }
-            .grid-cols-2 { grid-template-cols: repeat(2, minmax(0, 1fr)); }
-            .grid-cols-3 { grid-template-cols: repeat(3, minmax(0, 1fr)); }
-            .grid-cols-4 { grid-template-cols: repeat(4, minmax(0, 1fr)); }
-            .gap-4 { gap: 16px; }
-            .gap-3 { gap: 12px; }
-            .bg-slate-50 { background-color: #f8fafc !important; }
-            .bg-slate-100 { background-color: #f1f5f9 !important; }
-            .bg-emerald-50 { background-color: #ecfdf5 !important; }
-            .bg-rose-50 { background-color: #fff1f2 !important; }
-            .border-b-4 { border-bottom: 4px solid #0f172a; }
-            .border-b-2 { border-bottom: 2px solid #cbd5e1; }
-            .divide-y > tr { border-bottom: 1px solid #e2e8f0; }
-            .p-4 { padding: 16px; }
-            .p-3 { padding: 12px; }
-            .py-2 { padding-top: 8px; padding-bottom: 8px; }
-            .py-2.5 { padding-top: 10px; padding-bottom: 10px; }
-            .rounded-xl { rounded-radius: 12px; border-radius: 12px; }
-            .rounded-lg { border-radius: 8px; }
-            .font-black { font-weight: 900; }
-            .font-bold { font-weight: 700; }
-            .text-xl { font-size: 20px; }
-            .text-lg { font-size: 18px; }
-            .text-sm { font-size: 14px; }
-            .text-xs { font-size: 12px; }
-            .text-[9px] { font-size: 9px; }
-            .text-slate-400 { color: #94a3b8; }
-            .text-slate-500 { color: #64748b; }
-            .text-slate-600 { color: #475569; }
-            .text-rose-600 { color: #dc2626 !important; }
-            .text-emerald-600 { color: #059669 !important; }
-            .text-cyan-600 { color: #0891b2 !important; }
-            .uppercase { text-transform: uppercase; }
-            .underline { text-decoration: underline; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            th { font-weight: bold; text-transform: uppercase; color: #64748b; font-size: 11px; padding-bottom: 8px; }
-            td { padding: 8px 0; font-size: 12px; }
-            .border-t { border-top: 1px solid #cbd5e1; margin-top: 40px; padding-top: 20px; }
-            @media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
+            .badge-method { background: #e2e8f0; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; color: #334155; text-transform: uppercase; }
+            .footer-container { border-t: 1px dashed #cbd5e1; margin-top: 48px; padding-top: 16px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+            .signature-line { color: #475569; font-weight: 700; }
+            .p-summary-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; background: #fafafa; margin-top: 16px; }
+            .p-summary-row { display: flex; justify-content: space-between; font-size: 11px; color: #475569; padding: 4px 0; }
+            .p-summary-divider { hieght: 1px; height: 1px; background: #e2e8f0; margin: 6px 0; }
+            .p-summary-total { font-weight: 800; font-size: 12px; color: #0f172a; }
           </style>
         </head>
         <body>
@@ -203,11 +189,9 @@ function Reports({
 
     doc.close();
 
-    // Trigger printing inside iframe context smoothly without resetting parent DOM
     iframe.contentWindow.focus();
     setTimeout(() => {
       iframe.contentWindow.print();
-      // Remove temporary element after user finishes printing interaction
       document.body.removeChild(iframe);
     }, 350);
   };
@@ -259,7 +243,7 @@ function Reports({
 
       {/* --- ACTION HEAD BUTTONS --- */}
       {showReportView && (
-        <div className="no-print flex items-center gap-2 mb-2">
+        <div className="no-print flex items-center gap-2 mb-4">
           <button onClick={handlePrint} className="flex items-center gap-1.5 bg-white text-slate-900 font-black text-[11px] uppercase tracking-wider px-4 py-2.5 rounded-xl shadow-md border border-slate-200 hover:bg-slate-50 transition">
             <Printer size={14} className="text-emerald-600" /> Print Statement
           </button>
@@ -274,36 +258,36 @@ function Reports({
 
       {/* --- FORMULATION WHITE PAPER FORM SHEET --- */}
       {showReportView ? (
-        <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-12 rounded-[1.5rem] border border-slate-300 shadow-2xl max-w-5xl mx-auto printable-actual-content">
+        <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-10 rounded-[1.5rem] border border-slate-200 shadow-xl max-w-4xl mx-auto printable-actual-content">
           
           {/* Header Block */}
-          <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
-            <div className="flex items-center gap-3">
+          <div className="header-container">
+            <div className="brand-section">
               <img 
                 src="/logo-dark.png" 
                 alt="Logo" 
-                className="w-14 h-14 object-contain rounded-xl" 
+                className="brand-logo" 
                 onError={(e) => { e.target.src = "/logo.png"; }}
               />
               <div>
-                <h2 className="text-base font-black text-slate-900 tracking-tight uppercase">
-                  NAVEED & ZEESHAN TRADERS, MAILSI
+                <h2 className="brand-title">
+                  NAVEED & ZEESHAN TRADERS
                 </h2>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                <p className="brand-subtitle">
                   Fadda Bazar Mailsi
                 </p>
               </div>
             </div>
 
-            <div className="sm:text-right">
-              <h1 className="text-lg font-black text-slate-900 uppercase tracking-wide bg-slate-100 px-3 py-1 rounded-md inline-block">
+            <div className="meta-section">
+              <div className="report-badge">
                 {activeReport?.replace('_', ' ')} Report
-              </h1>
-              <p className="text-xs font-bold text-slate-600 mt-2">
-                Duration: <span className="underline font-black">{startDate}</span> to <span className="underline font-black">{endDate}</span>
+              </div>
+              <p className="meta-text">
+                Duration: <span className="meta-value">{startDate}</span> to <span className="meta-value">{endDate}</span>
               </p>
-              <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">
-                System Time: {currentDateTime.date} | {currentDateTime.time}
+              <p className="meta-text" style={{ fontSize: '9px', color: '#94a3b8' }}>
+                GEN: {currentDateTime.date} | {currentDateTime.time}
               </p>
             </div>
           </div>
@@ -311,37 +295,37 @@ function Reports({
           {/* 1. SALES BLOCK */}
           {activeReport === 'sales' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Gross Trade Volume</span>
-                  <h3 className="text-xl font-black text-slate-900">{formatCurrency(totalSales)}</h3>
+              <div className="metrics-grid">
+                <div className="card-box">
+                  <span className="card-label">Gross Trade Volume</span>
+                  <h3 className="card-amount text-emerald">{formatCurrency(totalSales)}</h3>
                 </div>
-                <div className="text-right">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Sales Bills</span>
-                  <h3 className="text-xl font-black text-slate-900">{filteredSales.length} Invoices</h3>
+                <div className="card-box text-right">
+                  <span className="card-label">Total Sales Bills</span>
+                  <h3 className="card-amount">{filteredSales.length} Invoices</h3>
                 </div>
               </div>
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b-2 border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
-                    <th className="py-2">Date</th>
+                  <tr>
+                    <th>Date</th>
                     <th>Invoice No</th>
                     <th>Customer Name</th>
                     <th>Method</th>
                     <th className="text-right">Net Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
+                <tbody className="divide-y font-medium">
                   {filteredSales.length === 0 ? (
                     <tr><td colSpan="5" className="py-6 text-center text-slate-400">No trading records logged in this specific date range.</td></tr>
                   ) : (
                     filteredSales.map((s, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
+                      <tr key={idx}>
                         <td className="py-2">{s.date || fallbackTodayDate}</td>
-                        <td className="font-bold text-slate-900">{s.invoiceNo || `INV-${1000 + idx}`}</td>
+                        <td className="font-bold-table">{s.invoiceNo || `INV-${1000 + idx}`}</td>
                         <td>{s.customerName || s.customer || 'Counter Cash Client'}</td>
-                        <td><span className="px-1.5 py-0.5 bg-slate-100 text-[10px] font-bold rounded">{s.paymentMethod || 'Cash'}</span></td>
-                        <td className="text-right font-black text-slate-900">{formatCurrency(s.netTotal)}</td>
+                        <td><span className="badge-method">{s.paymentMethod || 'Cash'}</span></td>
+                        <td className="text-right font-bold-table text-slate-900">{formatCurrency(s.netTotal)}</td>
                       </tr>
                     ))
                   )}
@@ -353,19 +337,19 @@ function Reports({
           {/* 2. EXPENSE BLOCK */}
           {activeReport === 'expense' && (
             <div className="space-y-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Operational Payout Outflow</span>
-                <h3 className="text-xl font-black text-rose-600">{formatCurrency(totalExpenses)}</h3>
+              <div className="card-box">
+                <span className="card-label">Total Operational Payout Outflow</span>
+                <h3 className="card-amount text-rose">{formatCurrency(totalExpenses)}</h3>
               </div>
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b-2 border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
-                    <th className="py-2">Date</th>
+                  <tr>
+                    <th>Date</th>
                     <th>Expense Description</th>
                     <th className="text-right">Paid Cash</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
+                <tbody className="divide-y font-medium">
                   {filteredExpenses.length === 0 ? (
                     <tr><td colSpan="3" className="py-6 text-center text-slate-400">No operational expenses logged.</td></tr>
                   ) : (
@@ -373,7 +357,7 @@ function Reports({
                       <tr key={idx}>
                         <td className="py-2">{e.date}</td>
                         <td>{e.description || e.category}</td>
-                        <td className="text-right font-bold text-rose-600">-{formatCurrency(e.amount)}</td>
+                        <td className="text-right font-bold-table text-rose">-{formatCurrency(e.amount)}</td>
                       </tr>
                     ))
                   )}
@@ -385,29 +369,29 @@ function Reports({
           {/* 3. RECOVERY BLOCK */}
           {activeReport === 'recovery' && (
             <div className="space-y-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Received Recovery (Jama)</span>
-                <h3 className="text-xl font-black text-emerald-600">{formatCurrency(totalRecoveries)}</h3>
+              <div className="card-box-emerald">
+                <span className="card-label text-emerald-600">Total Received Recovery (Jama)</span>
+                <h3 className="card-amount text-emerald">{formatCurrency(totalRecoveries)}</h3>
               </div>
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b-2 border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
-                    <th className="py-2">Date</th>
+                  <tr>
+                    <th>Date</th>
                     <th>Account / Client Title</th>
                     <th>Ref Token</th>
                     <th className="text-right">Recovered Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
+                <tbody className="divide-y font-medium">
                   {filteredRecoveries.length === 0 ? (
                     <tr><td colSpan="4" className="py-6 text-center text-slate-400">No credit ledger recovery found.</td></tr>
                   ) : (
                     filteredRecoveries.map((r, idx) => (
                       <tr key={idx}>
                         <td className="py-2">{r.date}</td>
-                        <td className="font-bold text-slate-900">{r.customerName || r.customer || 'Client Account'}</td>
+                        <td className="font-bold-table">{r.customerName || r.customer || 'Client Account'}</td>
                         <td>{r.voucherNo || `REC-${5000 + idx}`}</td>
-                        <td className="text-right font-black text-emerald-600">+{formatCurrency(r.amount)}</td>
+                        <td className="text-right font-bold-table text-emerald">+{formatCurrency(r.amount)}</td>
                       </tr>
                     ))
                   )}
@@ -419,31 +403,31 @@ function Reports({
           {/* 4. PURCHASE BLOCK */}
           {activeReport === 'purchase' && (
             <div className="space-y-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Procurement Load Inbound</span>
-                <h3 className="text-xl font-black text-cyan-600">{formatCurrency(totalPurchases)}</h3>
+              <div className="card-box">
+                <span className="card-label">Total Procurement Load Inbound</span>
+                <h3 className="card-amount text-cyan">{formatCurrency(totalPurchases)}</h3>
               </div>
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b-2 border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
-                    <th className="py-2">Date</th>
+                  <tr>
+                    <th>Date</th>
                     <th>Supplier Vendor</th>
                     <th>Product / Description</th>
                     <th>Quantity</th>
                     <th className="text-right">Purchase Gross Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
+                <tbody className="divide-y font-medium">
                   {filteredPurchases.length === 0 ? (
                     <tr><td colSpan="5" className="py-6 text-center text-slate-400">No vendor purchase transactions loaded.</td></tr>
                   ) : (
                     filteredPurchases.map((p, idx) => (
                       <tr key={idx}>
                         <td className="py-2">{p.date}</td>
-                        <td className="font-bold text-slate-900">{p.supplierName || p.supplier || 'Market Supplier'}</td>
+                        <td className="font-bold-table">{p.supplierName || p.supplier || 'Market Supplier'}</td>
                         <td>{p.product || p.itemName || 'Bulk Stock Inventory'}</td>
                         <td>{p.qty || p.quantity || 0}</td>
-                        <td className="text-right font-bold text-slate-900">
+                        <td className="text-right font-bold-table">
                           {formatCurrency(p.totalAmount || p.amount || Number(p.qty || 0) * Number(p.rate || p.purchaseRate || 0))}
                         </td>
                       </tr>
@@ -457,29 +441,30 @@ function Reports({
           {/* 5. PROFIT & LOSS BLOCK */}
           {activeReport === 'profit_loss' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Total Revenue</span>
-                  <p className="text-sm font-black text-slate-900 mt-0.5">{formatCurrency(profitAndLoss.revenue)}</p>
+              <div className="metrics-grid-quad">
+                <div className="card-box">
+                  <span className="card-label">Total Revenue</span>
+                  <p className="card-amount text-sm font-bold">{formatCurrency(profitAndLoss.revenue)}</p>
                 </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Cost Price (COGS)</span>
-                  <p className="text-sm font-black text-slate-600 mt-0.5">-{formatCurrency(profitAndLoss.cogs)}</p>
+                <div className="card-box">
+                  <span className="card-label">Cost Price (COGS)</span>
+                  <p className="card-amount text-sm font-bold text-slate-500">-{formatCurrency(profitAndLoss.cogs)}</p>
                 </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Expenses</span>
-                  <p className="text-sm font-black text-rose-600 mt-0.5">-{formatCurrency(totalExpenses)}</p>
+                <div className="card-box">
+                  <span className="card-label">Expenses</span>
+                  <p className="card-amount text-sm font-bold text-rose">-{formatCurrency(totalExpenses)}</p>
                 </div>
-                <div className={`p-3 rounded-lg border ${profitAndLoss.net >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
-                  <span className="text-[9px] font-bold text-slate-500 uppercase block">Net Pure Profit</span>
-                  <p className={`text-base font-black ${profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'} mt-0.5`}>{formatCurrency(profitAndLoss.net)}</p>
+                <div className={profitAndLoss.net >= 0 ? 'card-box-emerald' : 'card-box-rose'}>
+                  <span className="card-label">Net Pure Profit</span>
+                  <p className={`card-amount text-sm font-black ${profitAndLoss.net >= 0 ? 'text-emerald' : 'text-rose'}`}>{formatCurrency(profitAndLoss.net)}</p>
                 </div>
               </div>
-              <div className="border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs bg-slate-50/50">
-                <div className="flex justify-between text-slate-600"><span>Gross Trading Margin:</span><span className="font-bold text-slate-900">{formatCurrency(profitAndLoss.gross)}</span></div>
-                <div className="flex justify-between text-slate-600"><span>Total Logged Deductions:</span><span className="font-bold text-rose-600">-{formatCurrency(totalExpenses)}</span></div>
-                <div className="h-px bg-slate-300 my-1" />
-                <div className="flex justify-between font-black text-xs text-slate-900"><span>Net Retained Margin:</span><span className={profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrency(profitAndLoss.net)}</span></div>
+              
+              <div className="p-summary-box">
+                <div className="p-summary-row"><span>Gross Trading Margin:</span><span className="font-bold-table">{formatCurrency(profitAndLoss.gross)}</span></div>
+                <div className="p-summary-row"><span>Total Logged Deductions:</span><span className="font-bold-table text-rose">-{formatCurrency(totalExpenses)}</span></div>
+                <div className="p-summary-divider" />
+                <div className="p-summary-row p-summary-total"><span>Net Retained Margin:</span><span className={profitAndLoss.net >= 0 ? 'text-emerald' : 'text-rose'}>{formatCurrency(profitAndLoss.net)}</span></div>
               </div>
             </div>
           )}
@@ -487,32 +472,32 @@ function Reports({
           {/* 6. INVENTORY BLOCK */}
           {activeReport === 'inventory' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3 text-xs font-bold">
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[9px] text-slate-400 uppercase">Total Items</span>
-                  <p className="text-sm font-black text-slate-900">{activeInventory.length} SKUs</p>
+              <div className="metrics-grid-tri">
+                <div className="card-box">
+                  <span className="card-label">Total Items</span>
+                  <p className="card-amount text-sm font-bold">{activeInventory.length} SKUs</p>
                 </div>
-                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                  <span className="text-[9px] text-emerald-600 uppercase">Available Stock</span>
-                  <p className="text-sm font-black text-emerald-600">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) > 0).length} Items</p>
+                <div className="card-box-emerald">
+                  <span className="card-label text-emerald-600">Available Stock</span>
+                  <p className="card-amount text-sm font-bold text-emerald">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) > 0).length} Items</p>
                 </div>
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-100">
-                  <span className="text-[9px] text-rose-600 uppercase">Out Of Stock (Khatam)</span>
-                  <p className="text-sm font-black text-rose-600">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) <= 0).length} Items</p>
+                <div className="card-box-rose">
+                  <span className="card-label text-rose-600">Out Of Stock (Khatam)</span>
+                  <p className="card-amount text-sm font-bold text-rose">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) <= 0).length} Items</p>
                 </div>
               </div>
 
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b-2 border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
-                    <th className="py-2">Product Name</th>
+                  <tr>
+                    <th>Product Name</th>
                     <th>Cost Price</th>
                     <th>Sale Price</th>
                     <th>Available Volume</th>
                     <th className="text-right">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
+                <tbody className="divide-y font-medium">
                   {activeInventory.length === 0 ? (
                     <tr><td colSpan="5" className="py-6 text-center text-slate-400">Inventory data is empty.</td></tr>
                   ) : (
@@ -520,18 +505,18 @@ function Reports({
                       const qty = Number(item.stock || item.quantity || item.qty || 0);
                       const isOut = qty <= 0;
                       return (
-                        <tr key={idx} className={isOut ? 'bg-rose-50/70' : ''}>
-                          <td className="py-2.5 font-bold text-slate-900">
-                            {item.name} <span className="text-[9px] text-slate-400 font-normal block">{item.code || item.id}</span>
+                        <tr key={idx}>
+                          <td className="py-2 font-bold-table">
+                            {item.name} <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 'normal', display: 'block' }}>{item.code || item.id}</span>
                           </td>
                           <td>{formatCurrency(item.purchasePrice || item.purchaseRate || item.costPrice)}</td>
                           <td>{formatCurrency(item.price || item.saleRate || item.rate)}</td>
-                          <td className={`font-black ${isOut ? 'text-rose-600' : 'text-slate-900'}`}>{qty} {item.unit || 'pcs'}</td>
+                          <td className={isOut ? 'text-rose font-bold-table' : 'font-bold-table'}>{qty} {item.unit || 'pcs'}</td>
                           <td className="text-right">
                             {isOut ? (
-                              <span className="text-[9px] font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">KHATAM</span>
+                              <span style={{ fontSize: '9px', fontWeight: '900', color: '#dc2626', background: '#ffe4e6', padding: '2px 6px', borderRadius: '4px' }}>KHATAM</span>
                             ) : (
-                              <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">AVAILABLE</span>
+                              <span style={{ fontSize: '9px', fontWeight: '900', color: '#16a34a', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>AVAILABLE</span>
                             )}
                           </td>
                         </tr>
@@ -544,9 +529,9 @@ function Reports({
           )}
 
           {/* Bottom Footer Section */}
-          <div className="mt-12 pt-6 border-t border-slate-300 flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+          <div className="footer-container">
             <span>Naveed & Zeeshan Traders Enterprise ERP</span>
-            <span>Signature: _______________________</span>
+            <span className="signature-line">Signature: _______________________</span>
           </div>
 
         </div>
