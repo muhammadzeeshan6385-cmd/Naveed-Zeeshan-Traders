@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   TrendingUp, 
   DollarSign, 
@@ -7,10 +7,12 @@ import {
   UserCheck, 
   FileText, 
   Activity, 
-  ArrowDownRight 
+  ArrowDownRight,
+  Wallet 
 } from 'lucide-react';
 
-function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSaleTotal }) {
+function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSaleTotal, sales = [] }) {
+  
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
@@ -19,20 +21,36 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
     }).format(val || 0).replace('PKR', 'Rs.');
   };
 
-  // Profit high/low custom calculation badge logic
+  // Real-time calculation for Cash In Hand linking (Total Recovery + Cash Invoices - Expenses)
+  const cashInHand = useMemo(() => {
+    // 1. Total Recovery already stats me calculate ho kar aa rahi hai
+    const totalRecovery = Number(stats.totalRecovery || 0);
+    
+    // 2. Sirf Cash Invoices (unpaid/udhaar k bina wale orders) ka total nikalna
+    const totalCashInvoices = sales
+      .filter(s => !s.isCredit && (s.paymentMethod === 'Cash' || String(s.status).toLowerCase() === 'paid'))
+      .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+      
+    // 3. Total Expenses stats se read karna
+    const totalExpense = Number(stats.totalExpense || 0);
+
+    // Formula execution
+    return (totalRecovery + totalCashInvoices) - totalExpense;
+  }, [stats, sales]);
+
   const isProfitNegative = stats.profit < 0;
 
   return (
     <div className="space-y-8 animate-[fadeIn_0.4s_ease-out]">
       
-      {/* Top Welcome Grid Banner */}
+      {/* Top System Sync Status Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
         <div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            Overview
+            Operational Overview
           </h1>
           <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
-            Naveed & Zeeshan Traders
+            Mughal Kiryana & Traders Portal
           </p>
         </div>
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-2xl">
@@ -41,10 +59,10 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
         </div>
       </div>
 
-      {/* --- Upgraded Stats Cards Section --- */}
+      {/* --- Upgraded Grid with Independent Today's Sale & Cash In Hand Cards --- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         
-        {/* Total Sales Card */}
+        {/* 1. Total Sales Card */}
         <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition duration-300 group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-110" />
           <div className="flex items-center justify-between">
@@ -53,13 +71,37 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{formatCurrency(stats.totalSale)}</h3>
-            <div className="flex items-center gap-1 text-[11px] text-blue-500 font-bold mt-2 bg-blue-500/5 w-max px-2 py-0.5 rounded-full">
-              <span>Today: {formatCurrency(stats.todaySales)}</span>
-            </div>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-2">Accumulated terminal billing</p>
           </div>
         </div>
 
-        {/* Total Expenses Card */}
+        {/* 2. Today's Sales Card (Alag Box Ban Gaya) */}
+        <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition duration-300 group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-110" />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Today's Sales</span>
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500 shadow-inner"><ArrowUpRight size={20} /></div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{formatCurrency(stats.todaySales)}</h3>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-2">Current date counter records</p>
+          </div>
+        </div>
+
+        {/* 3. Cash In Hand Card (Connected with Formula) */}
+        <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-cyan-500/30 shadow-sm hover:shadow-md transition duration-300 group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-110" />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Cash In Hand</span>
+            <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-500 shadow-inner"><Wallet size={20} /></div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-cyan-400 tracking-tight">{formatCurrency(cashInHand)}</h3>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-2">Recovery + Cash Bill - Expenses</p>
+          </div>
+        </div>
+
+        {/* 4. Total Expenses Card */}
         <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition duration-300 group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-110" />
           <div className="flex items-center justify-between">
@@ -72,7 +114,7 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
           </div>
         </div>
 
-        {/* Net Profit Card (Dynamic Glowing Colors) */}
+        {/* 5. Net Profit / Margin Card */}
         <div className={`relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border shadow-sm transition duration-300 group ${
           isProfitNegative ? 'border-rose-500/30 shadow-rose-950/5' : 'border-emerald-500/30 shadow-emerald-950/5'
         }`}>
@@ -97,12 +139,12 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
           </div>
         </div>
 
-        {/* Total Recovery Card */}
+        {/* 6. Total Recovery Card */}
         <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition duration-300 group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-110" />
+          <div className="absolute top-0 right-0 w-24 h-24 bg-teal-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-110" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Recovery</span>
-            <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-500 shadow-inner"><UserCheck size={20} /></div>
+            <div className="p-2.5 rounded-xl bg-teal-500/10 text-teal-500 shadow-inner"><UserCheck size={20} /></div>
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{formatCurrency(stats.totalRecovery)}</h3>
@@ -110,8 +152,8 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
           </div>
         </div>
 
-        {/* Outstanding Udhaar Card */}
-        <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition duration-300 group lg:col-span-2">
+        {/* 7. Outstanding Udhaar Balance Card */}
+        <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition duration-300 group lg:col-span-3">
           <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-115" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Outstanding Udhaar Balance</span>
@@ -127,10 +169,10 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
 
       </div>
 
-      {/* --- Upgraded Multi-Column Data Grid --- */}
+      {/* --- Bottom Row Table Data --- */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         
-        {/* Recent Expenses Side Module (2 Columns Wide) */}
+        {/* Recent Payouts Grid */}
         <div className="xl:col-span-2 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 p-6 rounded-3xl shadow-sm flex flex-col">
           <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800/60 pb-4 mb-4">
             <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500"><ArrowDownRight size={16} /></div>
@@ -156,7 +198,7 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
           </div>
         </div>
 
-        {/* Latest Sales Invoices Terminal Table (3 Columns Wide) */}
+        {/* Latest Terminal Invoices Table */}
         <div className="xl:col-span-3 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 p-6 rounded-3xl shadow-sm flex flex-col">
           <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800/60 pb-4 mb-4">
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500"><FileText size={16} /></div>
