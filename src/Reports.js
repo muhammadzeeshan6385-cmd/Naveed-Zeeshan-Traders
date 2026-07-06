@@ -273,7 +273,7 @@ function Reports({
                   NAVEED & ZEESHAN TRADERS
                 </h2>
                 <p className="brand-subtitle text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1 mb-0">
-                  Fadda Bazar Mailsi
+                  A RAKHA COLONY MAILSI
                 </p>
               </div>
             </div>
@@ -529,7 +529,7 @@ function Reports({
 
           {/* Bottom Footer Section */}
           <div className="footer-container border-t border-dashed border-slate-300 mt-12 pt-4 flex justify-between text-[10px] font-semibold text-slate-400 uppercase">
-            <span>Naveed & Zeeshan Traders Enterprise ERP</span>
+            <span>Naveed & Zeeshan Traders MAILSI</span>
             <span className="signature-line font-bold text-slate-600">Signature: _______________________</span>
           </div>
 
