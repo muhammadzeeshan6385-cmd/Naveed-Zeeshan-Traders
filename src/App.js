@@ -56,7 +56,6 @@ function App() {
   const [customers, setCustomers] = useLocalStorage(STORAGE_KEYS.customers, []);
   const [suppliers, setSuppliers] = useLocalStorage(STORAGE_KEYS.suppliers, []);
   const [purchases, setPurchases] = useLocalStorage(STORAGE_KEYS.purchases, []);
-  const [ProfitLoss, setProfiLoss] = useLocalStorage(STORAGE_KEYS.profitLoss, []);
   const [sales, setSales] = useLocalStorage(STORAGE_KEYS.sales, []);
   const [payments, setPayments] = useLocalStorage(STORAGE_KEYS.payments, []);
   const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
