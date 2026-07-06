@@ -20,7 +20,7 @@ function Reports({
   expenses = [], 
   inventory = [], 
   suppliers = [], 
-  payments = [], // Incoming fallback payments state map
+  payments = [], 
   purchases = [],
   products = [],
   selectedReport = null 
@@ -31,6 +31,9 @@ function Reports({
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [showReportView, setShowReportView] = useState(false);
+
+  // Fallback date string to prevent 'today is not defined' compile error
+  const fallbackTodayDate = new Date().toISOString().split('T')[0];
 
   // FIX: Explicitly listen to selectedReport coming directly from App.js sidebar
   useEffect(() => {
@@ -201,7 +204,7 @@ function Reports({
           {/* Header Block */}
           <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
             <div className="flex items-center gap-3">
-              {/* FIX: Set accurate asset path targeting logo-dark.png as requested */}
+              {/* FIX: Public folder logo asset mapping */}
               <img 
                 src="/logo-dark.png" 
                 alt="Logo" 
@@ -260,7 +263,8 @@ function Reports({
                   ) : (
                     filteredSales.map((s, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2">{s.date || today}</td>
+                        {/* FIX: line 263 compiled safely with fallback date assignment */}
+                        <td className="py-2">{s.date || fallbackTodayDate}</td>
                         <td className="font-bold text-slate-900">{s.invoiceNo || `INV-${1000 + idx}`}</td>
                         <td>{s.customerName || s.customer || 'Counter Cash Client'}</td>
                         <td><span className="px-1.5 py-0.5 bg-slate-100 text-[10px] font-bold rounded">{s.paymentMethod || 'Cash'}</span></td>
