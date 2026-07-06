@@ -20,7 +20,7 @@ function Reports({
   inventory = [], 
   suppliers = [], 
   recoveries = [],
-  currentSidebarSelection = null // If you pass selection from parent
+  currentSidebarSelection = null 
 }) {
   
   const [activeReport, setActiveReport] = useState(null);
@@ -29,30 +29,31 @@ function Reports({
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [showReportView, setShowReportView] = useState(false);
 
-  // Auto-detect triggers from layout sidebar clicks natively
+  // 1. Sidebar trigger integration natively via multiple channels
   useEffect(() => {
     if (currentSidebarSelection) {
       handleReportTrigger(currentSidebarSelection);
     }
-    
-    // Global event listener backup to catch clicks from your sidebar links directly
-    const handleSidebarClickEvent = (e) => {
-      const text = e.target.innerText || '';
-      if (text.includes('Sales Report')) handleReportTrigger('sales');
-      else if (text.includes('Expense Report')) handleReportTrigger('expense');
-      else if (text.includes('Recovery Report')) handleReportTrigger('recovery');
-      else if (text.includes('Purchase Report')) handleReportTrigger('purchase');
-      else if (text.includes('Profit & Loss') || text.includes('Proft & Loss')) handleReportTrigger('profit_loss');
-      else if (text.includes('Stock Inventory')) handleReportTrigger('inventory');
+
+    // Auto-intercept sidebar navigation clicks dynamically 
+    const interceptSidebarClicks = (e) => {
+      const targetText = e.target.textContent || e.target.innerText || '';
+      const upperText = targetText.toUpperCase();
+      
+      if (upperText.includes('SALES REPORT')) handleReportTrigger('sales');
+      else if (upperText.includes('EXPENSE REPORT')) handleReportTrigger('expense');
+      else if (upperText.includes('RECOVERY REPORT')) handleReportTrigger('recovery');
+      else if (upperText.includes('PURCHASE REPORT')) handleReportTrigger('purchase');
+      else if (upperText.includes('PROFIT & LOSS') || upperText.includes('PROFT & LOSS')) handleReportTrigger('profit_loss');
+      else if (upperText.includes('STOCK INVENTORY') || upperText.includes('STOCK ITEMS')) handleReportTrigger('inventory');
     };
 
-    document.addEventListener('click', handleSidebarClickEvent);
+    document.addEventListener('click', interceptSidebarClicks, true);
     return () => {
-      document.remove.removeEventListener('click', handleSidebarClickEvent);
+      document.removeEventListener('click', interceptSidebarClicks, true);
     };
   }, [currentSidebarSelection]);
 
-  // Unified trigger handler to open modal smoothly
   const handleReportTrigger = (type) => {
     let cleanType = type.toLowerCase();
     if (cleanType.includes('sales')) setActiveReport('sales');
@@ -64,10 +65,9 @@ function Reports({
     else return;
 
     setIsModalOpen(true);
-    setShowReportView(false);
+    setShowReportView(false); // Reset previous paper form till duration is confirmed
   };
 
-  // Premium currency formatting function
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
@@ -76,7 +76,6 @@ function Reports({
     }).format(val || 0).replace('PKR', 'Rs.');
   };
 
-  // Live Accurate Timestamp Generation
   const currentDateTime = useMemo(() => {
     const now = new Date();
     return {
@@ -85,22 +84,35 @@ function Reports({
     };
   }, [showReportView, activeReport]);
 
-  // --- BUSINESS LOGIC FILTER ENGINE ---
-  const filteredSales = useMemo(() => sales.filter(s => s.date >= startDate && s.date <= endDate), [sales, startDate, endDate]);
+  // --- CRITICAL DATA STORAGE FILTER LOGIC ---
+  const filteredSales = useMemo(() => {
+    if (!startDate || !endDate) return sales;
+    return sales.filter(s => s.date >= startDate && s.date <= endDate);
+  }, [sales, startDate, endDate]);
+
   const totalSales = useMemo(() => filteredSales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0), [filteredSales]);
 
-  const filteredExpenses = useMemo(() => expenses.filter(e => e.date >= startDate && e.date <= endDate), [expenses, startDate, endDate]);
+  const filteredExpenses = useMemo(() => {
+    if (!startDate || !endDate) return expenses;
+    return expenses.filter(e => e.date >= startDate && e.date <= endDate);
+  }, [expenses, startDate, endDate]);
+
   const totalExpenses = useMemo(() => filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0), [filteredExpenses]);
 
-  const filteredRecoveries = useMemo(() => recoveries.filter(r => r.date >= startDate && r.date <= endDate), [recoveries, startDate, endDate]);
+  const filteredRecoveries = useMemo(() => {
+    if (!startDate || !endDate) return recoveries;
+    return recoveries.filter(r => r.date >= startDate && r.date <= endDate);
+  }, [recoveries, startDate, endDate]);
+
   const totalRecoveries = useMemo(() => filteredRecoveries.reduce((sum, r) => sum + Number(r.amount || 0), 0), [filteredRecoveries]);
 
   const filteredPurchases = useMemo(() => {
+    if (!startDate || !endDate) return [];
     return (suppliers || []).flatMap(s => s.purchases || []).filter(p => p.date >= startDate && p.date <= endDate);
   }, [suppliers, startDate, endDate]);
+
   const totalPurchases = useMemo(() => filteredPurchases.reduce((sum, p) => sum + Number(p.totalAmount || p.amount || 0), 0), [filteredPurchases]);
 
-  // Pure Math Profit & Loss Formula Matrix
   const profitAndLoss = useMemo(() => {
     let revenue = 0, cogs = 0;
     filteredSales.forEach(s => {
@@ -118,43 +130,23 @@ function Reports({
     window.print(); 
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
-  };
-
   return (
     <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800">
       
-      {/* --- IN-COMPONENT SHORTCUT BUTTONS TO TEST IF SIDEBAR FAILS --- */}
-      {!showReportView && !isModalOpen && (
-        <div className="no-print bg-slate-900/40 border border-slate-800/80 p-4 rounded-2xl mb-4 flex flex-wrap gap-2 items-center justify-center">
-          <span className="text-[10px] font-black uppercase text-emerald-500 tracking-wider mr-2">Quick Action Menu:</span>
-          {['Sales Report', 'Expense Report', 'Recovery Report', 'Purchase Report', 'Profit & Loss', 'Stock Inventory'].map((btnName) => (
-            <button 
-              key={btnName}
-              onClick={() => handleReportTrigger(btnName)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl transition"
-            >
-              {btnName}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* --- DURATION CRITERIA POPUP MODAL --- */}
+      {/* --- DATE DURATION POPUP MODAL --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
           <div className="bg-white text-slate-900 w-full max-w-md p-6 rounded-3xl border border-slate-200 shadow-2xl relative animate-[scaleUp_0.2s_ease-out]">
-            <button onClick={closeModal} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
+            <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
               <X size={18} />
             </button>
             
             <div className="mb-5">
               <h3 className="text-base font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
                 <Calendar size={18} className="text-emerald-600" />
-                Select Report Duration
+                Select Date Duration
               </h3>
-              <p className="text-xs text-slate-500 font-medium mt-1">Select the starting and ending dates for the document filter.</p>
+              <p className="text-xs text-slate-500 font-medium mt-1">Enter duration to fetch data and look up history metrics.</p>
             </div>
 
             <div className="space-y-4">
@@ -174,16 +166,16 @@ function Reports({
 
               <button 
                 onClick={() => { setIsModalOpen(false); setShowReportView(true); }}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider py-3 rounded-2xl shadow-lg transition duration-200 mt-2"
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider py-3 rounded-2xl shadow-lg transition duration-200 mt-2"
               >
-                Generate Report Sheet
+                Generate Report View
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- ACTION BUTTONS (TOP-LEFT AS REQUESTED) --- */}
+      {/* --- ACTION BUTTONS (TOP-LEFT SYSTEM) --- */}
       {showReportView && (
         <div className="no-print flex items-center gap-2 mb-2">
           <button onClick={handlePrint} className="flex items-center gap-1.5 bg-white text-slate-900 font-black text-[11px] uppercase tracking-wider px-4 py-2.5 rounded-xl shadow-md border border-slate-200 hover:bg-slate-50 transition">
@@ -192,17 +184,17 @@ function Reports({
           <button onClick={handlePrint} className="flex items-center gap-1.5 bg-white text-slate-900 font-black text-[11px] uppercase tracking-wider px-4 py-2.5 rounded-xl shadow-md border border-slate-200 hover:bg-slate-50 transition">
             <Download size={14} className="text-blue-600" /> Download PDF
           </button>
-          <button onClick={() => setShowReportView(false)} className="ml-auto flex items-center gap-1 bg-rose-600 text-white font-black text-[10px] uppercase tracking-wider px-3 py-2 rounded-xl hover:bg-rose-500 transition">
-            Close Sheet
+          <button onClick={() => setShowReportView(false)} className="ml-auto flex items-center gap-1 bg-slate-200 text-slate-700 font-black text-[10px] uppercase tracking-wider px-3 py-2 rounded-xl hover:bg-slate-300 transition">
+            Reset View
           </button>
         </div>
       )}
 
-      {/* --- DECENT WHITE PAPER SHEET FORM VIEW --- */}
+      {/* --- FORMULATION WHITE PAPER FORM SHEET --- */}
       {showReportView ? (
         <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-12 rounded-[1.5rem] border border-slate-300 shadow-2xl max-w-5xl mx-auto print:border-none print:p-0 print:shadow-none print:max-w-full animate-[slideUp_0.3s_ease-out]">
           
-          {/* Top Invoice Header Branding */}
+          {/* Header Block */}
           <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white font-black text-base">
@@ -220,18 +212,18 @@ function Reports({
 
             <div className="sm:text-right">
               <h1 className="text-xl font-black text-slate-900 uppercase tracking-wide bg-slate-100 px-3 py-1 rounded-md inline-block">
-                {activeReport?.replace('_', ' ')}
+                {activeReport?.replace('_', ' ')} Report
               </h1>
               <p className="text-xs font-bold text-slate-600 mt-2">
                 Duration: <span className="underline font-black">{startDate}</span> to <span className="underline font-black">{endDate}</span>
               </p>
               <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">
-                Downloaded: {currentDateTime.date} | {currentDateTime.time}
+                System Time: {currentDateTime.date} | {currentDateTime.time}
               </p>
             </div>
           </div>
 
-          {/* 1. SALES SHEET */}
+          {/* 1. SALES BLOCK */}
           {activeReport === 'sales' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -273,7 +265,7 @@ function Reports({
             </div>
           )}
 
-          {/* 2. EXPENSE SHEET */}
+          {/* 2. EXPENSE BLOCK */}
           {activeReport === 'expense' && (
             <div className="space-y-4">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -305,7 +297,7 @@ function Reports({
             </div>
           )}
 
-          {/* 3. RECOVERY SHEET */}
+          {/* 3. RECOVERY BLOCK */}
           {activeReport === 'recovery' && (
             <div className="space-y-4">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -339,7 +331,7 @@ function Reports({
             </div>
           )}
 
-          {/* 4. PURCHASE SHEET */}
+          {/* 4. PURCHASE BLOCK */}
           {activeReport === 'purchase' && (
             <div className="space-y-4">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -373,7 +365,7 @@ function Reports({
             </div>
           )}
 
-          {/* 5. PROFIT & LOSS MATRIX SHEET */}
+          {/* 5. PROFIT & LOSS BLOCK */}
           {activeReport === 'profit_loss' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -395,15 +387,15 @@ function Reports({
                 </div>
               </div>
               <div className="border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs bg-slate-50/50">
-                <div className="flex justify-between text-slate-600"><span>Gross Trading Margin (Sales Rate - Purchase Rate):</span><span className="font-bold text-slate-900">{formatCurrency(profitAndLoss.gross)}</span></div>
-                <div className="flex justify-between text-slate-600"><span>Total Logged Operational Deductions:</span><span className="font-bold text-rose-600">-{formatCurrency(totalExpenses)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Gross Trading Margin:</span><span className="font-bold text-slate-900">{formatCurrency(profitAndLoss.gross)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Total Logged Deductions:</span><span className="font-bold text-rose-600">-{formatCurrency(totalExpenses)}</span></div>
                 <div className="h-px bg-slate-300 my-1" />
-                <div className="flex justify-between font-black text-xs text-slate-900"><span>Net Retained Operational Summary:</span><span className={profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrency(profitAndLoss.net)}</span></div>
+                <div className="flex justify-between font-black text-xs text-slate-900"><span>Net Retained Margin:</span><span className={profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrency(profitAndLoss.net)}</span></div>
               </div>
             </div>
           )}
 
-          {/* 6. STOCK INVENTORY REPORT */}
+          {/* 6. INVENTORY BLOCK */}
           {activeReport === 'inventory' && (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3 text-xs font-bold">
@@ -412,7 +404,7 @@ function Reports({
                   <p className="text-sm font-black text-slate-900">{inventory.length} SKUs</p>
                 </div>
                 <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                  <span className="text-[9px] text-emerald-600 uppercase">Available Qty Stock</span>
+                  <span className="text-[9px] text-emerald-600 uppercase">Available Stock</span>
                   <p className="text-sm font-black text-emerald-600">{inventory.filter(i => Number(i.stock || i.quantity) > 0).length} Items</p>
                 </div>
                 <div className="p-3 rounded-lg bg-rose-50 border border-rose-100">
@@ -433,7 +425,7 @@ function Reports({
                 </thead>
                 <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
                   {inventory.length === 0 ? (
-                    <tr><td colSpan="5" className="py-6 text-center text-slate-400">Inventory master matrix is empty.</td></tr>
+                    <tr><td colSpan="5" className="py-6 text-center text-slate-400">Inventory data is empty.</td></tr>
                   ) : (
                     inventory.map((item, idx) => {
                       const qty = Number(item.stock || item.quantity || 0);
@@ -448,9 +440,9 @@ function Reports({
                           <td className={`font-black ${isOut ? 'text-rose-600' : 'text-slate-900'}`}>{qty} {item.unit || 'pcs'}</td>
                           <td className="text-right">
                             {isOut ? (
-                              <span className="text-[9px] font-black uppercase text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">KHATAM</span>
+                              <span className="text-[9px] font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">KHATAM</span>
                             ) : (
-                              <span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">AVAILABLE</span>
+                              <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">AVAILABLE</span>
                             )}
                           </td>
                         </tr>
@@ -462,7 +454,7 @@ function Reports({
             </div>
           )}
 
-          {/* Statement Footer Signature Section */}
+          {/* Bottom Footer Section */}
           <div className="mt-12 pt-6 border-t border-slate-300 flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
             <span>Naveed & Zeeshan Traders Enterprise ERP</span>
             <span>Signature: _______________________</span>
@@ -470,22 +462,22 @@ function Reports({
 
         </div>
       ) : (
-        /* Empty layout display state as seen in your image_d0e207.png but cleaner */
-        <div className="no-print flex flex-col items-center justify-center border-2 border-dashed border-slate-800/60 rounded-[1.5rem] p-20 text-center text-slate-500">
-          <FileText size={48} className="stroke-1 mb-4 text-slate-700 animate-pulse" />
+        /* The default view state matching image_d0e207.png perfectly but with clean alignment */
+        <div className="no-print flex flex-col items-center justify-center border-2 border-dashed border-slate-800/40 rounded-[1.5rem] p-24 text-center text-slate-500">
+          <FileText size={48} className="stroke-1 mb-4 text-slate-600 animate-pulse" />
           <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-            Please click on any Report type from the left Analytics Report sub-menu.
+            Please select a category from the left Analytics Report sub-menu.
           </p>
           <p className="text-[11px] text-slate-600 mt-1">
-            A popup duration prompt will guide you to render the formal paper matrix sheet.
+            The date criteria prompt will configure and pull live metrics onto the formal document form sheet.
           </p>
         </div>
       )}
 
-      {/* Embedded Print Engine View Stylesheet */}
+      {/* Global CSS Layout Overrides For Zero-Bleed Professional Printing */}
       <style jsx global>{`
         @media print {
-          body, html {
+          body, html, #root {
             background: #ffffff !important;
             color: #000000 !important;
           }
