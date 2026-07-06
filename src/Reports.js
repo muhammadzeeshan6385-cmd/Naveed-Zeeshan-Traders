@@ -138,7 +138,6 @@ function Reports({
 
     const doc = iframe.contentWindow.document;
     
-    // Inject highly polished, professional A4 formatted business layout stylesheet
     doc.write(`
       <html>
         <head>
@@ -149,7 +148,7 @@ function Reports({
             .header-container { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; }
             .brand-section { display: flex; align-items: center; gap: 16px; }
             .brand-logo { width: 64px; height: 64px; object-fit: contain; border-radius: 8px; }
-            .brand-title { font-size: 20px; font-weight: 800; color: #0f172a; text-transform: uppercase; margin: 0; tracking-key: -0.02em; }
+            .brand-title { font-size: 20px; font-weight: 800; color: #0f172a; text-transform: uppercase; margin: 0; letter-spacing: -0.02em; }
             .brand-subtitle { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; margin: 2px 0 0 0; letter-spacing: 0.05em; }
             .meta-section { text-align: right; }
             .report-badge { font-size: 14px; font-weight: 900; background: #f1f5f9; color: #0f172a; text-transform: uppercase; padding: 4px 12px; border-radius: 6px; display: inline-block; margin: 0 0 8px 0; letter-spacing: 0.05em; }
@@ -169,15 +168,14 @@ function Reports({
             table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 8px; }
             th { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #475569; border-bottom: 2px solid #cbd5e1; padding: 8px 10px; letter-spacing: 0.03em; }
             td { font-size: 11px; font-weight: 500; color: #334155; border-bottom: 1px solid #e2e8f0; padding: 8px 10px; }
-            tr:hover td { background: #f8fafc; }
             .font-bold-table { font-weight: 700; color: #0f172a; }
             .text-right { text-align: right; }
             .badge-method { background: #e2e8f0; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; color: #334155; text-transform: uppercase; }
-            .footer-container { border-t: 1px dashed #cbd5e1; margin-top: 48px; padding-top: 16px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+            .footer-container { border-top: 1px dashed #cbd5e1; margin-top: 48px; padding-top: 16px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
             .signature-line { color: #475569; font-weight: 700; }
             .p-summary-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; background: #fafafa; margin-top: 16px; }
             .p-summary-row { display: flex; justify-content: space-between; font-size: 11px; color: #475569; padding: 4px 0; }
-            .p-summary-divider { hieght: 1px; height: 1px; background: #e2e8f0; margin: 6px 0; }
+            .p-summary-divider { height: 1px; background: #e2e8f0; margin: 6px 0; }
             .p-summary-total { font-weight: 800; font-size: 12px; color: #0f172a; }
           </style>
         </head>
@@ -260,33 +258,34 @@ function Reports({
       {showReportView ? (
         <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-10 rounded-[1.5rem] border border-slate-200 shadow-xl max-w-4xl mx-auto printable-actual-content">
           
-          {/* Header Block */}
-          <div className="header-container">
-            <div className="brand-section">
+          {/* Header Block with Screen + Print Safe Alignments */}
+          <div className="header-container flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
+            <div className="brand-section flex items-center gap-4">
               <img 
                 src="/logo-dark.png" 
                 alt="Logo" 
-                className="brand-logo" 
+                className="brand-logo w-16 h-16 object-contain rounded-lg"
+                style={{ width: '64px', height: '64px', minWidth: '64px' }}
                 onError={(e) => { e.target.src = "/logo.png"; }}
               />
               <div>
-                <h2 className="brand-title">
+                <h2 className="brand-title text-xl font-extrabold text-slate-900 uppercase tracking-tight leading-none m-0">
                   NAVEED & ZEESHAN TRADERS
                 </h2>
-                <p className="brand-subtitle">
+                <p className="brand-subtitle text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1 mb-0">
                   Fadda Bazar Mailsi
                 </p>
               </div>
             </div>
 
-            <div className="meta-section">
-              <div className="report-badge">
+            <div className="meta-section text-right">
+              <div className="report-badge text-sm font-black bg-slate-100 text-slate-900 uppercase px-3 py-1 rounded-md inline-block mb-2 tracking-wider">
                 {activeReport?.replace('_', ' ')} Report
               </div>
-              <p className="meta-text">
-                Duration: <span className="meta-value">{startDate}</span> to <span className="meta-value">{endDate}</span>
+              <p className="meta-text text-xs text-slate-600 my-0.5 font-semibold">
+                Duration: <span className="meta-value font-bold text-slate-950">{startDate}</span> to <span className="meta-value font-bold text-slate-950">{endDate}</span>
               </p>
-              <p className="meta-text" style={{ fontSize: '9px', color: '#94a3b8' }}>
+              <p className="meta-text text-[9px] text-slate-400 my-0.5">
                 GEN: {currentDateTime.date} | {currentDateTime.time}
               </p>
             </div>
@@ -295,37 +294,37 @@ function Reports({
           {/* 1. SALES BLOCK */}
           {activeReport === 'sales' && (
             <div className="space-y-4">
-              <div className="metrics-grid">
-                <div className="card-box">
-                  <span className="card-label">Gross Trade Volume</span>
-                  <h3 className="card-amount text-emerald">{formatCurrency(totalSales)}</h3>
+              <div className="metrics-grid grid grid-cols-2 gap-4 mb-6">
+                <div className="card-box bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                  <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Gross Trade Volume</span>
+                  <h3 className="card-amount text-xl font-extrabold text-emerald-600">{formatCurrency(totalSales)}</h3>
                 </div>
-                <div className="card-box text-right">
-                  <span className="card-label">Total Sales Bills</span>
-                  <h3 className="card-amount">{filteredSales.length} Invoices</h3>
+                <div className="card-box bg-slate-50 border border-slate-200 p-4 rounded-xl text-right">
+                  <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Sales Bills</span>
+                  <h3 className="card-amount text-xl font-extrabold text-slate-900">{filteredSales.length} Invoices</h3>
                 </div>
               </div>
-              <table className="w-full">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Invoice No</th>
-                    <th>Customer Name</th>
-                    <th>Method</th>
-                    <th className="text-right">Net Amount</th>
+                  <tr className="border-b-2 border-slate-300">
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Date</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Invoice No</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Customer Name</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Method</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Net Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y font-medium">
+                <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {filteredSales.length === 0 ? (
                     <tr><td colSpan="5" className="py-6 text-center text-slate-400">No trading records logged in this specific date range.</td></tr>
                   ) : (
                     filteredSales.map((s, idx) => (
-                      <tr key={idx}>
-                        <td className="py-2">{s.date || fallbackTodayDate}</td>
-                        <td className="font-bold-table">{s.invoiceNo || `INV-${1000 + idx}`}</td>
-                        <td>{s.customerName || s.customer || 'Counter Cash Client'}</td>
-                        <td><span className="badge-method">{s.paymentMethod || 'Cash'}</span></td>
-                        <td className="text-right font-bold-table text-slate-900">{formatCurrency(s.netTotal)}</td>
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2 text-slate-700">{s.date || fallbackTodayDate}</td>
+                        <td className="py-2.5 px-2 font-bold text-slate-900">{s.invoiceNo || `INV-${1000 + idx}`}</td>
+                        <td className="py-2.5 px-2 text-slate-800">{s.customerName || s.customer || 'Counter Cash Client'}</td>
+                        <td className="py-2.5 px-2"><span className="badge-method bg-slate-100 text-[9px] font-bold px-2 py-0.5 rounded text-slate-600 uppercase">{s.paymentMethod || 'Cash'}</span></td>
+                        <td className="py-2.5 px-2 text-right font-bold text-slate-900">{formatCurrency(s.netTotal)}</td>
                       </tr>
                     ))
                   )}
@@ -337,27 +336,27 @@ function Reports({
           {/* 2. EXPENSE BLOCK */}
           {activeReport === 'expense' && (
             <div className="space-y-4">
-              <div className="card-box">
-                <span className="card-label">Total Operational Payout Outflow</span>
-                <h3 className="card-amount text-rose">{formatCurrency(totalExpenses)}</h3>
+              <div className="card-box bg-slate-50 border border-slate-200 p-4 rounded-xl mb-6">
+                <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Operational Payout Outflow</span>
+                <h3 className="card-amount text-xl font-extrabold text-rose-600">{formatCurrency(totalExpenses)}</h3>
               </div>
-              <table className="w-full">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Expense Description</th>
-                    <th className="text-right">Paid Cash</th>
+                  <tr className="border-b-2 border-slate-300">
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Date</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Expense Description</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Paid Cash</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y font-medium">
+                <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {filteredExpenses.length === 0 ? (
                     <tr><td colSpan="3" className="py-6 text-center text-slate-400">No operational expenses logged.</td></tr>
                   ) : (
                     filteredExpenses.map((e, idx) => (
-                      <tr key={idx}>
-                        <td className="py-2">{e.date}</td>
-                        <td>{e.description || e.category}</td>
-                        <td className="text-right font-bold-table text-rose">-{formatCurrency(e.amount)}</td>
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2 text-slate-700">{e.date}</td>
+                        <td className="py-2.5 px-2 text-slate-800">{e.description || e.category}</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-rose-600">-{formatCurrency(e.amount)}</td>
                       </tr>
                     ))
                   )}
@@ -369,29 +368,29 @@ function Reports({
           {/* 3. RECOVERY BLOCK */}
           {activeReport === 'recovery' && (
             <div className="space-y-4">
-              <div className="card-box-emerald">
-                <span className="card-label text-emerald-600">Total Received Recovery (Jama)</span>
-                <h3 className="card-amount text-emerald">{formatCurrency(totalRecoveries)}</h3>
+              <div className="card-box-emerald bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-6">
+                <span className="card-label text-[9px] font-bold text-emerald-700 uppercase tracking-wider block mb-1">Total Received Recovery (Jama)</span>
+                <h3 className="card-amount text-xl font-extrabold text-emerald-600">{formatCurrency(totalRecoveries)}</h3>
               </div>
-              <table className="w-full">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Account / Client Title</th>
-                    <th>Ref Token</th>
-                    <th className="text-right">Recovered Amount</th>
+                  <tr className="border-b-2 border-slate-300">
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Date</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Account / Client Title</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Ref Token</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Recovered Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y font-medium">
+                <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {filteredRecoveries.length === 0 ? (
                     <tr><td colSpan="4" className="py-6 text-center text-slate-400">No credit ledger recovery found.</td></tr>
                   ) : (
                     filteredRecoveries.map((r, idx) => (
-                      <tr key={idx}>
-                        <td className="py-2">{r.date}</td>
-                        <td className="font-bold-table">{r.customerName || r.customer || 'Client Account'}</td>
-                        <td>{r.voucherNo || `REC-${5000 + idx}`}</td>
-                        <td className="text-right font-bold-table text-emerald">+{formatCurrency(r.amount)}</td>
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2 text-slate-700">{r.date}</td>
+                        <td className="py-2.5 px-2 font-bold text-slate-900">{r.customerName || r.customer || 'Client Account'}</td>
+                        <td className="py-2.5 px-2 text-slate-600">{r.voucherNo || `REC-${5000 + idx}`}</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-emerald-600">+{formatCurrency(r.amount)}</td>
                       </tr>
                     ))
                   )}
@@ -403,31 +402,31 @@ function Reports({
           {/* 4. PURCHASE BLOCK */}
           {activeReport === 'purchase' && (
             <div className="space-y-4">
-              <div className="card-box">
-                <span className="card-label">Total Procurement Load Inbound</span>
-                <h3 className="card-amount text-cyan">{formatCurrency(totalPurchases)}</h3>
+              <div className="card-box bg-slate-50 border border-slate-200 p-4 rounded-xl mb-6">
+                <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Procurement Load Inbound</span>
+                <h3 className="card-amount text-xl font-extrabold text-cyan-600">{formatCurrency(totalPurchases)}</h3>
               </div>
-              <table className="w-full">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Supplier Vendor</th>
-                    <th>Product / Description</th>
-                    <th>Quantity</th>
-                    <th className="text-right">Purchase Gross Amount</th>
+                  <tr className="border-b-2 border-slate-300">
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Date</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Supplier Vendor</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Product / Description</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Quantity</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Purchase Gross Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y font-medium">
+                <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {filteredPurchases.length === 0 ? (
                     <tr><td colSpan="5" className="py-6 text-center text-slate-400">No vendor purchase transactions loaded.</td></tr>
                   ) : (
                     filteredPurchases.map((p, idx) => (
-                      <tr key={idx}>
-                        <td className="py-2">{p.date}</td>
-                        <td className="font-bold-table">{p.supplierName || p.supplier || 'Market Supplier'}</td>
-                        <td>{p.product || p.itemName || 'Bulk Stock Inventory'}</td>
-                        <td>{p.qty || p.quantity || 0}</td>
-                        <td className="text-right font-bold-table">
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2 text-slate-700">{p.date}</td>
+                        <td className="py-2.5 px-2 font-bold text-slate-900">{p.supplierName || p.supplier || 'Market Supplier'}</td>
+                        <td className="py-2.5 px-2 text-slate-800">{p.product || p.itemName || 'Bulk Stock Inventory'}</td>
+                        <td className="py-2.5 px-2 text-slate-700">{p.qty || p.quantity || 0}</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-slate-900">
                           {formatCurrency(p.totalAmount || p.amount || Number(p.qty || 0) * Number(p.rate || p.purchaseRate || 0))}
                         </td>
                       </tr>
@@ -441,30 +440,30 @@ function Reports({
           {/* 5. PROFIT & LOSS BLOCK */}
           {activeReport === 'profit_loss' && (
             <div className="space-y-4">
-              <div className="metrics-grid-quad">
-                <div className="card-box">
-                  <span className="card-label">Total Revenue</span>
-                  <p className="card-amount text-sm font-bold">{formatCurrency(profitAndLoss.revenue)}</p>
+              <div className="metrics-grid-quad grid grid-cols-4 gap-3 mb-6">
+                <div className="card-box bg-slate-50 border border-slate-200 p-3 rounded-xl">
+                  <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Revenue</span>
+                  <p className="card-amount text-sm font-bold text-slate-900">{formatCurrency(profitAndLoss.revenue)}</p>
                 </div>
-                <div className="card-box">
-                  <span className="card-label">Cost Price (COGS)</span>
+                <div className="card-box bg-slate-50 border border-slate-200 p-3 rounded-xl">
+                  <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Cost Price (COGS)</span>
                   <p className="card-amount text-sm font-bold text-slate-500">-{formatCurrency(profitAndLoss.cogs)}</p>
                 </div>
-                <div className="card-box">
-                  <span className="card-label">Expenses</span>
-                  <p className="card-amount text-sm font-bold text-rose">-{formatCurrency(totalExpenses)}</p>
+                <div className="card-box bg-slate-50 border border-slate-200 p-3 rounded-xl">
+                  <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Expenses</span>
+                  <p className="card-amount text-sm font-bold text-rose-600">-{formatCurrency(totalExpenses)}</p>
                 </div>
-                <div className={profitAndLoss.net >= 0 ? 'card-box-emerald' : 'card-box-rose'}>
-                  <span className="card-label">Net Pure Profit</span>
-                  <p className={`card-amount text-sm font-black ${profitAndLoss.net >= 0 ? 'text-emerald' : 'text-rose'}`}>{formatCurrency(profitAndLoss.net)}</p>
+                <div className={`card-box p-3 rounded-xl ${profitAndLoss.net >= 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-rose-50 border border-rose-200'}`}>
+                  <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Net Pure Profit</span>
+                  <p className={`card-amount text-sm font-black ${profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(profitAndLoss.net)}</p>
                 </div>
               </div>
               
-              <div className="p-summary-box">
-                <div className="p-summary-row"><span>Gross Trading Margin:</span><span className="font-bold-table">{formatCurrency(profitAndLoss.gross)}</span></div>
-                <div className="p-summary-row"><span>Total Logged Deductions:</span><span className="font-bold-table text-rose">-{formatCurrency(totalExpenses)}</span></div>
-                <div className="p-summary-divider" />
-                <div className="p-summary-row p-summary-total"><span>Net Retained Margin:</span><span className={profitAndLoss.net >= 0 ? 'text-emerald' : 'text-rose'}>{formatCurrency(profitAndLoss.net)}</span></div>
+              <div className="p-summary-box border border-slate-200 rounded-xl p-4 bg-slate-50 mt-4">
+                <div className="p-summary-row flex justify-between text-xs text-slate-600 py-1"><span>Gross Trading Margin:</span><span className="font-bold text-slate-900">{formatCurrency(profitAndLoss.gross)}</span></div>
+                <div className="p-summary-row flex justify-between text-xs text-slate-600 py-1"><span>Total Logged Deductions:</span><span className="font-bold text-rose-600">-{formatCurrency(totalExpenses)}</span></div>
+                <div className="p-summary-divider h-[1px] bg-slate-200 my-2" />
+                <div className="p-summary-row flex justify-between text-sm font-extrabold text-slate-900 pt-1"><span>Net Retained Margin:</span><span className={profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrency(profitAndLoss.net)}</span></div>
               </div>
             </div>
           )}
@@ -472,32 +471,32 @@ function Reports({
           {/* 6. INVENTORY BLOCK */}
           {activeReport === 'inventory' && (
             <div className="space-y-4">
-              <div className="metrics-grid-tri">
-                <div className="card-box">
-                  <span className="card-label">Total Items</span>
-                  <p className="card-amount text-sm font-bold">{activeInventory.length} SKUs</p>
+              <div className="metrics-grid-tri grid grid-cols-3 gap-3 mb-6">
+                <div className="card-box bg-slate-50 border border-slate-200 p-3 rounded-xl">
+                  <span className="card-label text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Items</span>
+                  <p className="card-amount text-sm font-bold text-slate-900">{activeInventory.length} SKUs</p>
                 </div>
-                <div className="card-box-emerald">
-                  <span className="card-label text-emerald-600">Available Stock</span>
-                  <p className="card-amount text-sm font-bold text-emerald">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) > 0).length} Items</p>
+                <div className="card-box-emerald bg-emerald-50 border border-emerald-200 p-3 rounded-xl">
+                  <span className="card-label text-[9px] font-bold text-emerald-700 uppercase tracking-wider block mb-1">Available Stock</span>
+                  <p className="card-amount text-sm font-bold text-emerald-600">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) > 0).length} Items</p>
                 </div>
-                <div className="card-box-rose">
-                  <span className="card-label text-rose-600">Out Of Stock (Khatam)</span>
-                  <p className="card-amount text-sm font-bold text-rose">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) <= 0).length} Items</p>
+                <div className="card-box-rose bg-rose-50 border border-rose-200 p-3 rounded-xl">
+                  <span className="card-label text-[9px] font-bold text-rose-700 uppercase tracking-wider block mb-1">Out Of Stock (Khatam)</span>
+                  <p className="card-amount text-sm font-bold text-rose-600">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) <= 0).length} Items</p>
                 </div>
               </div>
 
-              <table className="w-full">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr>
-                    <th>Product Name</th>
-                    <th>Cost Price</th>
-                    <th>Sale Price</th>
-                    <th>Available Volume</th>
-                    <th className="text-right">Status</th>
+                  <tr className="border-b-2 border-slate-300">
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Product Name</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Cost Price</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Sale Price</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Available Volume</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y font-medium">
+                <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {activeInventory.length === 0 ? (
                     <tr><td colSpan="5" className="py-6 text-center text-slate-400">Inventory data is empty.</td></tr>
                   ) : (
@@ -505,18 +504,18 @@ function Reports({
                       const qty = Number(item.stock || item.quantity || item.qty || 0);
                       const isOut = qty <= 0;
                       return (
-                        <tr key={idx}>
-                          <td className="py-2 font-bold-table">
-                            {item.name} <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 'normal', display: 'block' }}>{item.code || item.id}</span>
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-2 font-bold text-slate-900">
+                            {item.name} <span className="text-[9px] text-slate-400 font-normal block">{item.code || item.id}</span>
                           </td>
-                          <td>{formatCurrency(item.purchasePrice || item.purchaseRate || item.costPrice)}</td>
-                          <td>{formatCurrency(item.price || item.saleRate || item.rate)}</td>
-                          <td className={isOut ? 'text-rose font-bold-table' : 'font-bold-table'}>{qty} {item.unit || 'pcs'}</td>
-                          <td className="text-right">
+                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(item.purchasePrice || item.purchaseRate || item.costPrice)}</td>
+                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(item.price || item.saleRate || item.rate)}</td>
+                          <td className={`py-2.5 px-2 font-bold ${isOut ? 'text-rose-600' : 'text-slate-900'}`}>{qty} {item.unit || 'pcs'}</td>
+                          <td className="py-2.5 px-2 text-right">
                             {isOut ? (
-                              <span style={{ fontSize: '9px', fontWeight: '900', color: '#dc2626', background: '#ffe4e6', padding: '2px 6px', borderRadius: '4px' }}>KHATAM</span>
+                              <span className="text-[9px] font-black text-rose-600 bg-rose-100 px-2 py-0.5 rounded uppercase">KHATAM</span>
                             ) : (
-                              <span style={{ fontSize: '9px', fontWeight: '900', color: '#16a34a', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>AVAILABLE</span>
+                              <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded uppercase">AVAILABLE</span>
                             )}
                           </td>
                         </tr>
@@ -529,9 +528,9 @@ function Reports({
           )}
 
           {/* Bottom Footer Section */}
-          <div className="footer-container">
+          <div className="footer-container border-t border-dashed border-slate-300 mt-12 pt-4 flex justify-between text-[10px] font-semibold text-slate-400 uppercase">
             <span>Naveed & Zeeshan Traders Enterprise ERP</span>
-            <span className="signature-line">Signature: _______________________</span>
+            <span className="signature-line font-bold text-slate-600">Signature: _______________________</span>
           </div>
 
         </div>
