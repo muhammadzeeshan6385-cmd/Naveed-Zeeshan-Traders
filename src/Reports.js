@@ -127,7 +127,7 @@ function Reports({
   };
 
   return (
-    <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800">
+    <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800 printable-container">
 
       {/* --- DATE DURATION POPUP MODAL --- */}
       {isModalOpen && (
@@ -188,7 +188,7 @@ function Reports({
 
       {/* --- FORMULATION WHITE PAPER FORM SHEET --- */}
       {showReportView ? (
-        <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-12 rounded-[1.5rem] border border-slate-300 shadow-2xl max-w-5xl mx-auto print:border-none print:p-0 print:shadow-none print:max-w-full">
+        <div id="printable-sheet" className="bg-white text-slate-900 p-8 sm:p-12 rounded-[1.5rem] border border-slate-300 shadow-2xl max-w-5xl mx-auto printable-sheet-style">
           
           {/* Header Block */}
           <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
@@ -473,8 +473,17 @@ function Reports({
         </div>
       )}
 
-      {/* FIXED: Added strict print color compliance and transparent overrides for flawless downloads without blank canvas behavior */}
+      {/* FIXED: Complete color rendering enforcement to prevent blank pages during background stream downloads */}
       <style jsx global>{`
+        /* Force color output for print processing and download outputs */
+        .printable-sheet-style {
+          background-color: #ffffff !important;
+          color: #0F172A !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          display: block !important;
+        }
+
         @media print {
           body, html, #root {
             background: #ffffff !important;
@@ -485,7 +494,7 @@ function Reports({
           .no-print, .no-print * {
             display: none !important;
           }
-          #printable-sheet {
+          #printable-sheet, .printable-sheet-style {
             border: none !important;
             padding: 0 !important;
             box-shadow: none !important;
@@ -493,13 +502,17 @@ function Reports({
             color: #000000 !important;
             max-w: 100% !important;
             margin: 0 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
           }
-          /* Prevent blank boxes during standard layout streams */
+          /* Ensure all inner content table sections print beautifully without background blending errors */
           .bg-slate-50, .bg-emerald-50, .bg-rose-50, .bg-slate-100 {
-            background-color: rgba(241, 245, 249, 1) !important;
+            background-color: #f8fafc !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          .text-slate-900 { color: #0f172a !important; }
+          .text-slate-800 { color: #1e293b !important; }
         }
       `}</style>
 
