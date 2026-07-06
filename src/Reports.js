@@ -128,17 +128,6 @@ function Reports({
 
   return (
     <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800">
-      
-      {/* --- QUICK IN-PAGE SUB BAR CONTROLLER --- */}
-      <div className="no-print bg-slate-900 text-white p-3 rounded-xl flex flex-wrap gap-2 items-center mb-2 border border-slate-800">
-        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-2 border-r border-slate-700 pr-2">Quick Sub Menu:</span>
-        <button onClick={() => handleReportTrigger('sales')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'sales' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Sales Report</button>
-        <button onClick={() => handleReportTrigger('expense')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'expense' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Expense Report</button>
-        <button onClick={() => handleReportTrigger('recovery')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'recovery' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Recovery Report</button>
-        <button onClick={() => handleReportTrigger('purchase')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'purchase' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Purchase Report</button>
-        <button onClick={() => handleReportTrigger('profit')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'profit_loss' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Profit & Loss</button>
-        <button onClick={() => handleReportTrigger('inventory')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'inventory' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Stock Inventory</button>
-      </div>
 
       {/* --- DATE DURATION POPUP MODAL --- */}
       {isModalOpen && (
@@ -204,7 +193,6 @@ function Reports({
           {/* Header Block */}
           <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
             <div className="flex items-center gap-3">
-              {/* FIX: Public folder logo asset mapping */}
               <img 
                 src="/logo-dark.png" 
                 alt="Logo" 
@@ -263,7 +251,6 @@ function Reports({
                   ) : (
                     filteredSales.map((s, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        {/* FIX: line 263 compiled safely with fallback date assignment */}
                         <td className="py-2">{s.date || fallbackTodayDate}</td>
                         <td className="font-bold text-slate-900">{s.invoiceNo || `INV-${1000 + idx}`}</td>
                         <td>{s.customerName || s.customer || 'Counter Cash Client'}</td>
@@ -481,20 +468,19 @@ function Reports({
         <div className="no-print flex flex-col items-center justify-center border-2 border-dashed border-slate-800/40 rounded-[1.5rem] p-24 text-center text-slate-500">
           <FileText size={48} className="stroke-1 mb-4 text-slate-600 animate-pulse" />
           <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-            Please select a category from the left Analytics Report sub-menu.
-          </p>
-          <p className="text-[11px] text-slate-600 mt-1">
-            The date criteria prompt will configure and pull live metrics onto the formal document form sheet.
+            Please select a category from the left Analytics Report side-menu to view records.
           </p>
         </div>
       )}
 
-      {/* CSS Layout Overrides For Zero-Bleed Professional Printing & Download Sheet View */}
+      {/* FIXED: Added strict print color compliance and transparent overrides for flawless downloads without blank canvas behavior */}
       <style jsx global>{`
         @media print {
           body, html, #root {
             background: #ffffff !important;
             color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .no-print, .no-print * {
             display: none !important;
@@ -507,6 +493,12 @@ function Reports({
             color: #000000 !important;
             max-w: 100% !important;
             margin: 0 !important;
+          }
+          /* Prevent blank boxes during standard layout streams */
+          .bg-slate-50, .bg-emerald-50, .bg-rose-50, .bg-slate-100 {
+            background-color: rgba(241, 245, 249, 1) !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `}</style>
