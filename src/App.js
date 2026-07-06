@@ -1,296 +1,269 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Search, 
-  DollarSign, 
-  BookOpen, 
-  TrendingUp, 
-  FileText, 
-  Settings, 
-  LogOut, 
-  Sun, 
-  Moon, 
-  ChevronDown, 
-  ChevronUp,
-  RotateCcw // Naya icon for Sales Return
-} from 'lucide-react';
-import SalesReturnManager from './components/SalesReturnManager'; // Naya component link
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { LogOut, Sun, Moon, Search } from 'lucide-react';
+import Login from './Login';
+import Products from './Products';
+import Purchase from './Purchase';
+import Sales from './Sales';
+import SalesReturnManager from './components/SalesReturnManager';
+import InventorySummary from './InventorySummary';
+import KhataLedger from './KhataLedger';
+import Suppliers from './Suppliers';
+import Expenses from './Expenses';
+import CashBank from './CashBank';
+import Recovery from './Recovery';
+import Reports from './Reports';
+import CustomerForm from './components/CustomerForm';
+import Dashboard from './Dashboard';
+import Settings from './Settings';
+import SearchBill from './SearchBill';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { STORAGE_KEYS, MENU_ITEMS, DEFAULT_SETTINGS, COMPANY_NAME } from './utils/constants';
+import { removeFromStorage } from './utils/storage';
+import { Logo } from './components/ui';
 
-export default function App() {
-  // Theme and UI States
-  const [darkMode, setDarkMode] = useState(true);
-  const [activeTab, setActiveTab] = useState('sales-report'); // Default page state
-  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(true);
+function App() {
+  // --- Auto Logout Start ---
+  const logoutTimer = useRef();
+  const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 minutes
 
-  // Business Core Data States
-  const [products, setProducts] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [sales, setSales] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [recoveries, setRecoveries] = useState([]);
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    removeFromStorage(STORAGE_KEYS.currentUser);
+    window.location.reload();
+  }, []);
 
-  // Data Loading Check
-  const [loading, setLoading] = useState(false);
+  const resetTimer = useCallback(() => {
+    clearTimeout(logoutTimer.current);
+    logoutTimer.current = setTimeout(() => {
+      handleLogout();
+    }, INACTIVITY_LIMIT);
+  }, [handleLogout]);
 
-  // Fetch Data From Server to Sync Real-Time Stock & Ledger
-  const fetchAllData = async () => {
-    setLoading(true);
-    try {
-      // In production, these points load your ERP state
-      // const prodRes = await fetch('/api/products'); ...
-      console.log("Naveed & Zeeshan Traders data synchronized successfully.");
-    } catch (error) {
-      console.error("Error synchronizing central ERP system:", error);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(event => window.addEventListener(event, resetTimer));
+    resetTimer();
+    return () => events.forEach(event => window.removeEventListener(event, resetTimer));
+  }, [resetTimer]);
+  // --- Auto Logout End ---
+
+  const [isReportsOpen, setIsReportsOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
+  const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
+  const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
+  const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [products, setProducts] = useLocalStorage(STORAGE_KEYS.products, []);
+  const [customers, setCustomers] = useLocalStorage(STORAGE_KEYS.customers, []);
+  const [suppliers, setSuppliers] = useLocalStorage(STORAGE_KEYS.suppliers, []);
+  const [purchases, setPurchases] = useLocalStorage(STORAGE_KEYS.purchases, []);
+  const [sales, setSales] = useLocalStorage(STORAGE_KEYS.sales, []);
+  const [payments, setPayments] = useLocalStorage(STORAGE_KEYS.payments, []);
+  const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
+  const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
+
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    let totalSale = 0;
+    let totalCost = 0;
+    let todaySales = 0;
+
+    sales.forEach(s => {
+      const net = Number(s.netTotal || 0);
+      totalSale += net;
+      
+      if (s.date && s.date.includes(today)) {
+        todaySales += net;
+      }
+
+      if (s.items && Array.isArray(s.items)) {
+        s.items.forEach(item => {
+          const originalProduct = products.find(p => p.id === item.productId || p.name === item.name);
+          const purchaseRate = originalProduct ? Number(originalProduct.purchaseRate || 0) : Number(item.purchaseRate || 0);
+          const saleRate = Number(item.rate || 0);
+          
+          if (saleRate > 0 && purchaseRate > 0) {
+            const costRatio = purchaseRate / saleRate;
+            totalCost += (Number(item.total || 0) * costRatio);
+          } else {
+            totalCost += (purchaseRate * Number(item.qty || 0));
+          }
+        });
+      }
+    });
+
+    const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    
+    let netProfit = totalSale - totalCost - totalExpense;
+
+    return { 
+      totalSale, 
+      todaySales, 
+      totalExpense, 
+      profit: netProfit, 
+      totalRecovery, 
+      outstanding: totalSale - totalRecovery 
+    };
+  }, [sales, expenses, payments, products]);
+
+  const getStock = useCallback((productName) => {
+    const target = String(productName || '').trim().toLowerCase();
+    const totalPurchased = purchases
+      .filter(p => String(p.product || '').trim().toLowerCase() === target)
+      .reduce((sum, p) => sum + Number(p.qty || 0), 0);
+    const totalSold = sales
+      .flatMap(s => s.items || [])
+      .filter(i => String(i.name || i.productName || '').trim().toLowerCase() === target)
+      .reduce((sum, i) => sum + Number(i.qty || 0), 0);
+    return Math.max(0, totalPurchased - totalSold);
+  }, [purchases, sales]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || "Naveed & Zeeshan Traders, Mailsi"} />;
+
+  const renderModule = () => {
+    switch (activeTab) {
+      case 'Dashboard': 
+        return (
+          <Dashboard 
+            stats={stats} 
+            recentExpenses={expenses.slice(-5)} 
+            recentSales={sales.slice(-5)} 
+            getSaleCustomer={(s) => s.customer} 
+            getSaleTotal={(s) => s.netTotal} 
+            sales={sales} 
+          />
+        );
+      case 'Products': return <Products title="Stock Items" products={products} setProducts={setProducts} />;
+      case 'Inventory': return <InventorySummary title="Inventory Logs" products={products} getStock={getStock} sales={sales} />;
+      case 'Customers': return <CustomerForm title="Client Directory" customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
+      case 'Suppliers': return <Suppliers title="Vendors" suppliers={suppliers} setSuppliers={setSuppliers} />;
+      case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} />;
+      case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} />;
+      case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} />;
+      case 'Recovery': return <Recovery title="Payment Recovery" payments={payments} setPayments={setPayments} customers={customers} sales={sales} cashData={cashData} setCashData={setCashData} />;
+      case 'Khata': return <KhataLedger title="Account Ledger" customers={customers} sales={sales} payments={payments} />;
+      case 'Expenses': return <Expenses title="Business Expenses" expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} />;
+      case 'Cash/Bank': return <CashBank title="Finance Hub" cashData={cashData} setCashData={setCashData} />;
+      case 'Reports': return <Reports selectedReport={selectedReport} sales={sales} expenses={expenses} payments={payments} cashData={cashData} purchases={purchases} products={products} customers={customers} />;
+      case 'Settings': return <Settings title="System Settings" products={products} setProducts={setProducts} />;
+      default: return <Dashboard stats={stats} sales={sales} />;
     }
   };
 
-  useEffect(() => {
-    fetchAllData();
-  }, []);
-
-  // Financial Dashboard Core Logic Calculations
-  const metrics = useMemo(() => {
-    const totalSales = sales.reduce((sum, item) => sum + (item.netAmount || 0), 0);
-    const totalExpenses = expenses.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const totalRecoveries = recoveries.reduce((sum, item) => sum + (item.amount || 0), 0);
-    
-    // Dynamic Cash In Hand Formula: Total Recovery + Cash Invoice - Total Exp = Cash in Hand
-    const cashInvoicesSum = sales.filter(s => s.paymentType === 'Cash').reduce((sum, item) => sum + (item.netAmount || 0), 0);
-    const cashInHand = totalRecoveries + cashInvoicesSum - totalExpenses;
-
-    return {
-      totalSales,
-      totalExpenses,
-      totalRecoveries,
-      cashInHand
-    };
-  }, [sales, expenses, recoveries]);
-
   return (
-    <div className={`min-h-screen font-sans ${darkMode ? 'bg-[#0b1329] text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      
-      {/* GLOBAL HEADER BAR */}
-      <header className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'bg-[#0f172a] border-slate-800' : 'bg-white border-slate-200'}`}>
-        <div className="flex items-center gap-3">
-          <div className="font-black text-sm tracking-widest text-emerald-500 uppercase">
-            Naveed & Zeeshan Traders <span className="text-[10px] text-slate-400 font-normal">| ERP Enterprise</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setDarkMode(!darkMode)}
-            className={`p-2 rounded-xl border transition ${darkMode ? 'border-slate-800 bg-slate-900 text-amber-400 hover:bg-slate-800' : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-          >
-            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <div className="flex items-center gap-2 border-l pl-4 border-slate-700 text-xs font-bold text-slate-400">
-            <span>Role: Admin</span>
-          </div>
-          <button className="flex items-center gap-1.5 bg-rose-600/10 hover:bg-rose-600 text-rose-500 hover:text-white px-3 py-1.5 text-xs font-bold rounded-xl border border-rose-500/20 transition">
-            <LogOut size={13} /> Logout
-          </button>
-        </div>
-      </header>
-
-      <div className="flex">
-        
-        {/* LEFT SIDEBAR NAVIGATION MENU */}
-        <aside className={`w-64 min-h-[calc(100--screen-90px)] p-4 flex flex-col gap-1 border-r ${darkMode ? 'bg-[#0f172a]/60 border-slate-800' : 'bg-white border-slate-200'}`}>
-          
-          <button 
-            onClick={() => setActiveTab('search-bill')}
-            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl text-xs font-bold transition ${activeTab === 'search-bill' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/50'}`}
-          >
-            <Search size={15} /> Search Bill
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('payment-recovery')}
-            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl text-xs font-bold transition ${activeTab === 'payment-recovery' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/50'}`}
-          >
-            <DollarSign size={15} /> Payment Recovery
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('account-ledger')}
-            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl text-xs font-bold transition ${activeTab === 'account-ledger' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/50'}`}
-          >
-            <BookOpen size={15} /> Account Ledger
-          </button>
-
-          {/* NEW SALES RETURN SIDEBAR BUTTON */}
-          <button 
-            onClick={() => setActiveTab('sales-return')}
-            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl text-xs font-bold transition ${activeTab === 'sales-return' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/50'}`}
-          >
-            <RotateCcw size={15} className={activeTab === 'sales-return' ? 'text-white' : 'text-rose-500'} /> 
-            <span>Sales Return (maal wapsi)</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('business-expenses')}
-            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl text-xs font-bold transition ${activeTab === 'business-expenses' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/50'}`}
-          >
-            <TrendingUp size={15} /> Business Expenses
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('finance-hub')}
-            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl text-xs font-bold transition ${activeTab === 'finance-hub' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/50'}`}
-          >
-            <TrendingUp size={15} /> Finance Hub
-          </button>
-
-          {/* COLLAPSIBLE ANALYTICS DROPDOWN SUB-MENU */}
-          <div className="mt-1">
-            <button 
-              onClick={() => setIsAnalyticsOpen(!isAnalyticsOpen)}
-              className="flex items-center justify-between w-full px-4 py-3 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800/50 transition"
-            >
-              <div className="flex items-center gap-2.5">
-                <FileText size={15} /> <span>Analytics Report</span>
+    <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300">
+      <div className="flex min-h-screen">
+        <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5">
+          <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 flex-shrink-0">
+                <Logo className="w-full h-full object-contain" />
               </div>
-              {isAnalyticsOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            </button>
-
-            {isAnalyticsOpen && (
-              <div className="pl-6 flex flex-col gap-1 mt-1 border-l border-slate-800 ml-6">
-                <button 
-                  onClick={() => setActiveTab('sales-report')}
-                  className={`w-full text-left py-2 px-3 text-xs font-bold rounded-lg transition ${activeTab === 'sales-report' ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  Sales Report
-                </button>
-                <button 
-                  onClick={() => setActiveTab('expense-report')}
-                  className={`w-full text-left py-2 px-3 text-xs font-bold rounded-lg transition ${activeTab === 'expense-report' ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  Expense Report
-                </button>
-                <button 
-                  onClick={() => setActiveTab('recovery-report')}
-                  className={`w-full text-left py-2 px-3 text-xs font-bold rounded-lg transition ${activeTab === 'recovery-report' ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  Recovery Report
-                </button>
-                <button 
-                  onClick={() => setActiveTab('purchase-report')}
-                  className={`w-full text-left py-2 px-3 text-xs font-bold rounded-lg transition ${activeTab === 'purchase-report' ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  Purchase Report
-                </button>
-                <button 
-                  onClick={() => setActiveTab('profit-loss-report')}
-                  className={`w-full text-left py-2 px-3 text-xs font-bold rounded-lg transition ${activeTab === 'profit-loss-report' ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  Profit & Loss Report
-                </button>
-                <button 
-                  onClick={() => setActiveTab('stock-inventory-report')}
-                  className={`w-full text-left py-2 px-3 text-xs font-bold rounded-lg transition ${activeTab === 'stock-inventory-report' ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  Stock Inventory Report
-                </button>
+              <div className="overflow-hidden">
+                <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                  {settings.companyName && settings.companyName !== "Naveed Zeeshan Traders" ? settings.companyName : "Naveed & Zeeshan Traders, Mailsi"}
+                </h2>
               </div>
-            )}
+            </div>
           </div>
-
-          <button 
-            onClick={() => setActiveTab('system-settings')}
-            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl text-xs font-bold transition mt-auto ${activeTab === 'system-settings' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/50'}`}
-          >
-            <Settings size={15} /> System Settings
-          </button>
+          <nav className="flex-1 space-y-1 overflow-y-auto">
+            {MENU_ITEMS.map((item) => (
+              <React.Fragment key={item.id}>
+                {item.id === 'Reports' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsReportsOpen(!isReportsOpen)}
+                      className={`flex items-center justify-between gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                        activeTab === 'Reports'
+                          ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">{item.icon} {item.label}</div>
+                      <span>{isReportsOpen ? '▲' : '▼'}</span>
+                    </button>
+                    {isReportsOpen && (
+                      <div className="pl-4 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-800 ml-6">
+                        {/* Modified Report List array to fully show all 6 essential enterprise reporting segments */}
+                        {['Sales', 'Expense', 'Recovery', 'Purchase', 'Profit & Loss', 'Stock Inventory'].map((rep) => (
+                          <button
+                            key={rep}
+                            onClick={() => {
+                              // Cleans dynamic keys down into string hashes expected by the child report handlers
+                              let reportKey = rep.toLowerCase();
+                              if (reportKey.includes('profit')) reportKey = 'profit_loss';
+                              if (reportKey.includes('stock') || reportKey.includes('inventory')) reportKey = 'inventory';
+                              
+                              setSelectedReport(reportKey);
+                              setActiveTab('Reports');
+                            }}
+                            className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition"
+                          >
+                            {rep.includes('Report') ? rep : `${rep} Report`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(item.id)}
+                    className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                      activeTab === item.id
+                        ? 'bg-emerald-600 text-white shadow-lg'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                )}
+                {item.id === 'Sales' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('SearchBill')}
+                    className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                      activeTab === 'SearchBill'
+                        ? 'bg-emerald-600 text-white shadow-lg'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Search size={18} /> Search Bill
+                  </button>
+                )}
+              </React.Fragment>
+            ))}
+          </nav>
         </aside>
-
-        {/* RIGHT MAIN VIEW CONSOLE PANEL */}
-        <main className="flex-1 p-6 overflow-y-auto">
-          {loading && (
-            <div className="p-4 mb-4 text-xs font-bold text-center bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20 animate-pulse">
-              Syncing Ledger Database Calculations...
+        <div className="flex-1 flex flex-col h-screen overflow-hidden">
+          <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 bg-white dark:bg-slate-950">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser?.username}</p>
+            <div className="flex items-center gap-6">
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+              <button onClick={handleLogout} className="text-rose-600 text-sm flex items-center gap-2">
+                <LogOut size={16} /> Logout
+              </button>
             </div>
-          )}
-
-          {/* 1. DYNAMIC RENDER: SALES RETURN FEATURE CONTAINER */}
-          {activeTab === 'sales-return' && (
-            <SalesReturnManager 
-              products={products} 
-              customers={customers} 
-              onReturnComplete={fetchAllData} // Live sync updates automatically on post
-            />
-          )}
-
-          {/* 2. DYNAMIC RENDER: SEARCH BILL TAB */}
-          {activeTab === 'search-bill' && (
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <h2 className="text-sm font-black uppercase tracking-wider mb-2">Search Invoice / Bill Logs</h2>
-              <p className="text-xs text-slate-400">Pichle invoices ka record search aur thermal print karne ka component area.</p>
-            </div>
-          )}
-
-          {/* 3. DYNAMIC RENDER: PAYMENT RECOVERY TAB */}
-          {activeTab === 'payment-recovery' && (
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <h2 className="text-sm font-black uppercase tracking-wider mb-2">Payment Recovery Module</h2>
-              <p className="text-xs text-slate-400">Customers se recovery ka cash enter kar ke accounts adjust karne ka panel.</p>
-            </div>
-          )}
-
-          {/* 4. DYNAMIC RENDER: ACCOUNT LEDGER TAB */}
-          {activeTab === 'account-ledger' && (
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <h2 className="text-sm font-black uppercase tracking-wider mb-2">Customer & Party Khata Ledgers</h2>
-              <p className="text-xs text-slate-400">Naveed & Zeeshan Traders ke wholesale customers ke total balance sheets.</p>
-            </div>
-          )}
-
-          {/* 5. DYNAMIC RENDER: BUSINESS EXPENSES TAB */}
-          {activeTab === 'business-expenses' && (
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <h2 className="text-sm font-black uppercase tracking-wider mb-2">Daily Business Expenses Log</h2>
-              <p className="text-xs text-slate-400">Dukan aur wholesale logistics ke kharche record karne ka component framework.</p>
-            </div>
-          )}
-
-          {/* 6. DYNAMIC RENDER: FINANCE HUB TAB */}
-          {activeTab === 'finance-hub' && (
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <h2 className="text-sm font-black uppercase tracking-wider mb-4">Finance Hub Console</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest block mb-1">Cash In Hand</span>
-                  <div className="text-xl font-black text-emerald-400">Rs. {metrics.cashInHand}</div>
-                </div>
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest block mb-1">Total Recovery Summary</span>
-                  <div className="text-xl font-black text-slate-200">Rs. {metrics.totalRecoveries}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 7. DYNAMIC RENDER: ANALYTICS REPORTS (SALES DEFAULT PREVIEW) */}
-          {activeTab === 'sales-report' && (
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <h2 className="text-sm font-black uppercase tracking-wider mb-2">Live Sales Analysis Report</h2>
-              <p className="text-xs text-slate-400 mb-4">Total Business volume: <span className="text-emerald-400 font-bold">Rs. {metrics.totalSales}</span></p>
-              <div className="text-xs text-slate-500 italic p-4 border border-dashed border-slate-800 rounded-xl bg-slate-950/20">
-                Please select an analytics category from the left menu sidebar to review or extract records.
-              </div>
-            </div>
-          )}
-
-          {/* OTHER SUB-REPORTS STANDBY PLACEHOLDERS */}
-          {['expense-report', 'recovery-report', 'purchase-report', 'profit-loss-report', 'stock-inventory-report', 'system-settings'].includes(activeTab) && !activeTab.startsWith('sales-return') && (
-            <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl">
-              <h2 className="text-sm font-black uppercase tracking-wider mb-2 text-slate-300">{activeTab.replace('-', ' ').toUpperCase()}</h2>
-              <p className="text-xs text-slate-500">Selected reporting node criteria will calculate and pull live records directly on the sheet.</p>
-            </div>
-          )}
-
-        </main>
+          </header>
+          <main className="flex-1 overflow-y-auto p-6">{renderModule()}</main>
+        </div>
       </div>
     </div>
   );
 }
+
+export default App;
