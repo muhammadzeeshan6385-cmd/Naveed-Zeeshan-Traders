@@ -20,8 +20,10 @@ function Reports({
   expenses = [], 
   inventory = [], 
   suppliers = [], 
-  recoveries = [],
-  currentSidebarSelection = null 
+  payments = [], // Incoming fallback payments state map
+  purchases = [],
+  products = [],
+  selectedReport = null 
 }) {
   
   const [activeReport, setActiveReport] = useState(null);
@@ -30,36 +32,18 @@ function Reports({
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [showReportView, setShowReportView] = useState(false);
 
-  // 1. Sidebar trigger system integrated natively to intercept all 6 sub bar items
+  // FIX: Explicitly listen to selectedReport coming directly from App.js sidebar
   useEffect(() => {
-    if (currentSidebarSelection) {
-      handleReportTrigger(currentSidebarSelection);
+    if (selectedReport) {
+      handleReportTrigger(selectedReport);
     }
-
-    // Dynamic interceptor for the left sidebar sub bar links clicks directly
-    const interceptSidebarClicks = (e) => {
-      const targetText = e.target.textContent || e.target.innerText || '';
-      const upperText = targetText.toUpperCase();
-      
-      if (upperText.includes('SALES REPORT')) handleReportTrigger('sales');
-      else if (upperText.includes('EXPENSE REPORT')) handleReportTrigger('expense');
-      else if (upperText.includes('RECOVERY REPORT')) handleReportTrigger('recovery');
-      else if (upperText.includes('PURCHASE REPORT')) handleReportTrigger('purchase');
-      else if (upperText.includes('PROFIT & LOSS') || upperText.includes('PROFT & LOSS') || upperText.includes('PROFIT')) handleReportTrigger('profit_loss');
-      else if (upperText.includes('STOCK INVENTORY') || upperText.includes('STOCK ITEMS') || upperText.includes('INVENTORY')) handleReportTrigger('inventory');
-    };
-
-    document.addEventListener('click', interceptSidebarClicks, true);
-    return () => {
-      document.removeEventListener('click', interceptSidebarClicks, true);
-    };
-  }, [currentSidebarSelection]);
+  }, [selectedReport]);
 
   const handleReportTrigger = (type) => {
     let cleanType = type.toLowerCase();
     if (cleanType.includes('sales')) setActiveReport('sales');
     else if (cleanType.includes('expense')) setActiveReport('expense');
-    else if (cleanType.includes('recovery')) setActiveReport('recovery');
+    else if (cleanType.includes('recovery') || cleanType.includes('payment')) setActiveReport('recovery');
     else if (cleanType.includes('purchase')) setActiveReport('purchase');
     else if (cleanType.includes('profit')) setActiveReport('profit_loss');
     else if (cleanType.includes('stock') || cleanType.includes('inventory')) setActiveReport('inventory');
@@ -85,7 +69,7 @@ function Reports({
     };
   }, [showReportView, activeReport]);
 
-  // --- CRITICAL DATA STORAGE FILTER LOGIC ---
+  // --- LIVE DATA HYDRATION AND FILTER LOGIC ---
   const filteredSales = useMemo(() => {
     if (!startDate || !endDate) return sales;
     return sales.filter(s => s.date >= startDate && s.date <= endDate);
@@ -101,39 +85,57 @@ function Reports({
   const totalExpenses = useMemo(() => filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0), [filteredExpenses]);
 
   const filteredRecoveries = useMemo(() => {
-    if (!startDate || !endDate) return recoveries;
-    return recoveries.filter(r => r.date >= startDate && r.date <= endDate);
-  }, [recoveries, startDate, endDate]);
+    if (!startDate || !endDate) return payments;
+    return payments.filter(r => r.date >= startDate && r.date <= endDate);
+  }, [payments, startDate, endDate]);
 
   const totalRecoveries = useMemo(() => filteredRecoveries.reduce((sum, r) => sum + Number(r.amount || 0), 0), [filteredRecoveries]);
 
   const filteredPurchases = useMemo(() => {
-    if (!startDate || !endDate) return [];
-    return (suppliers || []).flatMap(s => s.purchases || []).filter(p => p.date >= startDate && p.date <= endDate);
-  }, [suppliers, startDate, endDate]);
+    if (!startDate || !endDate) return purchases;
+    return purchases.filter(p => p.date >= startDate && p.date <= endDate);
+  }, [purchases, startDate, endDate]);
 
-  const totalPurchases = useMemo(() => filteredPurchases.reduce((sum, p) => sum + Number(p.totalAmount || p.amount || 0), 0), [filteredPurchases]);
+  const totalPurchases = useMemo(() => filteredPurchases.reduce((sum, p) => sum + Number(p.totalAmount || p.amount || p.qty * (p.rate || p.purchaseRate || 0)), 0), [filteredPurchases]);
+
+  const activeInventory = useMemo(() => {
+    if (products && products.length > 0) return products;
+    return inventory;
+  }, [products, inventory]);
 
   const profitAndLoss = useMemo(() => {
     let revenue = 0, cogs = 0;
     filteredSales.forEach(s => {
       (s.items || []).forEach(item => {
-        const qty = Number(item.quantity || 0);
-        revenue += (Number(item.price || item.saleRate || 0) * qty);
-        cogs += (Number(item.purchasePrice || item.purchaseRate || item.costPrice || 0) * qty);
+        const qty = Number(item.quantity || item.qty || 0);
+        revenue += (Number(item.price || item.rate || item.saleRate || 0) * qty);
+        
+        const matchingProd = activeInventory.find(p => p.id === item.productId || p.name === item.name);
+        const pRate = matchingProd ? Number(matchingProd.purchaseRate || 0) : Number(item.purchaseRate || 0);
+        cogs += (pRate * qty);
       });
     });
-    if (revenue === 0) { revenue = totalSales; cogs = revenue * 0.75; }
+    if (revenue === 0 && totalSales > 0) { revenue = totalSales; cogs = revenue * 0.75; }
     return { revenue, cogs, gross: revenue - cogs, net: (revenue - cogs) - totalExpenses };
-  }, [filteredSales, totalExpenses, totalSales]);
+  }, [filteredSales, totalExpenses, totalSales, activeInventory]);
 
-  // NATIVE ENGINE PRINT AND DOWNLOAD TO PREVENT BLANK RENDER
   const handlePrint = () => { 
     window.print(); 
   };
 
   return (
     <div className="space-y-6 relative min-h-[70vh] p-1 sm:p-4 text-slate-800">
+      
+      {/* --- QUICK IN-PAGE SUB BAR CONTROLLER --- */}
+      <div className="no-print bg-slate-900 text-white p-3 rounded-xl flex flex-wrap gap-2 items-center mb-2 border border-slate-800">
+        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-2 border-r border-slate-700 pr-2">Quick Sub Menu:</span>
+        <button onClick={() => handleReportTrigger('sales')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'sales' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Sales Report</button>
+        <button onClick={() => handleReportTrigger('expense')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'expense' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Expense Report</button>
+        <button onClick={() => handleReportTrigger('recovery')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'recovery' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Recovery Report</button>
+        <button onClick={() => handleReportTrigger('purchase')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'purchase' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Purchase Report</button>
+        <button onClick={() => handleReportTrigger('profit')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'profit_loss' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Profit & Loss</button>
+        <button onClick={() => handleReportTrigger('inventory')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeReport === 'inventory' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}>Stock Inventory</button>
+      </div>
 
       {/* --- DATE DURATION POPUP MODAL --- */}
       {isModalOpen && (
@@ -177,7 +179,7 @@ function Reports({
         </div>
       )}
 
-      {/* --- ACTION BUTTONS (TOP-LEFT SYSTEM) --- */}
+      {/* --- ACTION HEAD BUTTONS --- */}
       {showReportView && (
         <div className="no-print flex items-center gap-2 mb-2">
           <button onClick={handlePrint} className="flex items-center gap-1.5 bg-white text-slate-900 font-black text-[11px] uppercase tracking-wider px-4 py-2.5 rounded-xl shadow-md border border-slate-200 hover:bg-slate-50 transition">
@@ -199,20 +201,15 @@ function Reports({
           {/* Header Block */}
           <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-slate-900 pb-5 mb-6 gap-4">
             <div className="flex items-center gap-3">
-              {/* Public Folder Direct Fallback Safe Asset Routing */}
-              <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
-                <img 
-                  src={window.location.origin + "/logo.png"} 
-                  alt="Logo" 
-                  className="w-full h-full object-contain"
-                  onError={(e) => {
-                    // Fallback visually if server compilation is building asset arrays
-                    e.target.src = "/logo.png";
-                  }}
-                />
-              </div>
+              {/* FIX: Set accurate asset path targeting logo-dark.png as requested */}
+              <img 
+                src="/logo-dark.png" 
+                alt="Logo" 
+                className="w-14 h-14 object-contain rounded-xl" 
+                onError={(e) => { e.target.src = "/logo.png"; }}
+              />
               <div>
-                <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
+                <h2 className="text-base font-black text-slate-900 tracking-tight uppercase">
                   NAVEED & ZEESHAN TRADERS, MAILSI
                 </h2>
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
@@ -222,7 +219,7 @@ function Reports({
             </div>
 
             <div className="sm:text-right">
-              <h1 className="text-xl font-black text-slate-900 uppercase tracking-wide bg-slate-100 px-3 py-1 rounded-md inline-block">
+              <h1 className="text-lg font-black text-slate-900 uppercase tracking-wide bg-slate-100 px-3 py-1 rounded-md inline-block">
                 {activeReport?.replace('_', ' ')} Report
               </h1>
               <p className="text-xs font-bold text-slate-600 mt-2">
@@ -252,7 +249,7 @@ function Reports({
                   <tr className="border-b-2 border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
                     <th className="py-2">Date</th>
                     <th>Invoice No</th>
-                    <th>Customer Name / Type</th>
+                    <th>Customer Name</th>
                     <th>Method</th>
                     <th className="text-right">Net Amount</th>
                   </tr>
@@ -263,10 +260,10 @@ function Reports({
                   ) : (
                     filteredSales.map((s, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2">{s.date}</td>
+                        <td className="py-2">{s.date || today}</td>
                         <td className="font-bold text-slate-900">{s.invoiceNo || `INV-${1000 + idx}`}</td>
-                        <td>{s.customerName || (s.isCredit ? 'Ledger Account' : 'Counter Cash Client')}</td>
-                        <td><span className="px-1.5 py-0.5 bg-slate-100 text-[10px] font-bold rounded">{s.paymentMethod || (s.isCredit ? 'Credit' : 'Cash')}</span></td>
+                        <td>{s.customerName || s.customer || 'Counter Cash Client'}</td>
+                        <td><span className="px-1.5 py-0.5 bg-slate-100 text-[10px] font-bold rounded">{s.paymentMethod || 'Cash'}</span></td>
                         <td className="text-right font-black text-slate-900">{formatCurrency(s.netTotal)}</td>
                       </tr>
                     ))
@@ -331,7 +328,7 @@ function Reports({
                     filteredRecoveries.map((r, idx) => (
                       <tr key={idx}>
                         <td className="py-2">{r.date}</td>
-                        <td className="font-bold text-slate-900">{r.customerName}</td>
+                        <td className="font-bold text-slate-900">{r.customerName || r.customer || 'Client Account'}</td>
                         <td>{r.voucherNo || `REC-${5000 + idx}`}</td>
                         <td className="text-right font-black text-emerald-600">+{formatCurrency(r.amount)}</td>
                       </tr>
@@ -354,20 +351,24 @@ function Reports({
                   <tr className="border-b-2 border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
                     <th className="py-2">Date</th>
                     <th>Supplier Vendor</th>
-                    <th>Items Summary</th>
+                    <th>Product / Description</th>
+                    <th>Quantity</th>
                     <th className="text-right">Purchase Gross Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
                   {filteredPurchases.length === 0 ? (
-                    <tr><td colSpan="4" className="py-6 text-center text-slate-400">No vendor purchase transactions loaded.</td></tr>
+                    <tr><td colSpan="5" className="py-6 text-center text-slate-400">No vendor purchase transactions loaded.</td></tr>
                   ) : (
                     filteredPurchases.map((p, idx) => (
                       <tr key={idx}>
                         <td className="py-2">{p.date}</td>
-                        <td className="font-bold text-slate-900">{p.supplierName || 'Market Supplier'}</td>
-                        <td>{p.itemName || p.details || 'Bulk Stock Inventory'}</td>
-                        <td className="text-right font-bold text-slate-900">{formatCurrency(p.totalAmount || p.amount)}</td>
+                        <td className="font-bold text-slate-900">{p.supplierName || p.supplier || 'Market Supplier'}</td>
+                        <td>{p.product || p.itemName || 'Bulk Stock Inventory'}</td>
+                        <td>{p.qty || p.quantity || 0}</td>
+                        <td className="text-right font-bold text-slate-900">
+                          {formatCurrency(p.totalAmount || p.amount || Number(p.qty || 0) * Number(p.rate || p.purchaseRate || 0))}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -412,15 +413,15 @@ function Reports({
               <div className="grid grid-cols-3 gap-3 text-xs font-bold">
                 <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[9px] text-slate-400 uppercase">Total Items</span>
-                  <p className="text-sm font-black text-slate-900">{inventory.length} SKUs</p>
+                  <p className="text-sm font-black text-slate-900">{activeInventory.length} SKUs</p>
                 </div>
                 <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
                   <span className="text-[9px] text-emerald-600 uppercase">Available Stock</span>
-                  <p className="text-sm font-black text-emerald-600">{inventory.filter(i => Number(i.stock || i.quantity) > 0).length} Items</p>
+                  <p className="text-sm font-black text-emerald-600">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) > 0).length} Items</p>
                 </div>
                 <div className="p-3 rounded-lg bg-rose-50 border border-rose-100">
                   <span className="text-[9px] text-rose-600 uppercase">Out Of Stock (Khatam)</span>
-                  <p className="text-sm font-black text-rose-600">{inventory.filter(i => Number(i.stock || i.quantity) <= 0).length} Items</p>
+                  <p className="text-sm font-black text-rose-600">{activeInventory.filter(i => Number(i.stock || i.quantity || i.qty || 0) <= 0).length} Items</p>
                 </div>
               </div>
 
@@ -435,11 +436,11 @@ function Reports({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
-                  {inventory.length === 0 ? (
+                  {activeInventory.length === 0 ? (
                     <tr><td colSpan="5" className="py-6 text-center text-slate-400">Inventory data is empty.</td></tr>
                   ) : (
-                    inventory.map((item, idx) => {
-                      const qty = Number(item.stock || item.quantity || 0);
+                    activeInventory.map((item, idx) => {
+                      const qty = Number(item.stock || item.quantity || item.qty || 0);
                       const isOut = qty <= 0;
                       return (
                         <tr key={idx} className={isOut ? 'bg-rose-50/70' : ''}>
@@ -447,7 +448,7 @@ function Reports({
                             {item.name} <span className="text-[9px] text-slate-400 font-normal block">{item.code || item.id}</span>
                           </td>
                           <td>{formatCurrency(item.purchasePrice || item.purchaseRate || item.costPrice)}</td>
-                          <td>{formatCurrency(item.price || item.saleRate)}</td>
+                          <td>{formatCurrency(item.price || item.saleRate || item.rate)}</td>
                           <td className={`font-black ${isOut ? 'text-rose-600' : 'text-slate-900'}`}>{qty} {item.unit || 'pcs'}</td>
                           <td className="text-right">
                             {isOut ? (
@@ -476,15 +477,15 @@ function Reports({
         <div className="no-print flex flex-col items-center justify-center border-2 border-dashed border-slate-800/40 rounded-[1.5rem] p-24 text-center text-slate-500">
           <FileText size={48} className="stroke-1 mb-4 text-slate-600 animate-pulse" />
           <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-            Please select a category from the Left Analytics Report sub-menu list.
+            Please select a category from the left Analytics Report sub-menu.
           </p>
           <p className="text-[11px] text-slate-600 mt-1">
-            The system duration criteria prompt will calculate and pull live records directly on the sheet.
+            The date criteria prompt will configure and pull live metrics onto the formal document form sheet.
           </p>
         </div>
       )}
 
-      {/* CSS Layout Overrides For Zero-Bleed Professional Printing & Global Layout Actions */}
+      {/* CSS Layout Overrides For Zero-Bleed Professional Printing & Download Sheet View */}
       <style jsx global>{`
         @media print {
           body, html, #root {
