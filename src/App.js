@@ -124,7 +124,7 @@ function App() {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || COMPANY_NAME} />;
+  if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || "Naveed & Zeeshan Traders, Mailsi"} />;
 
   const renderModule = () => {
     switch (activeTab) {
@@ -162,9 +162,13 @@ function App() {
         <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5">
           <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 flex-shrink-0"><Logo className="w-full h-full object-contain" /></div>
+              <div className="w-12 h-12 flex-shrink-0">
+                <Logo className="w-full h-full object-contain" />
+              </div>
               <div className="overflow-hidden">
-                <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">{settings.companyName || COMPANY_NAME}</h2>
+                <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                  {settings.companyName && settings.companyName !== "Naveed Zeeshan Traders" ? settings.companyName : "Naveed & Zeeshan Traders, Mailsi"}
+                </h2>
               </div>
             </div>
           </div>
@@ -187,16 +191,22 @@ function App() {
                     </button>
                     {isReportsOpen && (
                       <div className="pl-4 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-800 ml-6">
-                        {['Sales', 'Expense', 'Recovery', 'Purchase'].map((rep) => (
+                        {/* Modified Report List array to fully show all 6 essential enterprise reporting segments */}
+                        {['Sales', 'Expense', 'Recovery', 'Purchase', 'Profit & Loss', 'Stock Inventory'].map((rep) => (
                           <button
                             key={rep}
                             onClick={() => {
-                              setSelectedReport(rep);
+                              // Cleans dynamic keys down into string hashes expected by the child report handlers
+                              let reportKey = rep.toLowerCase();
+                              if (reportKey.includes('profit')) reportKey = 'profit_loss';
+                              if (reportKey.includes('stock') || reportKey.includes('inventory')) reportKey = 'inventory';
+                              
+                              setSelectedReport(reportKey);
                               setActiveTab('Reports');
                             }}
-                            className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-300 hover:text-emerald-400 transition"
+                            className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition"
                           >
-                            {rep} Report
+                            {rep.includes('Report') ? rep : `${rep} Report`}
                           </button>
                         ))}
                       </div>
