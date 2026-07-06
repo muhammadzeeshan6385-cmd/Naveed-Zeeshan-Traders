@@ -122,27 +122,94 @@ function Reports({
     return { revenue, cogs, gross: revenue - cogs, net: (revenue - cogs) - totalExpenses };
   }, [filteredSales, totalExpenses, totalSales, activeInventory]);
 
-  // BULLETPROOF DOM ROUTING PRINT FIX: 
-  // Yeh tareeqa parent layouts aur sidebars ke block hone wale crash ko 100% bypass karta hai
+  // NO-RELOAD HIGH-PERFORMANCE PRINT PIPELINE:
+  // Yeh function bina page ko reload kiye virtual iframe engine se print nikalega, blank wala masla hamesha k liye khatam!
   const handlePrint = () => {
     const reportElement = document.getElementById('printable-sheet');
     if (!reportElement) return;
 
-    // Save original app container content and layout states
-    const originalContent = document.body.innerHTML;
-    const reportContent = reportElement.innerHTML;
+    // Create a temporary hidden iframe element
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
 
-    // Rewrite document body to only contain our focused report view
-    document.body.innerHTML = `<div style="padding:20px; background:#ffffff; color:#000000; width:100%; font-family:sans-serif;">${reportContent}</div>`;
+    const doc = iframe.contentWindow.document;
     
-    // Trigger window printing directly on isolated layout
-    window.print();
+    // Inject structural printing layout with exact Tailwind fallback colors
+    doc.write(`
+      <html>
+        <head>
+          <title>Print Report</title>
+          <style>
+            body { font-family: system-ui, -apple-system, sans-serif; padding: 30px; background: #ffffff; color: #0f172a; }
+            .w-full { width: 100%; }
+            .text-right { text-align: right; }
+            .flex { display: flex; }
+            .justify-between { justify-content: space-between; }
+            .items-start { align-items: flex-start; }
+            .items-center { align-items: center; }
+            .gap-3 { gap: 12px; }
+            .grid { display: grid; }
+            .grid-cols-2 { grid-template-cols: repeat(2, minmax(0, 1fr)); }
+            .grid-cols-3 { grid-template-cols: repeat(3, minmax(0, 1fr)); }
+            .grid-cols-4 { grid-template-cols: repeat(4, minmax(0, 1fr)); }
+            .gap-4 { gap: 16px; }
+            .gap-3 { gap: 12px; }
+            .bg-slate-50 { background-color: #f8fafc !important; }
+            .bg-slate-100 { background-color: #f1f5f9 !important; }
+            .bg-emerald-50 { background-color: #ecfdf5 !important; }
+            .bg-rose-50 { background-color: #fff1f2 !important; }
+            .border-b-4 { border-bottom: 4px solid #0f172a; }
+            .border-b-2 { border-bottom: 2px solid #cbd5e1; }
+            .divide-y > tr { border-bottom: 1px solid #e2e8f0; }
+            .p-4 { padding: 16px; }
+            .p-3 { padding: 12px; }
+            .py-2 { padding-top: 8px; padding-bottom: 8px; }
+            .py-2.5 { padding-top: 10px; padding-bottom: 10px; }
+            .rounded-xl { rounded-radius: 12px; border-radius: 12px; }
+            .rounded-lg { border-radius: 8px; }
+            .font-black { font-weight: 900; }
+            .font-bold { font-weight: 700; }
+            .text-xl { font-size: 20px; }
+            .text-lg { font-size: 18px; }
+            .text-sm { font-size: 14px; }
+            .text-xs { font-size: 12px; }
+            .text-[9px] { font-size: 9px; }
+            .text-slate-400 { color: #94a3b8; }
+            .text-slate-500 { color: #64748b; }
+            .text-slate-600 { color: #475569; }
+            .text-rose-600 { color: #dc2626 !important; }
+            .text-emerald-600 { color: #059669 !important; }
+            .text-cyan-600 { color: #0891b2 !important; }
+            .uppercase { text-transform: uppercase; }
+            .underline { text-decoration: underline; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th { font-weight: bold; text-transform: uppercase; color: #64748b; font-size: 11px; padding-bottom: 8px; }
+            td { padding: 8px 0; font-size: 12px; }
+            .border-t { border-top: 1px solid #cbd5e1; margin-top: 40px; padding-top: 20px; }
+            @media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
+          </style>
+        </head>
+        <body>
+          ${reportElement.innerHTML}
+        </body>
+      </html>
+    `);
 
-    // Re-hydrate the original dashboard application as it was
-    document.body.innerHTML = originalContent;
-    
-    // Force complete refresh to hook up react virtual DOM listeners back safely
-    window.location.reload();
+    doc.close();
+
+    // Trigger printing inside iframe context smoothly without resetting parent DOM
+    iframe.contentWindow.focus();
+    setTimeout(() => {
+      iframe.contentWindow.print();
+      // Remove temporary element after user finishes printing interaction
+      document.body.removeChild(iframe);
+    }, 350);
   };
 
   return (
