@@ -132,16 +132,13 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
     );
   }, [selectedCustomer, sales, payments]);
 
-  // 4. Standard Popup Window Print Engine - Fixed Logo Dynamic Absolute Path Location
+  // 4. Standard Popup Window Print Engine - Logo Removed for Clean Printing Layout
   const handlePrintLedger = (customer) => {
     setSelectedCustomer(customer);
     setTimeout(() => {
       const windowUrl = 'about:blank';
       const uniqueName = new Date().getTime();
       const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=850,height=900');
-      
-      // window.location.origin automatically detects http://localhost:3000 or production url
-      const absoluteLogoUrl = `${window.location.origin}/Logo-dark.png`;
 
       const printHistory = sales
         .filter((sale) => (sale.customerName || sale.customer) === customer.name)
@@ -172,9 +169,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                 body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
               }
               body { font-family: sans-serif; padding: 20px; color: #333; }
-              .logo-container { text-align: center; margin-bottom: 5px; width: 100%; display: block; }
-              .logo-img { max-height: 75px; width: auto; display: inline-block; object-fit: contain; }
-              .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #111; padding-bottom: 12px; }
+              .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #111; padding-bottom: 12px; margin-top: 10px; }
               .biz-name { font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
               .biz-sub { margin: 5px 0 0 0; font-size: 13px; color: #333; font-weight: 500; }
               .info-grid { display: flex; justify-content: space-between; margin-bottom: 22px; font-size: 14px; line-height: 1.5; }
@@ -187,9 +182,6 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             </style>
           </head>
           <body>
-            <div class="logo-container">
-              <img id="print-logo-img" src="${absoluteLogoUrl}" class="logo-img" alt="Logo" />
-            </div>
             <div class="header">
               <h2 class="biz-name">Naveed & Zeeshan Traders</h2>
               <p class="biz-sub">Fadda Bazar Mailsi | Wholesale Food Products & General Distribution ERP</p>
@@ -251,13 +243,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
               Naveed & Zeeshan Traders Wholesale Management Network — Systems Executive Signature: _______________________
             </div>
             <script>
-              const img = document.getElementById('print-logo-img');
-              if (img && !img.complete) {
-                img.onload = function() { window.print(); window.close(); };
-                img.onerror = function() { window.print(); window.close(); };
-              } else {
-                setTimeout(function() { window.print(); window.close(); }, 350);
-              }
+              setTimeout(function() { window.print(); window.close(); }, 250);
             </script>
           </body>
         </html>
