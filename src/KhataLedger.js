@@ -70,149 +70,142 @@ const KhataLedger = ({ customers, sales, payments }) => {
     );
   }, [selectedCustomer, sales, payments]);
 
-  // Ledger Print karne ka function - Base64 Conversion logic ke sath
+  // Ledger Print karne ka function - Path Isolation Fix ke sath
   const handlePrintLedger = (customer) => {
     setSelectedCustomer(customer);
     
-    // Public folder se image utha kar data string banane ka process
-    const img = new Image();
-    img.src = '/Logo-dark.png';
+    // Yahan hum exact asset URL host ke sath banate hain taake path broke na ho
+    const absoluteLogoUrl = `${window.location.origin}/Logo-dark.png`;
     
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const base64DataUrl = canvas.toDataURL('image/png');
-      proceedToPrint(customer, base64DataUrl);
-    };
+    setTimeout(() => {
+      // Empty string use karne se window same origin context mein open hoti hai, security restriction nahi aati
+      const windowUrl = ''; 
+      const uniqueName = new Date().getTime();
+      const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=850,height=900');
+      
+      const printHistory = sales
+        .filter((sale) => (sale.customerName || sale.customer) === customer.name)
+        .map((sale) => ({
+          date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
+          type: 'Invoice',
+          reference: sale.invoiceNo || sale.billNo || `INV-${sale.id}`,
+          debit: Number(sale.netTotal || sale.netAmount || 0),
+          credit: 0,
+        })).concat(
+          payments
+            .filter((payment) => payment.customer === customer.name)
+            .map((payment) => ({
+              date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
+              type: 'Recovery',
+              reference: payment.receiptNo || `REC-${payment.id}`,
+              debit: 0,
+              credit: Number(payment.amount || 0),
+            }))
+        ).sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    // Fallback agar kisi wajah se dynamic canvas canvas conversion rukk jaye
-    img.onerror = () => {
-      proceedToPrint(customer, '/Logo-dark.png');
-    };
-  };
-
-  const proceedToPrint = (customer, logoSource) => {
-    const windowUrl = 'about:blank';
-    const uniqueName = new Date().getTime();
-    const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=800,height=900');
-    
-    const printHistory = sales
-      .filter((sale) => (sale.customerName || sale.customer) === customer.name)
-      .map((sale) => ({
-        date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
-        type: 'Invoice',
-        reference: sale.invoiceNo || sale.billNo || `INV-${sale.id}`,
-        debit: Number(sale.netTotal || sale.netAmount || 0),
-        credit: 0,
-      })).concat(
-        payments
-          .filter((payment) => payment.customer === customer.name)
-          .map((payment) => ({
-            date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
-            type: 'Recovery',
-            reference: payment.receiptNo || `REC-${payment.id}`,
-            debit: 0,
-            credit: Number(payment.amount || 0),
-          }))
-      ).sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Khata Ledger - ${customer.name}</title>
-          <style>
-            @media print {
-              body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            }
-            body { font-family: sans-serif; padding: 20px; color: #333; }
-            .logo-container { text-align: center; margin-bottom: 10px; width: 100%; }
-            .logo-img { max-height: 75px; width: auto; object-fit: contain; display: inline-block; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 12px; }
-            .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
-            .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
-            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-            th { background: #f5f5f5 !important; font-weight: bold; -webkit-print-color-adjust: exact; }
-            .text-right { text-align: right; }
-            .summary { margin-top: 20px; text-align: right; font-size: 14px; font-weight: bold; line-height: 1.6; }
-            .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #777; border-top: 1px dashed #ccc; padding-top: 10px; }
-          </style>
-        </head>
-        <body>
-          <div class="logo-container">
-            <img src="${logoSource}" class="logo-img" alt="Naveed & Zeeshan Traders Logo" />
-          </div>
-          <div class="header">
-            <div class="biz-name">Naveed & Zeeshan Traders</div>
-            <div style="font-size: 12px; margin-top: 3px; color: #555;">Fadda Bazar Mailsi | Wholesale ERP System</div>
-          </div>
-          <div class="info-grid">
-            <div>
-              <strong>Customer:</strong> ${customer.name}<br>
-              <strong>Shop Name:</strong> ${customer.shopName}
-            </div>
-            <div class="text-right">
-              <strong>Report Date:</strong> ${new Date().toLocaleDateString('en-GB')}<br>
-              <strong>Status:</strong> Outstanding Account
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Ref No.</th>
-                <th class="text-right">Debit (Maal)</th>
-                <th class="text-right">Credit (Vasooli)</th>
-                <th class="text-right">Running Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                printHistory.length === 0 
-                ? '<tr><td colspan="6" style="text-align:center;">No transactions found</td></tr>'
-                : (() => {
-                    let currentBal = 0;
-                    return printHistory.map(item => {
-                      currentBal += (item.debit - item.credit);
-                      return `
-                        <tr>
-                          <td>${item.date}</td>
-                          <td>${item.type === 'Invoice' ? 'Credit Invoice' : 'Cash Recovery'}</td>
-                          <td>${item.reference}</td>
-                          <td class="text-right">${item.debit > 0 ? 'Rs. ' + item.debit : '-'}</td>
-                          <td class="text-right">${item.credit > 0 ? 'Rs. ' + item.credit : '-'}</td>
-                          <td class="text-right" style="font-weight:bold;">Rs. ${currentBal}</td>
-                        </tr>
-                      `;
-                    }).join('');
-                  })()
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Khata Ledger - ${customer.name}</title>
+            <style>
+              @media print {
+                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
               }
-            </tbody>
-          </table>
-          <div class="summary">
-            Total Credit Sales: Rs. ${customer.totalSales}<br>
-            Total Recovered: Rs. ${customer.totalPaid}<br>
-            <span style="font-size: 16px; color: #b45309;">Remaining Balance: Rs. ${customer.balance}</span>
-          </div>
-          <div class="footer">
-            Naveed & Zeeshan Traders Enterprise ERP - Signature: _______________________
-          </div>
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-                window.close();
-              }, 150);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+              body { font-family: sans-serif; padding: 20px; color: #333; }
+              .logo-container { text-align: center; margin-bottom: 10px; width: 100%; display: block; }
+              .logo-img { max-height: 75px; width: auto; object-fit: contain; display: inline-block; }
+              .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 12px; }
+              .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
+              .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+              th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+              th { background: #f5f5f5 !important; font-weight: bold; -webkit-print-color-adjust: exact; }
+              .text-right { text-align: right; }
+              .summary { margin-top: 20px; text-align: right; font-size: 14px; font-weight: bold; line-height: 1.6; }
+              .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #777; border-top: 1px dashed #ccc; padding-top: 10px; }
+            </style>
+          </head>
+          <body>
+            <div class="logo-container">
+              <img id="ledger-print-logo" src="${absoluteLogoUrl}" class="logo-img" alt="Naveed & Zeeshan Traders Logo" />
+            </div>
+            <div class="header">
+              <div class="biz-name">Naveed & Zeeshan Traders</div>
+              <div style="font-size: 12px; margin-top: 3px; color: #555;">Fadda Bazar Mailsi | Wholesale ERP System</div>
+            </div>
+            <div class="info-grid">
+              <div>
+                <strong>Customer:</strong> ${customer.name}<br>
+                <strong>Shop Name:</strong> ${customer.shopName}
+              </div>
+              <div class="text-right">
+                <strong>Report Date:</strong> ${new Date().toLocaleDateString('en-GB')}<br>
+                <strong>Status:</strong> Outstanding Account
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Ref No.</th>
+                  <th class="text-right">Debit (Maal)</th>
+                  <th class="text-right">Credit (Vasooli)</th>
+                  <th class="text-right">Running Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  printHistory.length === 0 
+                  ? '<tr><td colspan="6" style="text-align:center;">No transactions found</td></tr>'
+                  : (() => {
+                      let currentBal = 0;
+                      return printHistory.map(item => {
+                        currentBal += (item.debit - item.credit);
+                        return `
+                          <tr>
+                            <td>${item.date}</td>
+                            <td>${item.type === 'Invoice' ? 'Credit Invoice' : 'Cash Recovery'}</td>
+                            <td>${item.reference}</td>
+                            <td class="text-right">${item.debit > 0 ? 'Rs. ' + item.debit : '-'}</td>
+                            <td class="text-right">${item.credit > 0 ? 'Rs. ' + item.credit : '-'}</td>
+                            <td class="text-right" style="font-weight:bold;">Rs. ${currentBal}</td>
+                          </tr>
+                        `;
+                      }).join('');
+                    })()
+                }
+              </tbody>
+            </table>
+            <div class="summary">
+              Total Credit Sales: Rs. ${customer.totalSales}<br>
+              Total Recovered: Rs. ${customer.totalPaid}<br>
+              <span style="font-size: 16px; color: #b45309;">Remaining Balance: Rs. ${customer.balance}</span>
+            </div>
+            <div class="footer">
+              Naveed & Zeeshan Traders Enterprise ERP - Signature: _______________________
+            </div>
+            <script>
+              // Ensure image is loaded before triggering browser print dialog
+              const imageEl = document.getElementById('ledger-print-logo');
+              function triggerPrint() {
+                setTimeout(function() {
+                  window.print();
+                  window.close();
+                }, 350);
+              }
+              if (imageEl && !imageEl.complete) {
+                imageEl.onload = triggerPrint;
+                imageEl.onerror = triggerPrint;
+              } else {
+                triggerPrint();
+              }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }, 300);
   };
 
   return (
