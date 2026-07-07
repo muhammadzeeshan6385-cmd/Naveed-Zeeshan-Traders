@@ -132,7 +132,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
     );
   }, [selectedCustomer, sales, payments]);
 
-  // 4. Standard Popup Window Print Engine - Logo Removed for Clean Printing Layout
+  // 4. Standard Popup Window Print Engine - Rows Closed & Spacing Compacted
   const handlePrintLedger = (customer) => {
     setSelectedCustomer(customer);
     setTimeout(() => {
@@ -166,19 +166,20 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             <title>Khata Ledger - ${customer.name}</title>
             <style>
               @media print {
-                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; margin: 0; padding: 10px; }
               }
-              body { font-family: sans-serif; padding: 20px; color: #333; }
-              .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #111; padding-bottom: 12px; margin-top: 10px; }
-              .biz-name { font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
-              .biz-sub { margin: 5px 0 0 0; font-size: 13px; color: #333; font-weight: 500; }
-              .info-grid { display: flex; justify-content: space-between; margin-bottom: 22px; font-size: 14px; line-height: 1.5; }
-              table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
-              th, td { border: 1px solid #bbb; padding: 10px; text-align: left; }
-              th { background: #f4f4f4 !important; font-weight: bold; -webkit-print-color-adjust: exact; }
+              body { font-family: sans-serif; padding: 15px; color: #333; font-size: 11px; line-height: 1.2; }
+              .header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #111; padding-bottom: 6px; }
+              .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
+              .biz-sub { margin: 3px 0 0 0; font-size: 11px; color: #333; font-weight: 500; }
+              .info-grid { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px; line-height: 1.4; }
+              table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+              th, td { border: 1px solid #bbb; padding: 5px 8px; text-align: left; }
+              tr { height: 20px; }
+              th { background: #f4f4f4 !important; font-weight: bold; -webkit-print-color-adjust: exact; padding: 6px 8px; }
               .text-right { text-align: right; }
-              .summary { margin-top: 25px; text-align: right; font-size: 14px; font-weight: bold; line-height: 1.7; }
-              .footer { margin-top: 75px; text-align: center; font-size: 12px; color: #444; border-top: 1px dashed #666; padding-top: 12px; }
+              .summary { margin-top: 15px; text-align: right; font-size: 12px; font-weight: bold; line-height: 1.5; }
+              .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #444; border-top: 1px dashed #666; padding-top: 8px; }
             </style>
           </head>
           <body>
@@ -212,7 +213,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
               <tbody>
                 ${
                   printHistory.length === 0 
-                  ? '<tr><td colspan="6" style="text-align:center; padding:12px;">No dynamic transaction records available for print.</td></tr>'
+                  ? '<tr><td colspan="6" style="text-align:center; padding:8px;">No dynamic transaction records available for print.</td></tr>'
                   : (() => {
                       let cumulativeSum = 0;
                       return printHistory.map(item => {
@@ -235,7 +236,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             <div class="summary">
               Total Credit Khata Log: Rs. ${customer.totalSales}<br />
               Total Outstanding Recovery Log: Rs. ${customer.totalPaid}<br />
-              <span style="font-size: 17px; color: #b45309; border-top: 2px double #222; padding-top: 4px; display: inline-block; margin-top: 4px;">
+              <span style="font-size: 14px; color: #b45309; border-top: 2px double #222; padding-top: 2px; display: inline-block; margin-top: 2px;">
                 Net Outstanding Arrears: Rs. ${customer.balance}
               </span>
             </div>
