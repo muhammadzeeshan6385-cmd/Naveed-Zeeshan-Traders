@@ -122,7 +122,7 @@ const KhataLedger = ({ customers, sales, payments }) => {
           <body>
             <div class="header">
               <div class="biz-name">Naveed & Zeeshan Traders</div>
-              <div style="font-size: 12px; margin-top: 3px;">A Rakha Colony Mailsi | Wholesale ERP System</div>
+              <div style="font-size: 12px; margin-top: 3px;">A Rakha Colony Mailsi</div>
             </div>
             <div class="info-grid">
               <div>
