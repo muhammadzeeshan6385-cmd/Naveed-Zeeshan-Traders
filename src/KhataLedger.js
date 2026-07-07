@@ -104,15 +104,18 @@ const KhataLedger = ({ customers, sales, payments }) => {
           <head>
             <title>Khata Ledger - ${customer.name}</title>
             <style>
+              @media print {
+                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+              }
               body { font-family: sans-serif; padding: 20px; color: #333; }
-              .logo-container { text-align: center; margin-bottom: 10px; }
-              .logo-img { max-height: 65px; width: auto; object-fit: contain; }
+              .logo-container { text-align: center; margin-bottom: 5px; width: 100%; display: block; }
+              .logo-img { max-height: 80px; width: auto; display: inline-block; object-fit: contain; }
               .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 12px; }
               .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
               .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
               table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
               th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-              th { background: #f5f5f5; font-weight: bold; }
+              th { background: #f5f5f5 !important; font-weight: bold; -webkit-print-color-adjust: exact; }
               .text-right { text-align: right; }
               .summary { margin-top: 20px; text-align: right; font-size: 14px; font-weight: bold; line-height: 1.6; }
               .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #777; border-top: 1px dashed #ccc; padding-top: 10px; }
@@ -120,7 +123,7 @@ const KhataLedger = ({ customers, sales, payments }) => {
           </head>
           <body>
             <div class="logo-container">
-              <img src="/logo.png" class="logo-img" onerror="this.style.display='none';" alt="Naveed & Zeeshan Traders Logo" />
+              <img src="${window.location.origin}/Logo-dark.png" class="logo-img" alt="Naveed & Zeeshan Traders Logo" />
             </div>
             <div class="header">
               <div class="biz-name">Naveed & Zeeshan Traders</div>
