@@ -271,7 +271,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
 
   return (
     <PageShell 
-      title="Khata Ledger Management" 
+      title="Account Ledger" 
       subtitle="Track retailer credit accounts, market recoveries, and outstanding risk parameters"
     >
       <div className="space-y-6 pb-12">
