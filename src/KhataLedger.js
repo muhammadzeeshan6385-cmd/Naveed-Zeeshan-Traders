@@ -36,10 +36,8 @@ const KhataLedger = ({ customers, sales, payments }) => {
     const customerSales = sales
       .filter((sale) => {
         const cName = sale.customerName || sale.customer || sale.customer_name;
-        // Agar getCreditSalesTotal is sale ko include karta hai, to hum bhi isey credit sale manenge
         const isMatch = cName === selectedCustomer.name;
         
-        // POS systems mein credit check flexible hota hai (boolean checks or strings)
         const isCreditSale = sale.isCredit === true || 
                              String(sale.paymentMethod).toLowerCase() === 'credit' || 
                              String(sale.status).toLowerCase() === 'credit' ||
@@ -81,7 +79,6 @@ const KhataLedger = ({ customers, sales, payments }) => {
       const uniqueName = new Date().getTime();
       const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=800,height=900');
       
-      // Calculate history on the fly for print matching the current active history state
       const printHistory = sales
         .filter((sale) => (sale.customerName || sale.customer) === customer.name)
         .map((sale) => ({
@@ -108,8 +105,10 @@ const KhataLedger = ({ customers, sales, payments }) => {
             <title>Khata Ledger - ${customer.name}</title>
             <style>
               body { font-family: sans-serif; padding: 20px; color: #333; }
-              .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-              .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+              .logo-container { text-align: center; margin-bottom: 10px; }
+              .logo-img { max-height: 65px; width: auto; object-fit: contain; }
+              .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 12px; }
+              .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
               .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
               table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
               th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
@@ -120,9 +119,12 @@ const KhataLedger = ({ customers, sales, payments }) => {
             </style>
           </head>
           <body>
+            <div class="logo-container">
+              <img src="/logo.png" class="logo-img" onerror="this.style.display='none';" alt="Naveed & Zeeshan Traders Logo" />
+            </div>
             <div class="header">
               <div class="biz-name">Naveed & Zeeshan Traders</div>
-              <div style="font-size: 12px; margin-top: 3px;">A Rakha Colony Mailsi</div>
+              <div style="font-size: 12px; margin-top: 3px; color: #555;">Fadda Bazar Mailsi | Wholesale ERP System</div>
             </div>
             <div class="info-grid">
               <div>
