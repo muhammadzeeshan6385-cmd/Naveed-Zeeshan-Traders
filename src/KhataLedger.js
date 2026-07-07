@@ -132,7 +132,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
     );
   }, [selectedCustomer, sales, payments]);
 
-  // 4. Standard Popup Window Print Engine - Exactly matching your working reports
+  // 4. Standard Popup Window Print Engine - Fixed Logo Dynamic Absolute Path Location
   const handlePrintLedger = (customer) => {
     setSelectedCustomer(customer);
     setTimeout(() => {
@@ -140,6 +140,9 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
       const uniqueName = new Date().getTime();
       const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=850,height=900');
       
+      // window.location.origin automatically detects http://localhost:3000 or production url
+      const absoluteLogoUrl = `${window.location.origin}/Logo-dark.png`;
+
       const printHistory = sales
         .filter((sale) => (sale.customerName || sale.customer) === customer.name)
         .map((sale) => ({
@@ -169,12 +172,12 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                 body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
               }
               body { font-family: sans-serif; padding: 20px; color: #333; }
-              .logo-container { text-align: center; margin-bottom: 12px; width: 100%; display: block; }
-              .logo-img { max-height: 72px; width: auto; display: inline-block; object-fit: contain; }
+              .logo-container { text-align: center; margin-bottom: 5px; width: 100%; display: block; }
+              .logo-img { max-height: 75px; width: auto; display: inline-block; object-fit: contain; }
               .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #111; padding-bottom: 12px; }
               .biz-name { font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
               .biz-sub { margin: 5px 0 0 0; font-size: 13px; color: #333; font-weight: 500; }
-              .info-grid { display: flex; justify-content: space-between; margin-bottom: 22px; font-size: 14px; lineHeight: 1.5; }
+              .info-grid { display: flex; justify-content: space-between; margin-bottom: 22px; font-size: 14px; line-height: 1.5; }
               table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
               th, td { border: 1px solid #bbb; padding: 10px; text-align: left; }
               th { background: #f4f4f4 !important; font-weight: bold; -webkit-print-color-adjust: exact; }
@@ -185,7 +188,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
           </head>
           <body>
             <div class="logo-container">
-              <img id="print-logo-img" src="/Logo-dark.png" class="logo-img" alt="Logo" />
+              <img id="print-logo-img" src="${absoluteLogoUrl}" class="logo-img" alt="Logo" />
             </div>
             <div class="header">
               <h2 class="biz-name">Naveed & Zeeshan Traders</h2>
@@ -229,7 +232,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                             <td style="font-weight:500;">${item.reference}</td>
                             <td class="text-right">${item.debit > 0 ? 'Rs. ' + item.debit : '-'}</td>
                             <td class="text-right">${item.credit > 0 ? 'Rs. ' + item.credit : '-'}</td>
-                            <td class="text-right" style="font-weight:bold;">Rs. ${cumulativeSum}</td>
+                            <td class="text-right" style="font-weight:bold;">Rs. ${cumulativeSum.toFixed(2)}</td>
                           </tr>
                         `;
                       }).join('');
@@ -240,7 +243,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             <div class="summary">
               Total Credit Khata Log: Rs. ${customer.totalSales}<br />
               Total Outstanding Recovery Log: Rs. ${customer.totalPaid}<br />
-              <span style="font-size: 17px; color: #b45309; border-top: 2px double #222; paddingTop: 4px; display: inline-block; marginTop: 4px;">
+              <span style="font-size: 17px; color: #b45309; border-top: 2px double #222; padding-top: 4px; display: inline-block; margin-top: 4px;">
                 Net Outstanding Arrears: Rs. ${customer.balance}
               </span>
             </div>
@@ -253,7 +256,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                 img.onload = function() { window.print(); window.close(); };
                 img.onerror = function() { window.print(); window.close(); };
               } else {
-                setTimeout(function() { window.print(); window.close(); }, 250);
+                setTimeout(function() { window.print(); window.close(); }, 350);
               }
             </script>
           </body>
