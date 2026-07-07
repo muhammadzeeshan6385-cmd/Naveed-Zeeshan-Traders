@@ -108,8 +108,8 @@ const KhataLedger = ({ customers, sales, payments }) => {
                 body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
               }
               body { font-family: sans-serif; padding: 20px; color: #333; }
-              .logo-container { text-align: center; margin-bottom: 5px; width: 100%; display: block; }
-              .logo-img { max-height: 85px; width: auto; display: inline-block; object-fit: contain; }
+              .logo-container { text-align: center; margin-bottom: 10px; width: 100%; }
+              .logo-img { max-height: 65px; width: auto; object-fit: contain; display: inline-block; }
               .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 12px; }
               .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
               .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
@@ -182,14 +182,24 @@ const KhataLedger = ({ customers, sales, payments }) => {
               Naveed & Zeeshan Traders Enterprise ERP - Signature: _______________________
             </div>
             <script>
-              const img = document.getElementById('print-logo-el');
-              if (img && !img.complete) {
-                img.onload = function() { window.print(); window.close(); };
-                img.onerror = function() { window.print(); window.close(); };
-              } else {
-                window.print();
-                window.close();
-              }
+              window.onload = function() {
+                const img = document.getElementById('print-logo-el');
+                if (img && !img.complete) {
+                  img.onload = function() {
+                    window.print();
+                    window.close();
+                  };
+                  img.onerror = function() {
+                    window.print();
+                    window.close();
+                  };
+                } else {
+                  setTimeout(function() {
+                    window.print();
+                    window.close();
+                  }, 250);
+                }
+              };
             </script>
           </body>
         </html>
