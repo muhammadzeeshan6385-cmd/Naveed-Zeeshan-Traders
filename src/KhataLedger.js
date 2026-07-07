@@ -132,11 +132,134 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
     );
   }, [selectedCustomer, sales, payments]);
 
-  // 4. Trigger Inline DOM Printing - Fixes Logo Visibility Loss
+  // 4. Standard Popup Window Print Engine - Exactly matching your working reports
   const handlePrintLedger = (customer) => {
     setSelectedCustomer(customer);
     setTimeout(() => {
-      window.print();
+      const windowUrl = 'about:blank';
+      const uniqueName = new Date().getTime();
+      const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=850,height=900');
+      
+      const printHistory = sales
+        .filter((sale) => (sale.customerName || sale.customer) === customer.name)
+        .map((sale) => ({
+          date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
+          type: 'Invoice',
+          reference: sale.invoiceNo || sale.billNo || `INV-${sale.id}`,
+          debit: Number(sale.netTotal || sale.netAmount || 0),
+          credit: 0,
+        })).concat(
+          payments
+            .filter((payment) => payment.customer === customer.name)
+            .map((payment) => ({
+              date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
+              type: 'Recovery',
+              reference: payment.receiptNo || `REC-${payment.id}`,
+              debit: 0,
+              credit: Number(payment.amount || 0),
+            }))
+        ).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Khata Ledger - ${customer.name}</title>
+            <style>
+              @media print {
+                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+              }
+              body { font-family: sans-serif; padding: 20px; color: #333; }
+              .logo-container { text-align: center; margin-bottom: 12px; width: 100%; display: block; }
+              .logo-img { max-height: 72px; width: auto; display: inline-block; object-fit: contain; }
+              .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #111; padding-bottom: 12px; }
+              .biz-name { font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
+              .biz-sub { margin: 5px 0 0 0; font-size: 13px; color: #333; font-weight: 500; }
+              .info-grid { display: flex; justify-content: space-between; margin-bottom: 22px; font-size: 14px; lineHeight: 1.5; }
+              table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+              th, td { border: 1px solid #bbb; padding: 10px; text-align: left; }
+              th { background: #f4f4f4 !important; font-weight: bold; -webkit-print-color-adjust: exact; }
+              .text-right { text-align: right; }
+              .summary { margin-top: 25px; text-align: right; font-size: 14px; font-weight: bold; line-height: 1.7; }
+              .footer { margin-top: 75px; text-align: center; font-size: 12px; color: #444; border-top: 1px dashed #666; padding-top: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="logo-container">
+              <img id="print-logo-img" src="/Logo-dark.png" class="logo-img" alt="Logo" />
+            </div>
+            <div class="header">
+              <h2 class="biz-name">Naveed & Zeeshan Traders</h2>
+              <p class="biz-sub">Fadda Bazar Mailsi | Wholesale Food Products & General Distribution ERP</p>
+            </div>
+            <div class="info-grid">
+              <div>
+                <strong>Account Holder Statement:</strong> ${customer.name}<br />
+                <strong>Shop / Retail Business:</strong> ${customer.shopName}<br />
+                <strong>Contact/Mobile No:</strong> ${customer.phone}
+              </div>
+              <div class="text-right">
+                <strong>Report Generated:</strong> ${new Date().toLocaleDateString('en-GB')}<br />
+                <strong>Market Zone Sector:</strong> ${customer.area}<br />
+                <strong>Ledger Classification:</strong> Credit Distribution Account
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Transaction Type</th>
+                  <th>Ref Doc No.</th>
+                  <th class="text-right">Debit (Maal Sale)</th>
+                  <th class="text-right">Credit (Vasooli Received)</th>
+                  <th class="text-right">Running Net Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  printHistory.length === 0 
+                  ? '<tr><td colspan="6" style="text-align:center; padding:12px;">No dynamic transaction records available for print.</td></tr>'
+                  : (() => {
+                      let cumulativeSum = 0;
+                      return printHistory.map(item => {
+                        cumulativeSum += (item.debit - item.credit);
+                        return `
+                          <tr>
+                            <td>${item.date}</td>
+                            <td>${item.type === 'Invoice' ? 'Credit Invoice' : 'Market Recovery'}</td>
+                            <td style="font-weight:500;">${item.reference}</td>
+                            <td class="text-right">${item.debit > 0 ? 'Rs. ' + item.debit : '-'}</td>
+                            <td class="text-right">${item.credit > 0 ? 'Rs. ' + item.credit : '-'}</td>
+                            <td class="text-right" style="font-weight:bold;">Rs. ${cumulativeSum}</td>
+                          </tr>
+                        `;
+                      }).join('');
+                    })()
+                }
+              </tbody>
+            </table>
+            <div class="summary">
+              Total Credit Khata Log: Rs. ${customer.totalSales}<br />
+              Total Outstanding Recovery Log: Rs. ${customer.totalPaid}<br />
+              <span style="font-size: 17px; color: #b45309; border-top: 2px double #222; paddingTop: 4px; display: inline-block; marginTop: 4px;">
+                Net Outstanding Arrears: Rs. ${customer.balance}
+              </span>
+            </div>
+            <div class="footer">
+              Naveed & Zeeshan Traders Wholesale Management Network — Systems Executive Signature: _______________________
+            </div>
+            <script>
+              const img = document.getElementById('print-logo-img');
+              if (img && !img.complete) {
+                img.onload = function() { window.print(); window.close(); };
+                img.onerror = function() { window.print(); window.close(); };
+              } else {
+                setTimeout(function() { window.print(); window.close(); }, 250);
+              }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
     }, 250);
   };
 
@@ -333,95 +456,6 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             </div>
           </Card>
         )}
-
-        {/* --- INLINE HIGH-RESOLUTION HIDDEN PRINT SECTOR OVERLAY --- */}
-        {selectedCustomer && (
-          <div id="ledger-print-area" className="hidden-print-section">
-            <div className="print-logo-wrap" style={{ textAlign: 'center', marginBottom: '12px' }}>
-              <img src="/Logo-dark.png" style={{ maxHeight: '72px', width: 'auto', display: 'inline-block' }} alt="Naveed & Zeeshan Traders Logo" />
-            </div>
-            <div style={{ textAlign: 'center', marginBottom: '25px', borderBottom: '2px solid #111', paddingBottom: '12px' }}>
-              <h2 style={{ margin: '0', fontSize: '26px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Naveed & Zeeshan Traders</h2>
-              <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#333', fontWeight: '500' }}>Fadda Bazar Mailsi | Wholesale Food Products & General Distribution ERP</p>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '22px', fontSize: '14px', fontFamily: 'sans-serif', lineHeight: '1.5' }}>
-              <div>
-                <strong>Account Holder Statement:</strong> {selectedCustomer.name}<br />
-                <strong>Shop / Retail Business:</strong> {selectedCustomer.shopName}<br />
-                <strong>Contact/Mobile No:</strong> {selectedCustomer.phone}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <strong>Report Generated:</strong> {new Date().toLocaleDateString('en-GB')}<br />
-                <strong>Market Zone Sector:</strong> {selectedCustomer.area}<br />
-                <strong>Ledger Classification:</strong> Credit Distribution Account
-              </div>
-            </div>
-
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '15px', fontSize: '13px', fontFamily: 'sans-serif' }}>
-              <thead>
-                <tr style={{ background: '#f4f4f4' }}>
-                  <th style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'left' }}>Date</th>
-                  <th style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'left' }}>Transaction Type</th>
-                  <th style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'left' }}>Ref Doc No.</th>
-                  <th style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'right' }}>Debit (Maal Sale)</th>
-                  <th style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'right' }}>Credit (Vasooli Received)</th>
-                  <th style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'right' }}>Running Net Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customerHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '12px', border: '1px solid #bbb' }}>No dynamic transaction records available for print.</td>
-                  </tr>
-                ) : (
-                  (() => {
-                    let cumulativeSum = 0;
-                    return customerHistory.map((item, idx) => {
-                      cumulativeSum += (item.debit - item.credit);
-                      return (
-                        <tr key={idx}>
-                          <td style={{ border: '1px solid #bbb', padding: '10px' }}>{item.date}</td>
-                          <td style={{ border: '1px solid #bbb', padding: '10px' }}>{item.type === 'Invoice' ? 'Credit Invoice' : 'Market Recovery'}</td>
-                          <td style={{ border: '1px solid #bbb', padding: '10px', fontWeight: '500' }}>{item.reference}</td>
-                          <td style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'right' }}>{item.debit > 0 ? 'Rs. ' + item.debit : '-'}</td>
-                          <td style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'right' }}>{item.credit > 0 ? 'Rs. ' + item.credit : '-'}</td>
-                          <td style={{ border: '1px solid #bbb', padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>Rs. {cumulativeSum}</td>
-                        </tr>
-                      );
-                    });
-                  })()
-                )}
-              </tbody>
-            </table>
-
-            <div style={{ marginTop: '25px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold', fontFamily: 'sans-serif', lineHeight: '1.7' }}>
-              Total Credit Khata Log: Rs. {selectedCustomer.totalSales}<br />
-              Total Outstanding Recovery Log: Rs. {selectedCustomer.totalPaid}<br />
-              <span style={{ fontSize: '17px', color: '#b45309', borderTop: '2px double #222', paddingTop: '4px', display: 'inline-block', marginTop: '4px' }}>
-                Net Outstanding Arrears: Rs. {selectedCustomer.balance}
-              </span>
-            </div>
-
-            <div style={{ marginTop: '75px', textAlign: 'center', fontSize: '12px', color: '#444', borderTop: '1px dashed #666', paddingTop: '12px', fontFamily: 'sans-serif' }}>
-              Naveed & Zeeshan Traders Wholesale Management Network — Systems Executive Signature: _______________________
-            </div>
-          </div>
-        )}
-
-        {/* --- INLINE PRINT STYLE STACK CSS ENGINE --- */}
-        <style jsx global>{`
-          @media screen {
-            .hidden-print-section { display: none !important; }
-          }
-          @media print {
-            body * { visibility: hidden; background: transparent !important; color: #000 !important; }
-            #ledger-print-area, #ledger-print-area * { visibility: visible; }
-            #ledger-print-area { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
-            .print-logo-wrap { display: block !important; text-align: center !important; }
-            .print-logo-wrap img { display: inline-block !important; visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          }
-        `}</style>
       </div>
     </PageShell>
   );
