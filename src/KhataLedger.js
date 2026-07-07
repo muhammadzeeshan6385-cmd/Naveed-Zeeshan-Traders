@@ -185,7 +185,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
           <body>
             <div class="header">
               <h2 class="biz-name">Naveed & Zeeshan Traders</h2>
-              <p class="biz-sub">Fadda Bazar Mailsi | Wholesale Food Products & General Distribution ERP</p>
+              <p class="biz-sub">A Rakha Colony Mailsi | Wholesale Food Products</p>
             </div>
             <div class="info-grid">
               <div>
