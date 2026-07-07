@@ -32,24 +32,36 @@ const KhataLedger = ({ customers, sales, payments }) => {
   const customerHistory = useMemo(() => {
     if (!selectedCustomer) return [];
 
-    // 1. Credit Invoices Filter karna
+    // 1. Credit Invoices Filter karna (Flexible keys compatibility)
     const customerSales = sales
-      .filter((sale) => (sale.customerName || sale.customer) === selectedCustomer.name && sale.isCredit)
+      .filter((sale) => {
+        const cName = sale.customerName || sale.customer || sale.customer_name;
+        // Agar getCreditSalesTotal is sale ko include karta hai, to hum bhi isey credit sale manenge
+        const isMatch = cName === selectedCustomer.name;
+        
+        // POS systems mein credit check flexible hota hai (boolean checks or strings)
+        const isCreditSale = sale.isCredit === true || 
+                             String(sale.paymentMethod).toLowerCase() === 'credit' || 
+                             String(sale.status).toLowerCase() === 'credit' ||
+                             sale.type === 'Credit';
+                             
+        return isMatch && (isCreditSale || !sale.paymentMethod);
+      })
       .map((sale) => ({
-        date: sale.date,
+        date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
         type: 'Invoice',
-        reference: sale.invoiceNo || `INV-${sale.id}`,
-        debit: Number(sale.netTotal || sale.netAmount || 0),
+        reference: sale.invoiceNo || sale.billNo || `INV-${sale.id}`,
+        debit: Number(sale.netTotal || sale.netAmount || sale.grandTotal || sale.total || 0),
         credit: 0,
       }));
 
     // 2. Recoveries / Payments Filter karna
     const customerPayments = payments
-      .filter((payment) => payment.customer === selectedCustomer.name)
+      .filter((payment) => (payment.customer || payment.customerName) === selectedCustomer.name)
       .map((payment) => ({
-        date: payment.date,
+        date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
         type: 'Recovery',
-        reference: payment.receiptNo || `REC-${payment.id}`,
+        reference: payment.receiptNo || payment.reference || `REC-${payment.id}`,
         debit: 0,
         credit: Number(payment.amount || 0),
       }));
@@ -62,7 +74,6 @@ const KhataLedger = ({ customers, sales, payments }) => {
 
   // Ledger Print karne ka function
   const handlePrintLedger = (customer) => {
-    // Pehle state set karein taake data load ho jaye phir print trigger ho
     setSelectedCustomer(customer);
     setTimeout(() => {
       const printContent = document.getElementById('ledger-print-area');
@@ -70,6 +81,27 @@ const KhataLedger = ({ customers, sales, payments }) => {
       const uniqueName = new Date().getTime();
       const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=800,height=900');
       
+      // Calculate history on the fly for print matching the current active history state
+      const printHistory = sales
+        .filter((sale) => (sale.customerName || sale.customer) === customer.name)
+        .map((sale) => ({
+          date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
+          type: 'Invoice',
+          reference: sale.invoiceNo || sale.billNo || `INV-${sale.id}`,
+          debit: Number(sale.netTotal || sale.netAmount || 0),
+          credit: 0,
+        })).concat(
+          payments
+            .filter((payment) => payment.customer === customer.name)
+            .map((payment) => ({
+              date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
+              type: 'Recovery',
+              reference: payment.receiptNo || `REC-${payment.id}`,
+              debit: 0,
+              credit: Number(payment.amount || 0),
+            }))
+        ).sort((a, b) => new Date(a.date) - new Date(b.date));
+
       printWindow.document.write(`
         <html>
           <head>
@@ -79,9 +111,9 @@ const KhataLedger = ({ customers, sales, payments }) => {
               .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
               .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
               .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
-              table { w-index: 100%; width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
               th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-              th { bg-color: #f5f5f5; background: #f5f5f5; font-weight: bold; }
+              th { background: #f5f5f5; font-weight: bold; }
               .text-right { text-align: right; }
               .summary { margin-top: 20px; text-align: right; font-size: 14px; font-weight: bold; line-height: 1.6; }
               .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #777; border-top: 1px dashed #ccc; padding-top: 10px; }
@@ -115,11 +147,11 @@ const KhataLedger = ({ customers, sales, payments }) => {
               </thead>
               <tbody>
                 ${
-                  customerHistory.length === 0 
+                  printHistory.length === 0 
                   ? '<tr><td colspan="6" style="text-align:center;">No transactions found</td></tr>'
                   : (() => {
                       let currentBal = 0;
-                      return customerHistory.map(item => {
+                      return printHistory.map(item => {
                         currentBal += (item.debit - item.credit);
                         return `
                           <tr>
@@ -172,15 +204,13 @@ const KhataLedger = ({ customers, sales, payments }) => {
                 label: 'Actions',
                 render: (row) => (
                   <div className="flex items-center gap-3">
-                    {/* VIEW LEDGER BUTTON (EYE ICON) */}
                     <button
                       onClick={() => setSelectedCustomer(row)}
-                      className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white transition group"
+                      className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white transition"
                       title="View Ledger Statement"
                     >
                       <Eye size={15} />
                     </button>
-                    {/* PRINT LEDGER BUTTON (PRINTER ICON) */}
                     <button
                       onClick={() => handlePrintLedger(row)}
                       className="p-1.5 rounded-lg bg-slate-500/10 hover:bg-amber-600 text-slate-400 hover:text-white transition"
@@ -260,7 +290,6 @@ const KhataLedger = ({ customers, sales, payments }) => {
               </table>
             </div>
 
-            {/* Bottom Statement Footer Summary Summary */}
             <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 border-t border-slate-900 mt-4 pt-4 text-xs font-bold text-slate-400">
               <div className="flex gap-4">
                 <div>Total Sales: <span className="text-rose-300 font-black">{formatRs(selectedCustomer.totalSales)}</span></div>
