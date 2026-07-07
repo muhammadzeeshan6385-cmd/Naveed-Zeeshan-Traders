@@ -109,7 +109,7 @@ const KhataLedger = ({ customers, sales, payments }) => {
               }
               body { font-family: sans-serif; padding: 20px; color: #333; }
               .logo-container { text-align: center; margin-bottom: 5px; width: 100%; display: block; }
-              .logo-img { max-height: 80px; width: auto; display: inline-block; object-fit: contain; }
+              .logo-img { max-height: 85px; width: auto; display: inline-block; object-fit: contain; }
               .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 12px; }
               .biz-name { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
               .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
@@ -123,7 +123,7 @@ const KhataLedger = ({ customers, sales, payments }) => {
           </head>
           <body>
             <div class="logo-container">
-              <img src="${window.location.origin}/Logo-dark.png" class="logo-img" alt="Naveed & Zeeshan Traders Logo" />
+              <img id="print-logo-el" src="${window.location.origin}/Logo-dark.png" class="logo-img" alt="Naveed & Zeeshan Traders Logo" />
             </div>
             <div class="header">
               <div class="biz-name">Naveed & Zeeshan Traders</div>
@@ -181,7 +181,16 @@ const KhataLedger = ({ customers, sales, payments }) => {
             <div class="footer">
               Naveed & Zeeshan Traders Enterprise ERP - Signature: _______________________
             </div>
-            <script>window.print(); window.close();</script>
+            <script>
+              const img = document.getElementById('print-logo-el');
+              if (img && !img.complete) {
+                img.onload = function() { window.print(); window.close(); };
+                img.onerror = function() { window.print(); window.close(); };
+              } else {
+                window.print();
+                window.close();
+              }
+            </script>
           </body>
         </html>
       `);
