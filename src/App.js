@@ -148,7 +148,22 @@ function App() {
       case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} />;
       case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} />;
       case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} />;
-      case 'ProductReturn': return <ProductReturnManager sales={sales || []} onReturnSuccess={() => setSales([...sales])} />;
+      case 'ProductReturn': 
+        return (
+          <ProductReturnManager 
+            sales={sales || []} 
+            onReturnSuccess={(updatedBill) => {
+              // DYNAMIC UPDATE TRIGGER: Match bill id/invoice and mutate master local array data
+              const refreshedSales = sales.map(s => {
+                if (s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo) {
+                  return { ...s, ...updatedBill };
+                }
+                return s;
+              });
+              setSales(refreshedSales);
+            }} 
+          />
+        );
       case 'Recovery': return <Recovery title="Payment Recovery" payments={payments} setPayments={setPayments} customers={customers} sales={sales} cashData={cashData} setCashData={setCashData} />;
       case 'Khata': return <KhataLedger title="Account Ledger" customers={customers} sales={sales} payments={payments} />;
       case 'Expenses': return <Expenses title="Business Expenses" expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} />;
@@ -194,12 +209,10 @@ function App() {
                     </button>
                     {isReportsOpen && (
                       <div className="pl-4 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-800 ml-6">
-                        {/* Modified Report List array to fully show all 6 essential enterprise reporting segments */}
                         {['Sales', 'Expense', 'Recovery', 'Purchase', 'Profit & Loss', 'Stock Inventory'].map((rep) => (
                           <button
                             key={rep}
                             onClick={() => {
-                              // Cleans dynamic keys down into string hashes expected by the child report handlers
                               let reportKey = rep.toLowerCase();
                               if (reportKey.includes('profit')) reportKey = 'profit_loss';
                               if (reportKey.includes('stock') || reportKey.includes('inventory')) reportKey = 'inventory';
