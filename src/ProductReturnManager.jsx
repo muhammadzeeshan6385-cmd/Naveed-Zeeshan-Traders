@@ -1,39 +1,40 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
+import React, { useState } from 'react';
+import { Search, Save, AlertCircle } from 'lucide-react';
+import { Button, Card, Input, PageShell } from './components/ui';
 import { formatRs, todayISO, generateId } from './utils/helpers';
 
 const ProductReturn = ({ sales = [], setSales, products = [], setProducts, customers = [], setCustomers, cashData = [], setCashData }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchBillNo, setSearchBillNo] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const [editableItems, setEditableItems] = useState([]); 
-  const [statusMessage, setStatusMessage] = useState(null);
+  const [editableItems, setEditableItems] = useState([]);
+  const [error, setError] = useState('');
 
-  // Bill search logic (Dono Cash aur Credit bills support karta hai)
-  const matchingInvoices = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return [];
+  // 1. Sirf input kiye gaye bill number se search karega
+  const handleSearch = () => {
+    setError('');
+    if (!searchBillNo.trim()) {
+      setError('Please enter a bill number to search.');
+      return;
+    }
     
-    return sales.filter(sale => 
-      sale?.invoiceNo?.toLowerCase().includes(query) || 
-      sale?.customer?.toLowerCase().includes(query)
-    );
-  }, [sales, searchQuery]);
-
-  const handleSelectInvoice = (invoice) => {
-    setSelectedInvoice(invoice);
-    // Baseline items set karna taake original aur new quantity ka difference nikal sakein
-    setEditableItems((invoice.items || []).map(item => ({
-      ...item,
-      originalQty: item.qty
-    })));
-    setStatusMessage(null);
+    // Exact match dhoondega (Cash aur Credit dono mein se)
+    const invoice = sales.find(s => s?.invoiceNo?.toLowerCase() === searchBillNo.toLowerCase().trim());
+    
+    if (invoice) {
+      setSelectedInvoice(invoice);
+      // Items ko edit karne ke liye state mein set karega
+      setEditableItems((invoice.items || []).map(item => ({ ...item, originalQty: item.qty })));
+    } else {
+      setSelectedInvoice(null);
+      setError('Bill not found. Please check the bill number and try again.');
+    }
   };
 
-  const handleQtyChange = (productId, newQty, originalMax) => {
-    const qty = Math.min(Math.max(0, Number(newQty)), originalMax);
-    setEditableItems(prevItems =>
-      prevItems.map(item => 
+  // 2. Qty edit karne ka function (kam ya 0 karna)
+  const handleQtyChange = (productId, newQty, originalQty) => {
+    const qty = Math.min(Math.max(0, Number(newQty)), originalQty);
+    setEditableItems(prev =>
+      prev.map(item => 
         item.productId === productId 
           ? { ...item, qty: qty, total: qty * Number(item.rate) }
           : item
@@ -41,230 +42,172 @@ const ProductReturn = ({ sales = [], setSales, products = [], setProducts, custo
     );
   };
 
-  const handleSaveChanges = () => {
+  // 3. Save karne par sab jagah update karne ka logic
+  const handleUpdateBill = () => {
     if (!selectedInvoice) return;
 
-    const currentDate = todayISO();
-    let totalReductionAmount = 0;
-    const stockAdjustments = {};
+    let refundAmount = 0;
+    const stockToReturn = {};
 
-    // Dono quantities ka farq nikalna
-    editableItems.forEach(editedItem => {
-      const difference = editedItem.originalQty - editedItem.qty;
-      if (difference > 0) {
-        stockAdjustments[editedItem.productId] = difference;
-        totalReductionAmount += difference * Number(editedItem.rate);
+    // Check karega kitni items kam ki gayi hain
+    editableItems.forEach(item => {
+      const diff = item.originalQty - item.qty;
+      if (diff > 0) {
+        stockToReturn[item.productId] = diff;
+        refundAmount += diff * Number(item.rate);
       }
     });
 
-    if (totalReductionAmount === 0) {
-      window.alert('No items were reduced. Change any quantity to update the bill.');
+    if (refundAmount === 0) {
+      alert('Aap ne koi item kam nahi ki. Bill update karne ke liye item ki quantity kam karein.');
       return;
     }
 
-    // 1. Stock Updates (Jitni items kam keen wo stock mein wapas jama ho jayengi)
+    const currentDate = todayISO();
+
+    // A: Stock Update (Jitni items kam ki wo wapas add ho jayengi)
     if (setProducts) {
-      setProducts(prevProducts => 
-        prevProducts.map(prod => {
-          const returnQty = stockAdjustments[prod.id] || 0;
-          return returnQty > 0 
-            ? { ...prod, stock: (Number(prod.stock) || 0) + returnQty }
-            : prod;
-        })
-      );
+      setProducts(prev => prev.map(p => {
+        const qtyToAdd = stockToReturn[p.id] || 0;
+        return qtyToAdd > 0 ? { ...p, stock: (Number(p.stock) || 0) + qtyToAdd } : p;
+      }));
     }
 
-    // 2. Financial Impacts (Cash in Hand aur Ledger Balances)
+    // B: Cash ya Khata Balance Update
     if (selectedInvoice.paymentType === 'Cash') {
+      // Cash bill tha to cash in hand se minus hoga (expense entry)
       if (setCashData) {
-        setCashData(prevCash => [
-          ...prevCash,
+        setCashData(prev => [
+          ...prev,
           {
             id: generateId(),
             date: currentDate,
             account: 'Cash',
-            amount: totalReductionAmount,
-            description: `Bill Edit Return - Invoice: ${selectedInvoice.invoiceNo} (${selectedInvoice.customer})`,
-            type: 'expense' // Cash out configuration
+            amount: refundAmount,
+            description: `Bill Edit / Item Return (Bill No: ${selectedInvoice.invoiceNo})`,
+            type: 'expense'
           }
         ]);
       }
     } else {
+      // Credit bill tha to Khata balance minus hoga
       if (setCustomers) {
-        setCustomers(prevCustomers =>
-          prevCustomers.map(cust => {
-            if (cust.name === selectedInvoice.customer) {
-              return { ...cust, balance: (Number(cust.balance) || 0) - totalReductionAmount };
-            }
-            return cust;
-          })
-        );
+        setCustomers(prev => prev.map(c => {
+          if (c.name === selectedInvoice.customer) {
+            return { ...c, balance: (Number(c.balance) || 0) - refundAmount };
+          }
+          return c;
+        }));
       }
     }
 
-    // 3. Master Sales Array Update (Bill update or delete matching logic)
+    // C: Bill Update (Items aur Total update honge, agar sab 0 kiya to bill clear ho jayega)
     if (setSales) {
-      setSales(prevSales =>
-        prevSales.map(sale => {
-          if (sale.id === selectedInvoice.id) {
-            const finalFilteredItems = editableItems
-              .map(({ originalQty, ...rest }) => rest)
-              .filter(item => item.qty > 0);
+      setSales(prev => prev.map(sale => {
+        if (sale.id === selectedInvoice.id) {
+          const finalItems = editableItems
+            .map(({ originalQty, ...rest }) => rest)
+            .filter(i => i.qty > 0);
 
-            const newGross = finalFilteredItems.reduce((sum, i) => sum + i.total, 0);
-            const discountPercent = sale.discountPercent || 0;
-            const newDiscountAmount = (newGross * discountPercent) / 100;
+          const newGross = finalItems.reduce((sum, i) => sum + i.total, 0);
+          const discountPercent = sale.discountPercent || 0;
+          const newDiscountAmount = (newGross * discountPercent) / 100;
 
-            return {
-              ...sale,
-              items: finalFilteredItems,
-              grossTotal: newGross,
-              discount: newDiscountAmount,
-              netTotal: newGross - newDiscountAmount
-            };
-          }
-          return sale;
-        }).filter(sale => sale.items.length > 0)
-      );
+          return {
+            ...sale,
+            items: finalItems,
+            grossTotal: newGross,
+            discount: newDiscountAmount,
+            netTotal: newGross - newDiscountAmount
+          };
+        }
+        return sale;
+      }).filter(sale => sale.items.length > 0));
     }
 
-    setStatusMessage({
-      type: 'success',
-      text: `Bill ${selectedInvoice.invoiceNo} successfully updated! Rs. ${formatRs(totalReductionAmount)} balance adjusted.`
-    });
-
-    // Form reset parameters
+    alert(`Bill ${selectedInvoice.invoiceNo} update ho gaya hai! Rs. ${formatRs(refundAmount)} sab jagah adjust ho gaye hain.`);
+    
+    // Pura form wapas reset kar dega
     setSelectedInvoice(null);
-    setEditableItems([]);
-    setSearchQuery('');
+    setSearchBillNo('');
   };
 
   return (
-    <PageShell title="Product Return & Invoice Modification Console" className="py-2">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <PageShell title="Edit Bill / Product Return" className="py-2">
+      <div className="max-w-4xl mx-auto space-y-4">
         
-        {/* Left Section: Search Directory */}
-        <div className="lg:col-span-1 space-y-4">
-          <Card title="Find Invoice">
-            <div className="mb-2">
+        {/* Simple Search Box */}
+        <Card title="Search Bill to Edit">
+          <div className="flex items-end gap-4">
+            <div className="flex-1">
               <Input 
-                label="Search Invoice No / Customer Name" 
-                placeholder="Type Invoice No or Name..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                label="Enter Bill Number (e.g. INV-00001)" 
+                value={searchBillNo}
+                onChange={(e) => setSearchBillNo(e.target.value)}
+                placeholder="Type bill number here..."
               />
             </div>
+            <Button onClick={handleSearch} className="bg-blue-600 hover:bg-blue-700 pb-2">
+              <Search className="w-5 h-5 mr-2 inline" /> Open Bill
+            </Button>
+          </div>
+          {error && <div className="text-red-500 text-sm mt-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" /> {error}</div>}
+        </Card>
 
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pt-2">
-              {!searchQuery && (
-                <div className="p-4 text-xs text-center text-slate-500 bg-slate-900/20 rounded-lg border border-dashed border-slate-800">
-                  Search system ready. Enter bill parameters above to search.
-                </div>
-              )}
+        {/* Edit Panel jo sirf search hone par show hoga */}
+        {selectedInvoice && (
+          <Card title={`Edit Items - ${selectedInvoice.invoiceNo}`}>
+            <div className="flex justify-between items-center bg-slate-900 p-4 rounded-lg border border-slate-800 mb-6">
+              <div>
+                <div className="text-sm text-slate-400 mb-1">Customer: <span className="text-white font-bold text-base">{selectedInvoice.customer}</span></div>
+                <div className="text-sm text-slate-400">Payment: <span className="text-white font-bold">{selectedInvoice.paymentType}</span></div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-slate-400 mb-1">Date: <span className="text-white font-bold">{selectedInvoice.date}</span></div>
+                <div className="text-sm text-slate-400">Current Total: <span className="text-amber-400 font-bold text-base">{formatRs(selectedInvoice.netTotal)}</span></div>
+              </div>
+            </div>
 
-              {matchingInvoices.length === 0 && searchQuery && (
-                <div className="p-3 text-sm text-gray-400 bg-slate-900/40 rounded-lg flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500" /> No transaction found.
-                </div>
-              )}
-              
-              {matchingInvoices.map((invoice) => (
-                <div 
-                  key={invoice.id}
-                  onClick={() => handleSelectInvoice(invoice)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                    selectedInvoice?.id === invoice.id 
-                      ? 'bg-emerald-950/40 border-emerald-500 text-white' 
-                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-sm">{invoice.invoiceNo}</span>
-                    <span className={`text-[11px] px-2 py-0.5 rounded font-medium ${
-                      invoice.paymentType === 'Cash' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
-                    }`}>
-                      {invoice.paymentType} Account
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-400 font-medium truncate">{invoice.customer}</div>
-                  <div className="flex justify-between items-center mt-2 text-[11px] text-slate-500">
-                    <span>{invoice.date}</span>
-                    <span className="font-semibold text-slate-300">{formatRs(invoice.netTotal)}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="mb-6 overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-800 text-slate-300">
+                  <tr>
+                    <th className="p-3 rounded-tl-lg font-medium">Item Name</th>
+                    <th className="p-3 font-medium">Unit Rate</th>
+                    <th className="p-3 font-medium w-40">Qty (Edit Here)</th>
+                    <th className="p-3 rounded-tr-lg font-medium text-right">Total Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {editableItems.map((item, idx) => (
+                    <tr key={idx} className="border-b border-slate-800/50 hover:bg-slate-900/30 transition-colors">
+                      <td className="p-3 text-slate-200">{item.name}</td>
+                      <td className="p-3 text-slate-400">{formatRs(item.rate)}</td>
+                      <td className="p-3">
+                        <Input 
+                          type="number"
+                          min="0"
+                          max={item.originalQty}
+                          value={item.qty}
+                          onChange={(e) => handleQtyChange(item.productId, e.target.value, item.originalQty)}
+                          style={{ margin: 0, padding: '6px 10px', height: 'auto', width: '100px' }}
+                        />
+                        <div className="text-[10px] text-slate-500 mt-1 pl-1">Max Invoiced: {item.originalQty}</div>
+                      </td>
+                      <td className="p-3 text-right font-semibold text-slate-200">{formatRs(item.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-slate-800">
+              <Button onClick={handleUpdateBill} className="bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2 py-2 px-6">
+                <Save className="w-5 h-5" /> Save Changes & Update System
+              </Button>
             </div>
           </Card>
-
-          {statusMessage && (
-            <div className="p-4 rounded-lg flex items-start gap-3 border bg-emerald-950/40 border-emerald-500/30 text-emerald-200">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="text-sm font-medium">{statusMessage.text}</div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Section: Edit Console */}
-        <div className="lg:col-span-2">
-          {selectedInvoice ? (
-            <Card title={`Active Invoice Editor Panel (${selectedInvoice.invoiceNo})`}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-slate-900/40 p-3 rounded-lg border border-slate-800 text-sm">
-                <div className="space-y-1">
-                  <div className="text-slate-400">Customer Name: <span className="text-slate-200 font-semibold">{selectedInvoice.customer}</span></div>
-                  <div className="text-slate-400">Payment Type: <span className="text-slate-200 font-semibold">{selectedInvoice.paymentType}</span></div>
-                </div>
-                <div className="space-y-1 text-right">
-                  <div className="text-slate-400">Grand Total: <span className="text-amber-400 font-semibold">{formatRs(selectedInvoice.netTotal)}</span></div>
-                  <div className="text-slate-400">Date: <span className="text-slate-200">{selectedInvoice.date}</span></div>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="text-xs font-semibold uppercase text-slate-400 tracking-wider mb-2">Items Grid (Reduce Qty to Edit)</div>
-                <DataTable 
-                  columns={[
-                    { key: 'name', label: 'Item Name' },
-                    { key: 'originalQty', label: 'Invoiced Qty', render: (row) => `${row.originalQty} units` },
-                    { key: 'rate', label: 'Unit Rate', render: (row) => formatRs(row.rate) },
-                    { 
-                      key: 'action', 
-                      label: 'Modify Qty', 
-                      render: (row) => (
-                        <div className="flex items-center gap-2">
-                          <Input 
-                            type="number" 
-                            style={{ width: '90px', margin: 0 }} 
-                            min="0"
-                            max={row.originalQty}
-                            value={row.qty}
-                            onChange={(e) => handleQtyChange(row.productId, e.target.value, row.originalQty)}
-                          />
-                          <span className="text-xs text-slate-500">max: {row.originalQty}</span>
-                        </div>
-                      ) 
-                    }
-                  ]} 
-                  rows={editableItems} 
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
-                <Button variant="secondary" onClick={() => setSelectedInvoice(null)}>Discard</Button>
-                <Button onClick={handleSaveChanges} className="bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2">
-                  <Save className="w-4 h-4" /> Save Changes & Update Records
-                </Button>
-              </div>
-            </Card>
-          ) : (
-            <div className="h-full min-h-[340px] border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-center p-6 bg-slate-900/20">
-              <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center text-slate-500 mb-3">
-                <Search className="w-6 h-6" />
-              </div>
-              <h3 className="text-slate-300 font-medium mb-1">No Invoice Targeted</h3>
-              <p className="text-sm text-slate-500 max-w-sm">Enter a bill number on the left panel to fetch any cash or credit transaction invoice, alter items seamlessly, and recalculate financials.</p>
-            </div>
-          )}
-        </div>
+        )}
 
       </div>
     </PageShell>
