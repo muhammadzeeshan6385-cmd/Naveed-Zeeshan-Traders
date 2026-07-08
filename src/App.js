@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { LogOut, Sun, Moon, Search, RotateCcw } from 'lucide-react';
 import Login from './Login';
-import ProductReturnManager from './ProductReturnManager'; // Agar same folder me hai to path check kr lein
+import ProductReturnManager from './ProductReturnManager'; 
 import Products from './Products';
 import Purchase from './Purchase';
 import Sales from './Sales';
@@ -64,12 +64,14 @@ function App() {
   const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
 
   const stats = useMemo(() => {
+    // Sales array jab bhi change hoga (jaise ProductReturn se), ye function foran chalega
     const today = new Date().toISOString().split('T')[0];
     
     let totalSale = 0;
     let totalCost = 0;
     let todaySales = 0;
 
+    // Sales par loop chala kar naya total calculate kar rahe hain
     sales.forEach(s => {
       const net = Number(s.netTotal || 0);
       totalSale += net;
@@ -97,6 +99,21 @@ function App() {
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     
+    // Ledger Outstanding Calculation
+    let totalOutstandingFromLedger = 0;
+    customers.forEach(cust => {
+      const openingBal = Number(cust.openingBalance || 0);
+      const customerSales = sales
+        .filter(s => String(s.customer || '').trim().toLowerCase() === String(cust.name || '').trim().toLowerCase())
+        .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+        
+      const customerPayments = payments
+        .filter(p => String(p.customer || '').trim().toLowerCase() === String(cust.name || '').trim().toLowerCase())
+        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        
+      totalOutstandingFromLedger += (openingBal + customerSales - customerPayments);
+    });
+
     let netProfit = totalSale - totalCost - totalExpense;
 
     return { 
@@ -105,9 +122,9 @@ function App() {
       totalExpense, 
       profit: netProfit, 
       totalRecovery, 
-      outstanding: totalSale - totalRecovery 
+      outstanding: totalOutstandingFromLedger 
     };
-  }, [sales, expenses, payments, products]);
+  }, [sales, expenses, payments, products, customers]); // Yahan JSON.stringify(sales) add kiya hai taake deep update pakray
 
   const getStock = useCallback((productName) => {
     const target = String(productName || '').trim().toLowerCase();
@@ -153,14 +170,41 @@ function App() {
           <ProductReturnManager 
             sales={sales || []} 
             onReturnSuccess={(updatedBill) => {
-              // DYNAMIC UPDATE TRIGGER: Match bill id/invoice and mutate master local array data
+              const originalBill = sales.find(s => s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo);
+              
+              if (originalBill && originalBill.items && updatedBill.items) {
+                const updatedQtyMap = {};
+                updatedBill.items.forEach(item => {
+                  const itemId = item.productId || item.id;
+                  updatedQtyMap[itemId] = Number(item.qty || 0);
+                });
+
+                const refreshedProducts = products.map(p => {
+                  const invoiceItem = originalBill.items.find(i => (i.productId === p.id || i.id === p.id || i.name === p.name));
+                  if (invoiceItem) {
+                    const originalQty = Number(invoiceItem.qty || 0);
+                    const currentNewQty = updatedQtyMap[invoiceItem.productId || invoiceItem.id] ?? 0;
+                    const returnedQuantity = originalQty - currentNewQty;
+
+                    if (returnedQuantity > 0) {
+                      return {
+                        ...p,
+                        stock: Number(p.stock || 0) + returnedQuantity
+                      };
+                    }
+                  }
+                  return p;
+                });
+                setProducts(refreshedProducts);
+              }
+
               const refreshedSales = sales.map(s => {
                 if (s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo) {
                   return { ...s, ...updatedBill };
                 }
                 return s;
               });
-              setSales(refreshedSales);
+              setSales([...refreshedSales]);
             }} 
           />
         );
