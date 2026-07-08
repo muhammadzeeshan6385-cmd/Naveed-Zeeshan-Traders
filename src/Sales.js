@@ -202,7 +202,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
               { key: 'pcs_input', label: 'Piece', render: (row) => <Input type="number" style={{ width: '60px' }} value={row.qty} onChange={(e) => updateQty(row.id, e.target.value)} /> },
               { key: 'rate', label: 'Rate', render: (row) => formatRs(row.rate) },
               { key: 'total', label: 'Total', render: (row) => formatRs(row.total) },
-              { key: 'action', render: (row) => <button onClick={() => removeItem(row.id)}><Trash2 className="text-red-500" /></button> }
+              { key: 'action', render: (row) => <button onClick={() => removeItem(row.id)} className="p-1 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"><Trash2 className="text-red-500 w-4 h-4" /></button> }
             ]} rows={items} />
           </Card>
         </div>

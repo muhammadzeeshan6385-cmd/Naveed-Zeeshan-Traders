@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { LogOut, Sun, Moon, Search } from 'lucide-react';
+import { LogOut, Sun, Moon, Search, RotateCcw } from 'lucide-react';
 import Login from './Login';
+import ProductReturnManager from './ProductReturnManager'; // Agar same folder me hai to path check kr lein
 import Products from './Products';
 import Purchase from './Purchase';
 import Sales from './Sales';
@@ -147,6 +148,7 @@ function App() {
       case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} />;
       case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} />;
       case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} />;
+      case 'ProductReturn': return <ProductReturnManager sales={sales || []} onReturnSuccess={() => setSales([...sales])} />;
       case 'Recovery': return <Recovery title="Payment Recovery" payments={payments} setPayments={setPayments} customers={customers} sales={sales} cashData={cashData} setCashData={setCashData} />;
       case 'Khata': return <KhataLedger title="Account Ledger" customers={customers} sales={sales} payments={payments} />;
       case 'Expenses': return <Expenses title="Business Expenses" expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} />;
@@ -228,17 +230,30 @@ function App() {
                   </button>
                 )}
                 {item.id === 'Sales' && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('SearchBill')}
-                    className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
-                      activeTab === 'SearchBill'
-                        ? 'bg-emerald-600 text-white shadow-lg'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <Search size={18} /> Search Bill
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('SearchBill')}
+                      className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                        activeTab === 'SearchBill'
+                          ? 'bg-emerald-600 text-white shadow-lg'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <Search size={18} /> Search Bill
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('ProductReturn')}
+                      className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                        activeTab === 'ProductReturn'
+                          ? 'bg-emerald-600 text-white shadow-lg'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <RotateCcw size={18} /> Product Return
+                    </button>
+                  </>
                 )}
               </React.Fragment>
             ))}

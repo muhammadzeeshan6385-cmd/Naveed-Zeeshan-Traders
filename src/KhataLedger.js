@@ -1,3 +1,4 @@
+import ProductReturnManager from './ProductReturnManager'; // Agar same folder me hai to path check kr lein
 import React, { useMemo, useState, useRef } from 'react';
 import { Card, DataTable, PageShell } from './components/ui';
 import { formatRs, getCreditSalesTotal } from './utils/helpers';
@@ -13,10 +14,11 @@ import {
   RefreshCw, 
   UserCheck, 
   AlertCircle, 
-  FileText 
+  FileText,
+  RotateCcw
 } from 'lucide-react';
 
-const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
+const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }) => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -34,7 +36,11 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
       const totalPaid = payments
         .filter((p) => p.customer === customer.name)
         .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-      const balance = totalSales - totalPaid;
+      const totalReturned = returns
+        .filter((r) => (r.customer || r.customerName) === customer.name)
+        .reduce((sum, r) => sum + Number(r.refundAmount || r.netTotal || 0), 0);
+      
+      const balance = totalSales - totalPaid - totalReturned;
 
       if (balance > 0) {
         totalOutstanding += balance;
@@ -52,7 +58,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
     });
 
     return { totalOutstanding, totalRecoveredThisMonth, activeDebtorsCount };
-  }, [customers, sales, payments]);
+  }, [customers, sales, payments, returns]);
 
   // 2. Base Ledger Rows Mapping with Full Structural Safety
   const rows = useMemo(
@@ -63,7 +69,11 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
           const totalPaid = payments
             .filter((payment) => (payment.customer || payment.customerName) === customer.name)
             .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-          const balance = totalSales - totalPaid;
+          const totalReturned = returns
+            .filter((returnItem) => (returnItem.customer || returnItem.customerName) === customer.name)
+            .reduce((sum, returnItem) => sum + Number(returnItem.refundAmount || returnItem.netTotal || 0), 0);
+          
+          const balance = totalSales - totalPaid - totalReturned;
 
           return {
             id: customer.id,
@@ -73,6 +83,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             area: customer.area || 'Mailsi Mandi',
             totalSales,
             totalPaid,
+            totalReturned,
             balance,
             status: balance > 50000 ? 'High Risk' : balance > 0 ? 'Active' : 'Clear',
           };
@@ -89,7 +100,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
           if (filterType === 'clear') return matchesSearch && row.balance <= 0;
           return matchesSearch;
         }),
-    [customers, sales, payments, searchTerm, filterType]
+    [customers, sales, payments, returns, searchTerm, filterType]
   );
 
   // 3. Customer Detailed Date-wise Transaction Ledger History Logic
@@ -127,10 +138,21 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
         credit: Number(payment.amount || 0),
       }));
 
-    return [...customerSales, ...customerPayments].sort(
+    const customerReturns = returns
+      .filter((returnItem) => (returnItem.customer || returnItem.customerName) === selectedCustomer.name)
+      .map((returnItem) => ({
+        date: returnItem.date || new Date(returnItem.createdAt).toLocaleDateString('en-CA'),
+        type: 'Return',
+        reference: returnItem.returnNo || `RET-${returnItem.id}`,
+        description: 'Product Returned (Maal Wapsi Credit Adjustment)',
+        debit: 0,
+        credit: Number(returnItem.refundAmount || returnItem.netTotal || 0),
+      }));
+
+    return [...customerSales, ...customerPayments, ...customerReturns].sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
-  }, [selectedCustomer, sales, payments]);
+  }, [selectedCustomer, sales, payments, returns]);
 
   // 4. Standard Popup Window Print Engine - Rows Closed & Spacing Compacted
   const handlePrintLedger = (customer) => {
@@ -140,7 +162,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
       const uniqueName = new Date().getTime();
       const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=850,height=900');
 
-      const printHistory = sales
+      const invoiceHistory = sales
         .filter((sale) => (sale.customerName || sale.customer) === customer.name)
         .map((sale) => ({
           date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
@@ -148,17 +170,31 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
           reference: sale.invoiceNo || sale.billNo || `INV-${sale.id}`,
           debit: Number(sale.netTotal || sale.netAmount || 0),
           credit: 0,
-        })).concat(
-          payments
-            .filter((payment) => payment.customer === customer.name)
-            .map((payment) => ({
-              date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
-              type: 'Recovery',
-              reference: payment.receiptNo || `REC-${payment.id}`,
-              debit: 0,
-              credit: Number(payment.amount || 0),
-            }))
-        ).sort((a, b) => new Date(a.date) - new Date(b.date));
+        }));
+
+      const recoveryHistory = payments
+        .filter((payment) => payment.customer === customer.name)
+        .map((payment) => ({
+          date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
+          type: 'Recovery',
+          reference: payment.receiptNo || `REC-${payment.id}`,
+          debit: 0,
+          credit: Number(payment.amount || 0),
+        }));
+
+      const returnHistory = returns
+        .filter((returnItem) => (returnItem.customer || returnItem.customerName) === customer.name)
+        .map((returnItem) => ({
+          date: returnItem.date || new Date(returnItem.createdAt).toLocaleDateString('en-CA'),
+          type: 'Return',
+          reference: returnItem.returnNo || `RET-${returnItem.id}`,
+          debit: 0,
+          credit: Number(returnItem.refundAmount || returnItem.netTotal || 0),
+        }));
+
+      const printHistory = [...invoiceHistory, ...recoveryHistory, ...returnHistory].sort(
+        (a, b) => new Date(a.date) - new Date(b.date)
+      );
 
       printWindow.document.write(`
         <html>
@@ -206,7 +242,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                   <th>Transaction Type</th>
                   <th>Ref Doc No.</th>
                   <th class="text-right">Debit (Maal Sale)</th>
-                  <th class="text-right">Credit (Vasooli Received)</th>
+                  <th class="text-right">Credit (Vasooli/Returns)</th>
                   <th class="text-right">Running Net Balance</th>
                 </tr>
               </thead>
@@ -218,10 +254,14 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                       let cumulativeSum = 0;
                       return printHistory.map(item => {
                         cumulativeSum += (item.debit - item.credit);
+                        let displayType = 'Credit Invoice';
+                        if (item.type === 'Recovery') displayType = 'Market Recovery';
+                        if (item.type === 'Return') displayType = 'Product Return';
+
                         return `
                           <tr>
                             <td>${item.date}</td>
-                            <td>${item.type === 'Invoice' ? 'Credit Invoice' : 'Market Recovery'}</td>
+                            <td>${displayType}</td>
                             <td style="font-weight:500;">${item.reference}</td>
                             <td class="text-right">${item.debit > 0 ? 'Rs. ' + item.debit : '-'}</td>
                             <td class="text-right">${item.credit > 0 ? 'Rs. ' + item.credit : '-'}</td>
@@ -235,7 +275,8 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             </table>
             <div class="summary">
               Total Credit Khata Log: Rs. ${customer.totalSales}<br />
-              Total Outstanding Recovery Log: Rs. ${customer.totalPaid}<br />
+              Total Recovery Payments Log: Rs. ${customer.totalPaid}<br />
+              ${customer.totalReturned > 0 ? `Total Product Returns Log: Rs. ${customer.totalReturned}<br />` : ''}
               <span style="font-size: 14px; color: #b45309; border-top: 2px double #222; padding-top: 2px; display: inline-block; margin-top: 2px;">
                 Net Outstanding Arrears: Rs. ${customer.balance}
               </span>
@@ -259,8 +300,8 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
   };
 
   const exportToCSV = () => {
-    const headers = ['Customer Name', 'Shop Name', 'Total Sales', 'Total Paid', 'Current Balance\n'];
-    const csvRows = rows.map(r => `"${r.name}","${r.shopName}",${r.totalSales},${r.totalPaid},${r.balance}\n`);
+    const headers = ['Customer Name', 'Shop Name', 'Total Sales', 'Total Paid', 'Total Returned', 'Current Balance\n'];
+    const csvRows = rows.map(r => `"${r.name}","${r.shopName}",${r.totalSales},${r.totalPaid},${r.totalReturned || 0},${r.balance}\n`);
     const blob = new Blob([headers.join(','), ...csvRows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -396,7 +437,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                     <th className="py-3">Reference Ref</th>
                     <th className="py-3">Narration Description</th>
                     <th className="py-3 text-right">Debit (Maal)</th>
-                    <th className="py-3 text-right">Credit (Vasooli)</th>
+                    <th className="py-3 text-right">Credit (Vasooli/Return)</th>
                     <th className="py-3 text-right pr-2">Cumulative Bal</th>
                   </tr>
                 </thead>
@@ -416,9 +457,9 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
                           <tr key={idx} className="hover:bg-slate-900/30 transition">
                             <td className="py-3 pl-2 text-slate-400">{item.date}</td>
                             <td className="py-3">
-                              <span className={`inline-flex items-center gap-1 font-bold ${item.type === 'Invoice' ? 'text-rose-400' : 'text-emerald-400'}`}>
-                                {item.type === 'Invoice' ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-                                {item.type === 'Invoice' ? 'Credit Invoice' : 'Recovery Received'}
+                              <span className={`inline-flex items-center gap-1 font-bold ${item.type === 'Invoice' ? 'text-rose-400' : item.type === 'Return' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                {item.type === 'Invoice' ? <ArrowUpRight size={11} /> : item.type === 'Return' ? <RotateCcw size={11} /> : <ArrowDownRight size={11} />}
+                                {item.type === 'Invoice' ? 'Credit Invoice' : item.type === 'Return' ? 'Product Return' : 'Recovery Received'}
                               </span>
                             </td>
                             <td className="py-3 font-semibold text-slate-300">{item.reference}</td>
@@ -436,9 +477,12 @@ const KhataLedger = ({ customers = [], sales = [], payments = [] }) => {
             </div>
 
             <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 border-t border-slate-900 mt-4 pt-4 text-xs font-bold text-slate-400">
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 <div>Aggregate Invoiced Dr: <span className="text-rose-300 font-bold">{formatRs(selectedCustomer.totalSales)}</span></div>
                 <div>Aggregate Recovered Cr: <span className="text-emerald-300 font-bold">{formatRs(selectedCustomer.totalPaid)}</span></div>
+                {selectedCustomer.totalReturned > 0 && (
+                  <div>Aggregate Returned Cr: <span className="text-amber-300 font-bold">{formatRs(selectedCustomer.totalReturned)}</span></div>
+                )}
               </div>
               <div className="text-xs bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
                 Net Outstanding Risk Balance: <span className="text-amber-400 font-black text-sm ml-1">{formatRs(selectedCustomer.balance)}</span>
