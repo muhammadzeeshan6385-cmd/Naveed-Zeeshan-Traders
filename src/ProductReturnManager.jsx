@@ -3,29 +3,29 @@ import { Search, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { formatRs, todayISO, generateId } from './utils/helpers';
 
-const ProductReturn = ({ sales, setSales, products, setProducts, customers, setCustomers, cashData, setCashData }) => {
+const ProductReturn = ({ sales = [], setSales, products = [], setProducts, customers = [], setCustomers, cashData = [], setCashData }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const [editableItems, setEditableItems] = useState([]); // Array of updated items
+  const [editableItems, setEditableItems] = useState([]); 
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // Filter bills in Directory tray only when user inputs parameters
+  // Bill search logic (Dono Cash aur Credit bills support karta hai)
   const matchingInvoices = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return [];
     
     return sales.filter(sale => 
-      sale.invoiceNo.toLowerCase().includes(query) || 
-      sale.customer.toLowerCase().includes(query)
+      sale?.invoiceNo?.toLowerCase().includes(query) || 
+      sale?.customer?.toLowerCase().includes(query)
     );
   }, [sales, searchQuery]);
 
   const handleSelectInvoice = (invoice) => {
     setSelectedInvoice(invoice);
-    // Deep copy items so we can edit quantities safely without breaking master state early
-    setEditableItems(invoice.items.map(item => ({
+    // Baseline items set karna taake original aur new quantity ka difference nikal sakein
+    setEditableItems((invoice.items || []).map(item => ({
       ...item,
-      originalQty: item.qty // Keep a baseline to find the exact difference
+      originalQty: item.qty
     })));
     setStatusMessage(null);
   };
@@ -35,7 +35,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
     setEditableItems(prevItems =>
       prevItems.map(item => 
         item.productId === productId 
-          ? { ...item, qty: qty, total: qty * item.rate }
+          ? { ...item, qty: qty, total: qty * Number(item.rate) }
           : item
       )
     );
@@ -46,9 +46,9 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
 
     const currentDate = todayISO();
     let totalReductionAmount = 0;
-    const stockAdjustments = {}; // Track inventory parts changes
+    const stockAdjustments = {};
 
-    // Calculate variations between baseline and new quantity configurations
+    // Dono quantities ka farq nikalna
     editableItems.forEach(editedItem => {
       const difference = editedItem.originalQty - editedItem.qty;
       if (difference > 0) {
@@ -58,77 +58,82 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
     });
 
     if (totalReductionAmount === 0) {
-      window.alert('No quantities were reduced. Change item counts to update the invoice.');
+      window.alert('No items were reduced. Change any quantity to update the bill.');
       return;
     }
 
-    // 1. Revert Inventory Stock (Wapas stock mein add karein jitni items kam ki hain)
-    setProducts(prevProducts => 
-      prevProducts.map(prod => {
-        const returnQty = stockAdjustments[prod.id] || 0;
-        return returnQty > 0 
-          ? { ...prod, stock: (Number(prod.stock) || 0) + returnQty }
-          : prod;
-      })
-    );
-
-    // 2. Adjust Financial Accounts (Cash Back or Khata Balance Reversal)
-    if (selectedInvoice.paymentType === 'Cash') {
-      // Cash Invoice Logic: Total Recovery + Cash Invoice - Total Exp = Cash in Hand
-      setCashData(prevCash => [
-        ...prevCash,
-        {
-          id: generateId(),
-          date: currentDate,
-          account: 'Cash',
-          amount: totalReductionAmount,
-          description: `Bill Edit Refund - Invoice: ${selectedInvoice.invoiceNo} (${selectedInvoice.customer})`,
-          type: 'expense' // Outward cash flow balance correction
-        }
-      ]);
-    } else {
-      // Credit Invoice Logic: Subtract from customer's outstanding dynamic balance ledger parameters
-      setCustomers(prevCustomers =>
-        prevCustomers.map(cust => {
-          if (cust.name === selectedInvoice.customer) {
-            return { ...cust, balance: (Number(cust.balance) || 0) - totalReductionAmount };
-          }
-          return cust;
+    // 1. Stock Updates (Jitni items kam keen wo stock mein wapas jama ho jayengi)
+    if (setProducts) {
+      setProducts(prevProducts => 
+        prevProducts.map(prod => {
+          const returnQty = stockAdjustments[prod.id] || 0;
+          return returnQty > 0 
+            ? { ...prod, stock: (Number(prod.stock) || 0) + returnQty }
+            : prod;
         })
       );
     }
 
-    // 3. Mutate Master Sales Record Matrix Entries
-    setSales(prevSales =>
-      prevSales.map(sale => {
-        if (sale.id === selectedInvoice.id) {
-          // Keep only items that have a final quantity greater than 0
-          const finalFilteredItems = editableItems
-            .map(({ originalQty, ...rest }) => rest) // Strip helper parameter cleanly
-            .filter(item => item.qty > 0);
+    // 2. Financial Impacts (Cash in Hand aur Ledger Balances)
+    if (selectedInvoice.paymentType === 'Cash') {
+      if (setCashData) {
+        setCashData(prevCash => [
+          ...prevCash,
+          {
+            id: generateId(),
+            date: currentDate,
+            account: 'Cash',
+            amount: totalReductionAmount,
+            description: `Bill Edit Return - Invoice: ${selectedInvoice.invoiceNo} (${selectedInvoice.customer})`,
+            type: 'expense' // Cash out configuration
+          }
+        ]);
+      }
+    } else {
+      if (setCustomers) {
+        setCustomers(prevCustomers =>
+          prevCustomers.map(cust => {
+            if (cust.name === selectedInvoice.customer) {
+              return { ...cust, balance: (Number(cust.balance) || 0) - totalReductionAmount };
+            }
+            return cust;
+          })
+        );
+      }
+    }
 
-          const newGross = finalFilteredItems.reduce((sum, i) => sum + i.total, 0);
-          const discountPercent = sale.discountPercent || 0;
-          const newDiscountAmount = (newGross * discountPercent) / 100;
+    // 3. Master Sales Array Update (Bill update or delete matching logic)
+    if (setSales) {
+      setSales(prevSales =>
+        prevSales.map(sale => {
+          if (sale.id === selectedInvoice.id) {
+            const finalFilteredItems = editableItems
+              .map(({ originalQty, ...rest }) => rest)
+              .filter(item => item.qty > 0);
 
-          return {
-            ...sale,
-            items: finalFilteredItems,
-            grossTotal: newGross,
-            discount: newDiscountAmount,
-            netTotal: newGross - newDiscountAmount
-          };
-        }
-        return sale;
-      }).filter(sale => sale.items.length > 0) // Delete complete bill if all items are turned to 0
-    );
+            const newGross = finalFilteredItems.reduce((sum, i) => sum + i.total, 0);
+            const discountPercent = sale.discountPercent || 0;
+            const newDiscountAmount = (newGross * discountPercent) / 100;
+
+            return {
+              ...sale,
+              items: finalFilteredItems,
+              grossTotal: newGross,
+              discount: newDiscountAmount,
+              netTotal: newGross - newDiscountAmount
+            };
+          }
+          return sale;
+        }).filter(sale => sale.items.length > 0)
+      );
+    }
 
     setStatusMessage({
       type: 'success',
-      text: `Invoice ${selectedInvoice.invoiceNo} updated successfully! Rs. ${formatRs(totalReductionAmount)} adjusted across records.`
+      text: `Bill ${selectedInvoice.invoiceNo} successfully updated! Rs. ${formatRs(totalReductionAmount)} balance adjusted.`
     });
 
-    // Reset workflow properties
+    // Form reset parameters
     setSelectedInvoice(null);
     setEditableItems([]);
     setSearchQuery('');
@@ -138,13 +143,13 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
     <PageShell title="Product Return & Invoice Modification Console" className="py-2">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         
-        {/* Left Section: Search Directory Tray */}
+        {/* Left Section: Search Directory */}
         <div className="lg:col-span-1 space-y-4">
           <Card title="Find Invoice">
             <div className="mb-2">
               <Input 
-                label="Enter Invoice Bill No or Customer Name..." 
-                placeholder="Type 0001 or Customer name..." 
+                label="Search Invoice No / Customer Name" 
+                placeholder="Type Invoice No or Name..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -153,13 +158,13 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
             <div className="space-y-2 max-h-[420px] overflow-y-auto pt-2">
               {!searchQuery && (
                 <div className="p-4 text-xs text-center text-slate-500 bg-slate-900/20 rounded-lg border border-dashed border-slate-800">
-                  Search system ready. Input bill specifications above to initiate real-time editing.
+                  Search system ready. Enter bill parameters above to search.
                 </div>
               )}
 
               {matchingInvoices.length === 0 && searchQuery && (
                 <div className="p-3 text-sm text-gray-400 bg-slate-900/40 rounded-lg flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500" /> No record matched.
+                  <AlertCircle className="w-4 h-4 text-amber-500" /> No transaction found.
                 </div>
               )}
               
@@ -199,23 +204,23 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
           )}
         </div>
 
-        {/* Right Section: Interactive Invoice Editor */}
+        {/* Right Section: Edit Console */}
         <div className="lg:col-span-2">
           {selectedInvoice ? (
             <Card title={`Active Invoice Editor Panel (${selectedInvoice.invoiceNo})`}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-slate-900/40 p-3 rounded-lg border border-slate-800 text-sm">
                 <div className="space-y-1">
-                  <div className="text-slate-400">Customer Target: <span className="text-slate-200 font-semibold">{selectedInvoice.customer}</span></div>
-                  <div className="text-slate-400">Account Strategy: <span className="text-slate-200 font-semibold">{selectedInvoice.paymentType} Mode</span></div>
+                  <div className="text-slate-400">Customer Name: <span className="text-slate-200 font-semibold">{selectedInvoice.customer}</span></div>
+                  <div className="text-slate-400">Payment Type: <span className="text-slate-200 font-semibold">{selectedInvoice.paymentType}</span></div>
                 </div>
                 <div className="space-y-1 text-right">
-                  <div className="text-slate-400">Original Total: <span className="text-amber-400 font-semibold">{formatRs(selectedInvoice.netTotal)}</span></div>
-                  <div className="text-slate-400">Date Logged: <span className="text-slate-200">{selectedInvoice.date}</span></div>
+                  <div className="text-slate-400">Grand Total: <span className="text-amber-400 font-semibold">{formatRs(selectedInvoice.netTotal)}</span></div>
+                  <div className="text-slate-400">Date: <span className="text-slate-200">{selectedInvoice.date}</span></div>
                 </div>
               </div>
 
               <div className="mb-4">
-                <div className="text-xs font-semibold uppercase text-slate-400 tracking-wider mb-2">Modify Item Quantities Below</div>
+                <div className="text-xs font-semibold uppercase text-slate-400 tracking-wider mb-2">Items Grid (Reduce Qty to Edit)</div>
                 <DataTable 
                   columns={[
                     { key: 'name', label: 'Item Name' },
@@ -223,7 +228,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
                     { key: 'rate', label: 'Unit Rate', render: (row) => formatRs(row.rate) },
                     { 
                       key: 'action', 
-                      label: 'Adjusted Qty', 
+                      label: 'Modify Qty', 
                       render: (row) => (
                         <div className="flex items-center gap-2">
                           <Input 
@@ -232,7 +237,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
                             min="0"
                             max={row.originalQty}
                             value={row.qty}
-                            onChange={(e) => handleQtyChange(row.productId, e.target.value, row.originalMax || row.originalQty)}
+                            onChange={(e) => handleQtyChange(row.productId, e.target.value, row.originalQty)}
                           />
                           <span className="text-xs text-slate-500">max: {row.originalQty}</span>
                         </div>
@@ -255,7 +260,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
               <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center text-slate-500 mb-3">
                 <Search className="w-6 h-6" />
               </div>
-              <h3 className="text-slate-300 font-medium mb-1">No Target Selected</h3>
+              <h3 className="text-slate-300 font-medium mb-1">No Invoice Targeted</h3>
               <p className="text-sm text-slate-500 max-w-sm">Enter a bill number on the left panel to fetch any cash or credit transaction invoice, alter items seamlessly, and recalculate financials.</p>
             </div>
           )}
