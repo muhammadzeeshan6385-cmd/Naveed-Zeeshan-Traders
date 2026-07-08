@@ -228,7 +228,7 @@ const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts
                 onClick={commitInvoiceChanges}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
               >
-                <Save className="w-4 h-4" /> Save Changes & Update Records
+                <Save className="w-4 h-4" /> Save
               </button>
             </div>
           </Card>
