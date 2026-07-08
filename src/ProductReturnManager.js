@@ -8,6 +8,7 @@ const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts
   const [selectedSale, setSelectedSale] = useState(null);
   const [editableItems, setEditableItems] = useState([]);
   const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   // 1. Bill Number se accurate calculation search filtering query
   const handleSearchBill = () => {
@@ -47,8 +48,8 @@ const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts
     );
   };
 
-  // 3. Complete structural pipeline logic sync updates across all systems
-  const commitInvoiceChanges = () => {
+  // 3. Complete structural pipeline logic sync updates across all systems AND DATABASE
+  const commitInvoiceChanges = async () => {
     if (!selectedSale) return;
 
     let totalRefundValue = 0;
@@ -69,78 +70,117 @@ const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts
 
     const logTimestamp = todayISO();
 
-    // A: Realtime Reverse Inventory Adjustment Matrix Updates
-    if (setProducts) {
-      setProducts((currentInventory) =>
-        currentInventory.map((product) => {
-          const recoveryCount = inventoryPayload[product.id] || 0;
-          return recoveryCount > 0
-            ? { ...product, stock: (Number(product.stock) || 0) + recoveryCount }
-            : product;
-        })
-      );
-    }
+    // Data structure map karna backend pipeline ke liye
+    const finalAdjustedItems = editableItems
+      .map(({ originalQty, ...cleanObject }) => cleanObject)
+      .filter((item) => item.qty > 0);
 
-    // B: Dynamic Financial Settlement Protocols (Cash in Hand vs Customer Balance Ledger)
-    if (selectedSale.paymentType === 'Cash') {
-      if (setCashData) {
-        setCashData((currentCashRegistry) => [
-          ...currentCashRegistry,
-          {
-            id: generateId(),
-            date: logTimestamp,
-            account: 'Cash',
-            amount: totalRefundValue,
-            description: `Invoice Correction Outflow (Bill Ref: ${selectedSale.invoiceNo})`,
-            type: 'expense',
-          },
-        ]);
+    const rawGrossTotal = finalAdjustedItems.reduce((sum, item) => sum + item.total, 0);
+    const baselineDiscountPercent = selectedSale.discountPercent || 0;
+    const reevaluatedDiscount = (rawGrossTotal * baselineDiscountPercent) / 100;
+    const finalNetTotal = rawGrossTotal - reevaluatedDiscount;
+
+    const updatedInvoicePayload = {
+      id: selectedSale.id,
+      items: finalAdjustedItems,
+      grossTotal: rawGrossTotal,
+      discount: reevaluatedDiscount,
+      netTotal: finalNetTotal,
+      refundAmount: totalRefundValue,
+      stockAdjustments: inventoryPayload,
+      paymentType: selectedSale.paymentType,
+      customer: selectedSale.customer,
+      date: logTimestamp
+    };
+
+    try {
+      setLoading(true);
+
+      // --- CRITICAL DATABASE SYNC API CALL ---
+      // Yeh request aapke database (Prisma/PostgreSQL) mein bill permanently save karegi taake Search Bill me update ho sake
+      const response = await fetch('/api/sales/update-bill', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedInvoicePayload),
+      });
+
+      if (!response.ok) {
+        throw new Error('Database updates failed to commit.');
       }
-    } else {
-      if (setCustomers) {
-        setCustomers((currentClientsData) =>
-          currentClientsData.map((client) => {
-            if (client.name === selectedSale.customer) {
-              return { ...client, balance: (Number(client.balance) || 0) - totalRefundValue };
-            }
-            return client;
+
+      // 4. Local States fallback updates (Sirf UI sync smooth rakhne ke liye)
+      // A: Realtime Reverse Inventory Adjustment Matrix Updates
+      if (setProducts) {
+        setProducts((currentInventory) =>
+          currentInventory.map((product) => {
+            const recoveryCount = inventoryPayload[product.id] || 0;
+            return recoveryCount > 0
+              ? { ...product, stock: (Number(product.stock) || 0) + recoveryCount }
+              : product;
           })
         );
       }
+
+      // B: Dynamic Financial Settlement Protocols (Cash vs Khata Balance)
+      if (selectedSale.paymentType === 'Cash') {
+        if (setCashData) {
+          setCashData((currentCashRegistry) => [
+            ...currentCashRegistry,
+            {
+              id: generateId(),
+              date: logTimestamp,
+              account: 'Cash',
+              amount: totalRefundValue,
+              description: `Invoice Correction Outflow (Bill Ref: ${selectedSale.invoiceNo})`,
+              type: 'expense',
+            },
+          ]);
+        }
+      } else {
+        if (setCustomers) {
+          currentClientsData =>
+            currentClientsData.map((client) => {
+              if (client.name === selectedSale.customer) {
+                return { ...client, balance: (Number(client.balance) || 0) - totalRefundValue };
+              }
+              return client;
+            })
+        }
+      }
+
+      // C: In-Place Mutation Schema over master sales table metrics
+      if (setSales) {
+        setSales((currentSalesLedger) =>
+          currentSalesLedger
+            .map((bill) => {
+              if (bill.id === selectedSale.id) {
+                return {
+                  ...bill,
+                  items: finalAdjustedItems,
+                  grossTotal: rawGrossTotal,
+                  discount: reevaluatedDiscount,
+                  netTotal: finalNetTotal,
+                };
+              }
+              return bill;
+            })
+            .filter((bill) => bill.items.length > 0)
+        );
+      }
+
+      alert(`Bill ${selectedSale.invoiceNo} successfully updated in database and synchronized everywhere!`);
+      setSelectedSale(null);
+      setSearchTerm('');
+      setEditableItems([]);
+
+    } catch (err) {
+      console.error(err);
+      alert('Error updating database. Make sure your server / api endpoint is up.');
+    } finally {
+      setLoading(false);
     }
-
-    // C: In-Place Mutation Schema over master sales table metrics
-    if (setSales) {
-      setSales((currentSalesLedger) =>
-        currentSalesLedger
-          .map((bill) => {
-            if (bill.id === selectedSale.id) {
-              const adjustedProductsList = editableItems
-                .map(({ originalQty, ...cleanObject }) => cleanObject)
-                .filter((item) => item.qty > 0);
-
-              const rawGrossTotal = adjustedProductsList.reduce((sum, item) => sum + item.total, 0);
-              const baselineDiscountPercent = bill.discountPercent || 0;
-              const reevaluatedDiscount = (rawGrossTotal * baselineDiscountPercent) / 100;
-
-              return {
-                ...bill,
-                items: adjustedProductsList,
-                grossTotal: rawGrossTotal,
-                discount: reevaluatedDiscount,
-                netTotal: rawGrossTotal - reevaluatedDiscount,
-              };
-            }
-            return bill;
-          })
-          .filter((bill) => bill.items.length > 0)
-      );
-    }
-
-    alert(`Bill ${selectedSale.invoiceNo} successfully updated! System synced across variables.`);
-    setSelectedSale(null);
-    setSearchTerm('');
-    setEditableItems([]);
   };
 
   return (
@@ -226,9 +266,10 @@ const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts
             <div className="flex justify-end pt-3 border-t border-slate-800">
               <button
                 onClick={commitInvoiceChanges}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+                disabled={loading}
+                className={`${loading ? 'bg-slate-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-medium text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors`}
               >
-                <Save className="w-4 h-4" /> Save
+                <Save className="w-4 h-4" /> {loading ? 'Saving to Database...' : 'Save Changes & Update Records'}
               </button>
             </div>
           </Card>
