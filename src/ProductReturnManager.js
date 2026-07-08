@@ -11,7 +11,7 @@ import {
   Calendar 
 } from 'lucide-react';
 
-const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts, customers = [], setCustomers, cashData = [], setCashData }) => {
+const ProductReturnManager = ({ sales = [], onReturnSuccess }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSale, setSelectedSale] = useState(null);
   const [returnQuantities, setReturnQuantities] = useState({});
@@ -70,7 +70,18 @@ const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts
 
       const currentTimestamp = todayISO();
 
-      // Setup payload structure for DB pipeline transmission
+      // Recalculate bill status before syncing with state pipeline
+      const updatedItems = selectedSale.items.map(item => {
+        const rQty = Number(returnQuantities[item.productId || item.id] || 0);
+        const newQty = Math.max(0, item.qty - rQty);
+        return { ...item, qty: newQty, total: newQty * Number(item.rate) };
+      }).filter(i => i.qty > 0);
+
+      const newGross = updatedItems.reduce((sum, i) => sum + i.total, 0);
+      const discPercent = selectedSale.discountPercent || 0;
+      const newDiscAmount = (newGross * discPercent) / 100;
+      const newNetTotal = newGross - newDiscAmount;
+
       const updatePayload = {
         id: selectedSale.id,
         invoiceNo: selectedSale.invoiceNo,
@@ -79,97 +90,43 @@ const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts
         date: currentTimestamp,
         paymentType: selectedSale.paymentType,
         customer: selectedSale.customer,
-        items: selectedSale.items.map(item => {
-          const rQty = Number(returnQuantities[item.productId || item.id] || 0);
-          const newQty = Math.max(0, item.qty - rQty);
-          return {
-            ...item,
-            qty: newQty,
-            total: newQty * Number(item.rate)
-          };
-        }).filter(i => i.qty > 0)
+        items: updatedItems,
+        grossTotal: newGross,
+        discount: newDiscAmount,
+        netTotal: newNetTotal
       };
 
-      // Backend Prisma Pipeline connection
+      // 1. Database sync pipeline hit
       const response = await fetch('/api/sales/update-bill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatePayload),
       });
 
-      // 1. Update Master Inventory logs
-      if (setProducts) {
-        setProducts(prevProducts => 
-          prevProducts.map(p => {
-            const returnedVolume = stockUpdates[p.id] || 0;
-            return returnedVolume > 0 ? { ...p, stock: (Number(p.stock) || 0) + returnedVolume } : p;
-          })
-        );
+      if (!response.ok) {
+        throw new Error('Database server side update pipeline rejected the request.');
       }
 
-      // 2. Adjust financial layers (Cash flow registry vs Customer Khata balances)
-      if (selectedSale.paymentType === 'Cash') {
-        if (setCashData) {
-          setCashData(prevCash => [
-            ...prevCash,
-            {
-              id: generateId(),
-              date: currentTimestamp,
-              account: 'Cash',
-              amount: totalRefundAmount,
-              description: `Product Return Outflow (Invoice Ref: ${selectedSale.invoiceNo})`,
-              type: 'expense'
-            }
-          ]);
-        }
-      } else {
-        if (setCustomers) {
-          setCustomers(prevCustomers => 
-            prevCustomers.map(c => {
-              if (c.name === selectedSale.customer || c.id === selectedSale.customerId) {
-                return { ...c, balance: (Number(c.balance) || 0) - totalRefundAmount };
-              }
-              return c;
-            })
-          );
-        }
+      // 2. TRIGGER STATE REFRESH FOR SEARCH BILL MODULE
+      // Yeh callback upar main component me sales array ko fresh data se mutates krti hai
+      if (onReturnSuccess) {
+        onReturnSuccess({
+          id: selectedSale.id,
+          invoiceNo: selectedSale.invoiceNo,
+          items: updatedItems,
+          grossTotal: newGross,
+          discount: newDiscAmount,
+          netTotal: newNetTotal
+        });
       }
 
-      // 3. Mutate master sales tracking array block to instantly sync with Search Bill
-      if (setSales) {
-        setSales(prevSales => 
-          prevSales.map(sale => {
-            if (sale.id === selectedSale.id || sale.invoiceNo === selectedSale.invoiceNo) {
-              const updatedItems = sale.items.map(item => {
-                const rQty = Number(returnQuantities[item.productId || item.id] || 0);
-                const newQty = Math.max(0, item.qty - rQty);
-                return { ...item, qty: newQty, total: newQty * Number(item.rate) };
-              }).filter(i => i.qty > 0);
-
-              const newGross = updatedItems.reduce((sum, i) => sum + i.total, 0);
-              const discPercent = sale.discountPercent || 0;
-              const newDiscAmount = (newGross * discPercent) / 100;
-
-              return {
-                ...sale,
-                items: updatedItems,
-                grossTotal: newGross,
-                discount: newDiscAmount,
-                netTotal: newGross - newDiscAmount
-              };
-            }
-            return sale;
-          }).filter(sale => sale.items.length > 0)
-        );
-      }
-
-      setMessage({ type: 'success', text: `Return processed successfully. Rs. ${formatRs(totalRefundAmount)} adjusted.` });
+      setMessage({ type: 'success', text: `Return processed successfully. Rs. ${formatRs(totalRefundAmount)} synchronized.` });
       setReturnQuantities({});
       setSelectedSale(null);
 
     } catch (err) {
       console.error(err);
-      setMessage({ type: 'error', text: 'Server integration pathway exception error.' });
+      setMessage({ type: 'error', text: 'Server dynamic integration pathway error occurred.' });
     } finally {
       setIsSubmitting(false);
     }
