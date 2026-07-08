@@ -10,10 +10,11 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
   const [returnReason, setReturnReason] = useState('Market Stock Return / Replacement');
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // Search logic: Filter records by Invoice No or Customer Name (Cash + Credit BOTH included)
+  // Simple Clean Filter: Only query when user types something to avoid dense screens
   const matchingInvoices = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase().trim();
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return []; // Input khali hone par directory khali rahegi
+    
     return sales.filter(sale => 
       sale.invoiceNo.toLowerCase().includes(query) || 
       sale.customer.toLowerCase().includes(query)
@@ -38,7 +39,6 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
   const handleExecuteReturn = () => {
     if (!selectedInvoice) return;
 
-    // Check if any item has been assigned a return quantity
     const hasItemsToReturn = Object.values(returnQuantities).some(qty => qty > 0);
     if (!hasItemsToReturn) {
       window.alert('Please specify at least 1 item quantity to return.');
@@ -48,12 +48,11 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
     const currentDate = todayISO();
     let dynamicReturnTotal = 0;
 
-    // 1. Update Product Inventory Stock
+    // 1. Revert Inventory Stock Parameters Safely
     setProducts(prevProducts => 
       prevProducts.map(prod => {
         const returnQty = returnQuantities[prod.id] || 0;
         if (returnQty > 0) {
-          // Calculate running value based on rate in invoice
           const invoiceItem = selectedInvoice.items.find(i => i.productId === prod.id);
           if (invoiceItem) {
             dynamicReturnTotal += returnQty * Number(invoiceItem.rate);
@@ -64,7 +63,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
       })
     );
 
-    // 2. Adjust Financial Account (Cash Back or Ledger Credit Reversal)
+    // 2. Adjust Financial Flow Based on Account Payment Modality
     if (selectedInvoice.paymentType === 'Cash') {
       setCashData(prevCash => [
         ...prevCash,
@@ -74,11 +73,10 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
           account: 'Cash',
           amount: dynamicReturnTotal,
           description: `Product Return Restock - Invoice: ${selectedInvoice.invoiceNo} (${selectedInvoice.customer})`,
-          type: 'expense' // Cash out to walk-in customer
+          type: 'expense'
         }
       ]);
     } else {
-      // Reversal adjustment inside Khata Profile / Customer balances parameters
       setCustomers(prevCustomers =>
         prevCustomers.map(cust => {
           if (cust.name === selectedInvoice.customer) {
@@ -89,7 +87,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
       );
     }
 
-    // 3. Update Invoice item array states safely
+    // 3. Mutate Sale Records Entries Array
     setSales(prevSales =>
       prevSales.map(sale => {
         if (sale.id === selectedInvoice.id) {
@@ -111,7 +109,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
           };
         }
         return sale;
-      }).filter(sale => sale.items.length > 0) // Remove invoice cleanly if everything is returned
+      }).filter(sale => sale.items.length > 0)
     );
 
     setStatusMessage({
@@ -119,7 +117,6 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
       text: `Return processed! Rs. ${formatRs(dynamicReturnTotal)} adjusted for ${selectedInvoice.customer}.`
     });
 
-    // Reset Form parameters cleanly
     setSelectedInvoice(null);
     setReturnQuantities({});
     setSearchQuery('');
@@ -129,25 +126,34 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
     <PageShell title="Product Return & Reverse Logistics" className="py-2">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         
-        {/* Left Control Column: Search Bar & Match Results */}
+        {/* Left Section: Input Query & Search Feed */}
         <div className="lg:col-span-1 space-y-4">
           <Card title="Find Invoice">
-            <div className="relative mb-3">
+            <div className="mb-2">
               <Input 
-                label="Search Invoice No / Customer Name" 
-                placeholder="e.g. 0002 or Naveed Iqbal..." 
+                label="Enter Invoice Bill No or Customer Name..." 
+                placeholder="Type name or number to search..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pt-2">
+              {/* State when user has not typed anything */}
+              {!searchQuery && (
+                <div className="p-4 text-xs text-center text-slate-500 bg-slate-900/20 rounded-lg border border-dashed border-slate-800">
+                  Search panel active. Type billing parameters above to instantly fetch records.
+                </div>
+              )}
+
+              {/* State when user typed something but no record matches */}
               {matchingInvoices.length === 0 && searchQuery && (
                 <div className="p-3 text-sm text-gray-400 bg-slate-900/40 rounded-lg flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500" /> No transaction found.
+                  <AlertCircle className="w-4 h-4 text-amber-500" /> No record matched.
                 </div>
               )}
               
+              {/* Populated Search Results */}
               {matchingInvoices.map((invoice) => (
                 <div 
                   key={invoice.id}
@@ -177,16 +183,14 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
           </Card>
 
           {statusMessage && (
-            <div className={`p-4 rounded-lg flex items-start gap-3 border ${
-              statusMessage.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200' : 'bg-red-950/40 border-red-500/30 text-red-200'
-            }`}>
+            <div className="p-4 rounded-lg flex items-start gap-3 border bg-emerald-950/40 border-emerald-500/30 text-emerald-200">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
               <div className="text-sm font-medium">{statusMessage.text}</div>
             </div>
           )}
         </div>
 
-        {/* Right Columns: Reverse Execution Dashboard */}
+        {/* Right Section: Return Execution Console */}
         <div className="lg:col-span-2">
           {selectedInvoice ? (
             <Card title={`Invoice Reverse Panel (${selectedInvoice.invoiceNo})`}>
@@ -245,7 +249,7 @@ const ProductReturn = ({ sales, setSales, products, setProducts, customers, setC
               </div>
             </Card>
           ) : (
-            <div className="h-full min-h-[300px] border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-center p-6 bg-slate-900/20">
+            <div className="h-full min-h-[340px] border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-center p-6 bg-slate-900/20">
               <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center text-slate-500 mb-3">
                 <Search className="w-6 h-6" />
               </div>
