@@ -1,216 +1,239 @@
 import React, { useState, useMemo } from 'react';
 import { Card, DataTable, PageShell } from './components/ui';
-import { formatRs } from './utils/helpers';
-import { 
-  RotateCcw, 
-  Search, 
-  CheckCircle, 
-  AlertTriangle, 
-  CornerUpLeft, 
-  ShoppingBag, 
-  Calendar 
-} from 'lucide-react';
+import { formatRs, todayISO, generateId } from './utils/helpers';
+import { Search, Save, AlertTriangle, CheckCircle } from 'lucide-react';
 
-const ProductReturnManager = ({ sales = [], onReturnSuccess }) => {
+const ProductReturnManager = ({ sales = [], setSales, products = [], setProducts, customers = [], setCustomers, cashData = [], setCashData }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSale, setSelectedSale] = useState(null);
-  const [returnQuantities, setReturnQuantities] = useState({});
-  const [returnReason, setReturnReason] = useState('Market Stock Return / Replacement');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editableItems, setEditableItems] = useState([]);
   const [message, setMessage] = useState(null);
 
-  const filteredSales = useMemo(() => {
-    return sales.filter(sale => {
-      const invoiceNo = (sale.invoiceNo || sale.id || '').toLowerCase();
-      const customer = (sale.customerName || sale.customer || '').toLowerCase();
-      const search = searchTerm.toLowerCase();
-      return invoiceNo.includes(search) || customer.includes(search);
-    });
-  }, [sales, searchTerm]);
-
-  const handleQtyChange = (itemId, maxQty, val) => {
-    const inputVal = parseInt(val, 10);
-    if (isNaN(inputVal) || inputVal < 0) {
-      setReturnQuantities(prev => ({ ...prev, [itemId]: 0 }));
-    } else if (inputVal > maxQty) {
-      setReturnQuantities(prev => ({ ...prev, [itemId]: maxQty }));
-    } else {
-      setReturnQuantities(prev => ({ ...prev, [itemId]: inputVal }));
-    }
-  };
-
-  const executeReturnSubmission = async (item, originalSale) => {
-    const qtyToReturn = returnQuantities[item.id] || 0;
-    if (qtyToReturn <= 0) {
-      alert("Kindly select a quantity greater than zero.");
+  // 1. Bill Number se accurate calculation search filtering query
+  const handleSearchBill = () => {
+    setMessage(null);
+    if (!searchTerm.trim()) {
+      setMessage({ type: 'error', text: 'Enter a valid invoice number.' });
       return;
     }
 
-    setIsSubmitting(true);
-    setMessage(null);
+    const targetInvoice = sales.find(
+      (s) => s?.invoiceNo?.toLowerCase() === searchTerm.trim().toLowerCase()
+    );
 
-    try {
-      const response = await fetch('/api/returns/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          saleId: originalSale.id,
-          productId: item.productId,
-          quantity: qtyToReturn,
-          reason: returnReason
-        })
-      });
-      
-      const result = await response.json();
-      
-      if (response.ok) {
-        setMessage({ type: 'success', text: `Return registered successfully! Impacted Bill, Stock Warehouse, and Credit Khata Ledger.` });
-        setReturnQuantities(prev => ({ ...prev, [item.id]: 0 }));
-        if (onReturnSuccess) onReturnSuccess();
-      } else {
-        setMessage({ type: 'error', text: result.error || 'Failed to dispatch return parameters.' });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Server integration pathway exception error.' });
-    } finally {
-      setIsSubmitting(false);
+    if (targetInvoice) {
+      setSelectedSale(targetInvoice);
+      setEditableItems(
+        (targetInvoice.items || []).map((item) => ({
+          ...item,
+          originalQty: item.qty,
+        }))
+      );
+    } else {
+      setSelectedSale(null);
+      setMessage({ type: 'error', text: 'Invoice target not found in records.' });
     }
   };
 
-  return (
-    <PageShell 
-      title="Product Return & Reverse Logistics" 
-      subtitle="Process customer item returns with automatic reversal across invoices, Khata ledgers, and inventory"
-    >
-      <div className="space-y-6 pb-24">
-        <div className="bg-slate-900/40 border border-slate-800/80 p-4 rounded-2xl">
-          <div className="relative w-full md:w-1/2">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500"><Search size={16} /></span>
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Enter Invoice Bill No or Customer Name..."
-              className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-slate-700 text-slate-200 placeholder-slate-500"
-            />
-          </div>
-        </div>
+  // 2. Real-time items counting handler matrix logic
+  const handleItemQtyUpdate = (productId, dynamicValue, maxLimit) => {
+    const updatedCount = Math.min(Math.max(0, Number(dynamicValue)), maxLimit);
+    setEditableItems((prev) =>
+      prev.map((item) =>
+        item.productId === productId
+          ? { ...item, qty: updatedCount, total: updatedCount * Number(item.rate) }
+          : item
+      )
+    );
+  };
 
-        {message && (
-          <div className={`p-4 rounded-xl flex items-center gap-2 text-xs font-bold border ${message.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
-            {message.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-            {message.text}
+  // 3. Complete structural pipeline logic sync updates across all systems
+  const commitInvoiceChanges = () => {
+    if (!selectedSale) return;
+
+    let totalRefundValue = 0;
+    const inventoryPayload = {};
+
+    editableItems.forEach((entry) => {
+      const calculationDiff = entry.originalQty - entry.qty;
+      if (calculationDiff > 0) {
+        inventoryPayload[entry.productId] = calculationDiff;
+        totalRefundValue += calculationDiff * Number(entry.rate);
+      }
+    });
+
+    if (totalRefundValue === 0) {
+      alert('Aap ne koi item kam nahi ki. Bill update karne ke liye item ki quantity kam karein.');
+      return;
+    }
+
+    const logTimestamp = todayISO();
+
+    // A: Realtime Reverse Inventory Adjustment Matrix Updates
+    if (setProducts) {
+      setProducts((currentInventory) =>
+        currentInventory.map((product) => {
+          const recoveryCount = inventoryPayload[product.id] || 0;
+          return recoveryCount > 0
+            ? { ...product, stock: (Number(product.stock) || 0) + recoveryCount }
+            : product;
+        })
+      );
+    }
+
+    // B: Dynamic Financial Settlement Protocols (Cash in Hand vs Customer Balance Ledger)
+    if (selectedSale.paymentType === 'Cash') {
+      if (setCashData) {
+        setCashData((currentCashRegistry) => [
+          ...currentCashRegistry,
+          {
+            id: generateId(),
+            date: logTimestamp,
+            account: 'Cash',
+            amount: totalRefundValue,
+            description: `Invoice Correction Outflow (Bill Ref: ${selectedSale.invoiceNo})`,
+            type: 'expense',
+          },
+        ]);
+      }
+    } else {
+      if (setCustomers) {
+        setCustomers((currentClientsData) =>
+          currentClientsData.map((client) => {
+            if (client.name === selectedSale.customer) {
+              return { ...client, balance: (Number(client.balance) || 0) - totalRefundValue };
+            }
+            return client;
+          })
+        );
+      }
+    }
+
+    // C: In-Place Mutation Schema over master sales table metrics
+    if (setSales) {
+      setSales((currentSalesLedger) =>
+        currentSalesLedger
+          .map((bill) => {
+            if (bill.id === selectedSale.id) {
+              const adjustedProductsList = editableItems
+                .map(({ originalQty, ...cleanObject }) => cleanObject)
+                .filter((item) => item.qty > 0);
+
+              const rawGrossTotal = adjustedProductsList.reduce((sum, item) => sum + item.total, 0);
+              const baselineDiscountPercent = bill.discountPercent || 0;
+              const reevaluatedDiscount = (rawGrossTotal * baselineDiscountPercent) / 100;
+
+              return {
+                ...bill,
+                items: adjustedProductsList,
+                grossTotal: rawGrossTotal,
+                discount: reevaluatedDiscount,
+                netTotal: rawGrossTotal - reevaluatedDiscount,
+              };
+            }
+            return bill;
+          })
+          .filter((bill) => bill.items.length > 0)
+      );
+    }
+
+    alert(`Bill ${selectedSale.invoiceNo} successfully updated! System synced across variables.`);
+    setSelectedSale(null);
+    setSearchTerm('');
+    setEditableItems([]);
+  };
+
+  return (
+    <PageShell title="Invoice Edit & System Correction Panel" className="py-2">
+      <div className="max-w-4xl mx-auto space-y-4">
+        
+        {/* Core Control Engine: Document Finder Box */}
+        <Card title="Search Bill Parameters">
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-400 mb-1">Enter Bill Number</label>
+              <input
+                type="text"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="e.g. INV-00002"
+              />
+            </div>
+            <button
+              onClick={handleSearchBill}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-lg flex items-center h-[38px] transition-colors"
+            >
+              <Search className="w-4 h-4 mr-1" /> Open Bill
+            </button>
           </div>
+          {message?.type === 'error' && (
+            <div className="text-red-500 text-xs mt-2 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> {message.text}
+            </div>
+          )}
+        </Card>
+
+        {/* Dynamic Display Render: Live Data Terminal Form */}
+        {selectedSale && (
+          <Card title={`Active Modification Terminal - ${selectedSale.invoiceNo}`}>
+            <div className="grid grid-cols-2 gap-4 bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs mb-4">
+              <div>
+                <p className="text-slate-400">Customer Account: <span className="text-white font-bold">{selectedSale.customer}</span></p>
+                <p className="text-slate-400 mt-1">Payment Method: <span className="text-emerald-400 font-semibold">{selectedSale.paymentType}</span></p>
+              </div>
+              <div className="text-right">
+                <p className="text-slate-400">Date Issued: <span className="text-white">{selectedSale.date}</span></p>
+                <p className="text-slate-400 mt-1">Total Bill Value: <span className="text-amber-400 font-bold">{formatRs(selectedSale.netTotal)}</span></p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-800 rounded-lg mb-4">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-slate-800 text-slate-300">
+                  <tr>
+                    <th className="p-2.5 font-semibold">Item Description</th>
+                    <th className="p-2.5 font-semibold">Unit Price</th>
+                    <th className="p-2.5 font-semibold w-36">Modify Quantity</th>
+                    <th className="p-2.5 font-semibold text-right">Adjusted Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
+                  {editableItems.map((productRow, index) => (
+                    <tr key={index} className="hover:bg-slate-900/80 transition-colors">
+                      <td className="p-2.5 text-slate-200">{productRow.name}</td>
+                      <td className="p-2.5 text-slate-400">{formatRs(productRow.rate)}</td>
+                      <td className="p-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            max={productRow.originalQty}
+                            value={productRow.qty}
+                            onChange={(e) => handleItemQtyUpdate(productRow.productId, e.target.value, productRow.originalQty)}
+                            className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center text-white text-xs focus:outline-none focus:border-emerald-500"
+                          />
+                          <span className="text-[10px] text-slate-500">Max: {productRow.originalQty}</span>
+                        </div>
+                      </td>
+                      <td className="p-2.5 text-right font-medium text-slate-200">{formatRs(productRow.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-slate-800">
+              <button
+                onClick={commitInvoiceChanges}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+              >
+                <Save className="w-4 h-4" /> Save Changes & Update Records
+              </button>
+            </div>
+          </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          <div className="lg:col-span-1 space-y-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pl-1">Matching Bills Directory</h3>
-            {filteredSales.length === 0 ? (
-              <div className="p-8 text-center border border-slate-900 bg-slate-950/20 text-slate-500 text-xs rounded-2xl italic">No billing records found.</div>
-            ) : (
-              filteredSales.map((sale) => (
-                <div 
-                  key={sale.id}
-                  onClick={() => { setSelectedSale(sale); setMessage(null); }}
-                  className={`p-4 border rounded-xl transition cursor-pointer flex flex-col justify-between gap-2 ${selectedSale?.id === sale.id ? 'bg-slate-900 border-slate-700' : 'bg-slate-950/60 border-slate-900 hover:border-slate-800'}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-200">{sale.invoiceNo || `INV-${sale.id.slice(0, 8)}`}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${sale.isCredit ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                      {sale.isCredit ? 'Khata Bill' : 'Cash Paid'}
-                    </span>
-                  </div>
-                  <div className="text-xs font-semibold text-slate-400 truncate">{sale.customerName || 'Walk-in Customer'}</div>
-                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 border-t border-slate-900/60 pt-2 mt-1">
-                    <div className="flex items-center gap-1"><Calendar size={12} /> {sale.date}</div>
-                    <div className="font-bold text-slate-300">{formatRs(sale.netTotal)}</div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="lg:col-span-2">
-            {selectedSale ? (
-              <Card className="p-6 border border-slate-800">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-900 pb-4 mb-4 gap-2">
-                  <div>
-                    <h2 className="text-sm font-black text-slate-200 uppercase tracking-wide">Invoice Reverse Panel</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Target Account: <span className="text-amber-400 font-bold">{selectedSale.customerName}</span></p>
-                  </div>
-                </div>
-
-                <div className="mb-6 space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Reason for Return</label>
-                  <input 
-                    type="text"
-                    value={returnReason}
-                    onChange={(e) => setReturnReason(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-900 rounded-xl focus:outline-none focus:border-slate-800 text-slate-300"
-                  />
-                </div>
-
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1"><ShoppingBag size={13} /> Bill Products</h3>
-                <div className="border border-slate-900 rounded-xl overflow-hidden bg-slate-950/20">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-950 text-slate-400 font-bold text-[10px] tracking-wider uppercase border-b border-slate-900">
-                        <th className="p-3 pl-4">Item Name</th>
-                        <th className="p-3 text-center">Invoiced Qty</th>
-                        <th className="p-3 text-right">Unit Rate</th>
-                        <th className="p-3 text-center w-36">Qty to Return</th>
-                        <th className="p-3 text-right pr-4">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-900/80">
-                      {selectedSale.items?.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-900/20 transition">
-                          <td className="p-3 pl-4 font-bold text-slate-300">
-                            {item.productName || item.product?.name}
-                            {item.isReturned && <span className="text-rose-400 ml-1.5 font-black text-[10px] bg-rose-500/10 px-1.5 py-0.5 rounded">(Return)</span>}
-                          </td>
-                          <td className="p-3 text-center font-semibold text-slate-400">{item.quantity} units</td>
-                          <td className="p-3 text-right text-slate-400">{formatRs(item.price)}</td>
-                          <td className="p-3">
-                            <div className="flex items-center gap-2 justify-center">
-                              <input 
-                                type="number" 
-                                min="0"
-                                max={item.quantity}
-                                value={returnQuantities[item.id] || ''}
-                                onChange={(e) => handleQtyChange(item.id, item.quantity, e.target.value)}
-                                placeholder="0"
-                                disabled={item.quantity === 0}
-                                className="w-20 text-center py-1 font-bold bg-slate-950 border border-slate-800 rounded-lg text-rose-300 focus:outline-none focus:border-rose-500 disabled:opacity-40 text-xs"
-                              />
-                            </div>
-                          </td>
-                          <td className="p-3 text-right pr-4">
-                            <button
-                              type="button"
-                              onClick={() => executeReturnSubmission(item, selectedSale)}
-                              disabled={isSubmitting || (returnQuantities[item.id] || 0) <= 0 || item.quantity === 0}
-                              className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-600 hover:text-white transition disabled:opacity-30 cursor-pointer"
-                            >
-                              <CornerUpLeft size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            ) : (
-              <div className="h-96 border border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-slate-500 p-6 bg-slate-950/10">
-                <RotateCcw size={32} className="text-slate-700 animate-pulse mb-3" />
-                <p className="text-xs font-black uppercase tracking-wider text-slate-400">Select an Invoice</p>
-                <p className="text-[11px] text-slate-500 text-center mt-1">Choose a bill from the directory panel to perform returns management adjustments.</p>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </PageShell>
   );
