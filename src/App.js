@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { LogOut, Sun, Moon, Search, RotateCcw } from 'lucide-react';
+import { LogOut, Sun, Moon, Search, RotateCcw, Menu, X } from 'lucide-react';
 import Login from './Login';
 import ProductReturnManager from './ProductReturnManager'; 
 import Products from './Products';
@@ -58,6 +58,9 @@ function App() {
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
   const [selectedReport, setSelectedReport] = useState(null);
+
+  // Responsive Sidebar State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // States ko LocalStorage se normal React state mein convert kiya taake Firebase handle kare
   const [products, setProductsState] = useState([]);
@@ -255,6 +258,13 @@ function App() {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
+  // Mobile check ke liye automatic side bar closed ho jaye initial load par
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  }, []);
+
   if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || "Naveed & Zeeshan Traders, Mailsi"} />;
 
   const renderModule = () => {
@@ -345,9 +355,12 @@ function App() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300">
-      <div className="flex min-h-screen">
-        <aside className="sticky top-0 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5">
-          <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5">
+      <div className="flex min-h-screen relative">
+        {/* Responsive Sidebar Layout classes update */}
+        <aside className={`fixed md:sticky top-0 z-50 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5 transition-transform duration-300 ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:hidden'
+        }`}>
+          <div className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 flex-shrink-0">
                 <Logo className="w-full h-full object-contain" />
@@ -358,6 +371,13 @@ function App() {
                 </h2>
               </div>
             </div>
+            {/* Mobile Close Button */}
+            <button 
+              onClick={() => setIsSidebarOpen(false)} 
+              className="md:hidden p-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg"
+            >
+              <X size={20} />
+            </button>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto">
             {MENU_ITEMS.map((item) => (
@@ -388,6 +408,7 @@ function App() {
                               
                               setSelectedReport(reportKey);
                               setActiveTab('Reports');
+                              if (window.innerWidth < 768) setIsSidebarOpen(false); // Mobile automatic close
                             }}
                             className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition"
                           >
@@ -400,7 +421,10 @@ function App() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setActiveTab(item.id)}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      if (window.innerWidth < 768) setIsSidebarOpen(false); // Mobile automatic close
+                    }}
                     className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
                       activeTab === item.id
                         ? 'bg-emerald-600 text-white shadow-lg'
@@ -415,7 +439,10 @@ function App() {
                   <>
                     <button
                       type="button"
-                      onClick={() => setActiveTab('SearchBill')}
+                      onClick={() => {
+                        setActiveTab('SearchBill');
+                        if (window.innerWidth < 768) setIsSidebarOpen(false);
+                      }}
                       className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
                         activeTab === 'SearchBill'
                           ? 'bg-emerald-600 text-white shadow-lg'
@@ -426,7 +453,10 @@ function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setActiveTab('ProductReturn')}
+                      onClick={() => {
+                        setActiveTab('ProductReturn');
+                        if (window.innerWidth < 768) setIsSidebarOpen(false);
+                      }}
                       className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
                         activeTab === 'ProductReturn'
                           ? 'bg-emerald-600 text-white shadow-lg'
@@ -441,10 +471,28 @@ function App() {
             ))}
           </nav>
         </aside>
+
+        {/* Mobile Sidebar overlay */}
+        {isSidebarOpen && (
+          <div 
+            onClick={() => setIsSidebarOpen(false)} 
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          />
+        )}
+
         <div className="flex-1 flex flex-col h-screen overflow-hidden">
-          <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 bg-white dark:bg-slate-950">
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser?.username}</p>
-            <div className="flex items-center gap-6">
+          <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 bg-white dark:bg-slate-950">
+            <div className="flex items-center gap-3">
+              {/* Toggle Menu Button Left Side Top */}
+              <button 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+                className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <Menu size={20} />
+              </button>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{currentUser?.username}</p>
+            </div>
+            <div className="flex items-center gap-4 md:gap-6">
               <button
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -456,7 +504,7 @@ function App() {
               </button>
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto p-6">{renderModule()}</main>
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">{renderModule()}</main>
         </div>
       </div>
     </div>
