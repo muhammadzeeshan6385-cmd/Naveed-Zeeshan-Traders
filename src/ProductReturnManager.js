@@ -77,26 +77,11 @@ const ProductReturnManager = ({ sales = [], onReturnSuccess }) => {
       const newDiscAmount = (newGross * discPercent) / 100;
       const newNetTotal = newGross - newDiscAmount;
 
-      const updatePayload = {
-        id: selectedSale.id,
-        invoiceNo: selectedSale.invoiceNo,
-        refundAmount: totalRefundAmount,
-        returnReason: returnReason,
-        date: currentTimestamp,
-        paymentType: selectedSale.paymentType,
-        customer: selectedSale.customer,
-        items: updatedItems,
-        grossTotal: newGross,
-        discount: newDiscAmount,
-        netTotal: newNetTotal
-      };
-
       // --- INSTANT CLIENT STATE UPDATE DIRECT CHANNEL ---
-      // Zero selection pr bhi master array state update trigger hogi taake data safe sync ho jaye
+      // FIX: Yahan '...selectedSale' lagaya hai taake customer, date, aur baki fields dashboard calculation ke liye safe rahein.
       if (onReturnSuccess) {
         onReturnSuccess({
-          id: selectedSale.id,
-          invoiceNo: selectedSale.invoiceNo,
+          ...selectedSale, 
           items: updatedItems,
           grossTotal: newGross,
           discount: newDiscAmount,
@@ -120,7 +105,7 @@ const ProductReturnManager = ({ sales = [], onReturnSuccess }) => {
         console.warn("Background API layer integration delayed:", apiErr);
       }
 
-      setMessage({ type: 'success', text: `Bill updated and synchronized successfully inside Search Bill module.` });
+      setMessage({ type: 'success', text: `Bill updated and synchronized successfully inside Dashboard and Modules.` });
       setReturnQuantities({});
       setSelectedSale(null);
 

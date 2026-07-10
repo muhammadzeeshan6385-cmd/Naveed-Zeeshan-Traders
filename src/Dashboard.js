@@ -29,13 +29,10 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
 
     // Loop through all sales data to find individual product margins
     sales.forEach((sale) => {
-      // Items collection structure validation
       const items = sale.items || [];
       items.forEach((item) => {
-        const qty = Number(item.quantity || 0);
-        const saleRate = Number(item.price || item.saleRate || 0);
-        
-        // Item ki purchase cost/rate dhoondna (fallbacks handled)
+        const qty = Number(item.qty || item.quantity || 0);
+        const saleRate = Number(item.price || item.saleRate || item.rate || 0);
         const purchaseRate = Number(item.purchasePrice || item.purchaseRate || item.costPrice || 0);
 
         totalSalesRevenue += (saleRate * qty);
@@ -48,53 +45,55 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
     returns.forEach((returnItem) => {
       const items = returnItem.items || [];
       items.forEach((item) => {
-        const qty = Number(item.quantity || 0);
-        const saleRate = Number(item.price || item.saleRate || 0);
+        const qty = Number(item.qty || item.quantity || 0);
+        const saleRate = Number(item.price || item.saleRate || item.rate || 0);
         const purchaseRate = Number(item.purchasePrice || item.purchaseRate || item.costPrice || 0);
         
-        // Returned margin that business lost
         returnedProfitImpact += ((saleRate - purchaseRate) * qty);
       });
     });
 
-    // In case items data mapping dashboard object direct handle na kar raha ho:
     if (totalSalesRevenue === 0) {
       totalSalesRevenue = Number(stats.totalSale || 0);
-      // Agar item objects empty hon layout load me, to 30% average gross cost margin assume karein backend patch tak
       totalPurchaseCostOfGoodsSold = totalSalesRevenue * 0.75; 
     }
 
     const totalExpense = Number(stats.totalExpense || 0);
 
-    // Business Logic Formula: Sales Value - Purchase Value - Expenses - Return Margin Deductions
     return totalSalesRevenue - totalPurchaseCostOfGoodsSold - totalExpense - returnedProfitImpact;
   }, [stats, sales, returns]);
 
-  // 2. CASH IN HAND ENGINE (Formula: Total Recovery + Cash Invoices - Total Expenses - Cash Refunds)
+  // 2. AGGREGATE RETURNS CALCULATION (DYNAMIC LIVE SENSITIVE ENGINE)
+  // Yeh live active calculations karta hai. Jab bill update ho kar short hoga, toh automatic amount update hogi.
+  const totalReturnsVolume = useMemo(() => {
+    // A. Pehle live dynamic state variable array "returns" ko calculate karein
+    let activeReturnsAmount = returns.reduce((sum, r) => {
+      return sum + Number(r.refundAmount || r.netTotal || r.total || 0);
+    }, 0);
+
+    // B. Agar active array empty ho toh seedha parent standard fallback update "stats.productReturn" par shift ho jaye
+    if (activeReturnsAmount === 0) {
+      return Number(stats.productReturn || stats.totalReturn || stats.totalReturns || 0);
+    }
+
+    return activeReturnsAmount;
+  }, [stats.productReturn, stats.totalReturn, stats.totalReturns, returns]);
+
+  // 3. CASH IN HAND ENGINE
   const cashInHand = useMemo(() => {
     const totalRecovery = Number(stats.totalRecovery || 0);
     
     const totalCashInvoices = sales
-      .filter(s => !s.isCredit && (s.paymentMethod === 'Cash' || String(s.status).toLowerCase() === 'paid'))
+      .filter(s => !s.isCredit && (s.paymentMethod === 'Cash' || s.paymentType === 'Cash' || String(s.status).toLowerCase() === 'paid'))
       .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
       
     const totalExpense = Number(stats.totalExpense || 0);
 
-    // Filter cash refunds out of hand directly
-    const totalCashRefunds = returns
-      .filter(r => r.paymentMethod === 'Cash' || r.isCashRefund === true)
-      .reduce((sum, r) => sum + Number(r.refundAmount || r.netTotal || 0), 0);
+    // Refunded and short amount dynamic impact minus karein
+    const totalCashRefunds = totalReturnsVolume;
 
     return (totalRecovery + totalCashInvoices) - totalExpense - totalCashRefunds;
-  }, [stats, sales, returns]);
-
-  // 3. AGGREGATE RETURNS CALCULATION
-  const totalReturnsVolume = useMemo(() => {
-    if (stats.totalReturn || stats.totalReturns) {
-      return Number(stats.totalReturn || stats.totalReturns || 0);
-    }
-    return returns.reduce((sum, r) => sum + Number(r.refundAmount || r.netTotal || 0), 0);
-  }, [stats, returns]);
+  }, [stats, sales, totalReturnsVolume]);
 
   const isProfitNegative = calculatedNetProfit < 0;
 
@@ -117,7 +116,7 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
         </div>
       </div>
 
-      {/* --- Upgraded Cards Grid Section --- */}
+      {/* --- Cards Grid Section --- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         
         {/* Total Sales Card */}
@@ -172,7 +171,7 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
           </div>
         </div>
 
-        {/* Upgraded Net Profit / Margin Card (Linked to accurate math formula) */}
+        {/* Net Profit / Margin Card */}
         <div className={`relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border shadow-sm transition duration-300 group ${
           isProfitNegative ? 'border-rose-500/30 shadow-rose-950/5' : 'border-emerald-500/30 shadow-emerald-950/5'
         }`}>

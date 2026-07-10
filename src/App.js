@@ -22,6 +22,10 @@ import { STORAGE_KEYS, MENU_ITEMS, DEFAULT_SETTINGS, COMPANY_NAME } from './util
 import { removeFromStorage } from './utils/storage';
 import { Logo } from './components/ui';
 
+// Firebase imports aur database reference link
+import { db } from './firebase';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+
 function App() {
   // --- Auto Logout Start ---
   const logoutTimer = useRef();
@@ -54,27 +58,135 @@ function App() {
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
   const [selectedReport, setSelectedReport] = useState(null);
-  const [products, setProducts] = useLocalStorage(STORAGE_KEYS.products, []);
-  const [customers, setCustomers] = useLocalStorage(STORAGE_KEYS.customers, []);
-  const [suppliers, setSuppliers] = useLocalStorage(STORAGE_KEYS.suppliers, []);
-  const [purchases, setPurchases] = useLocalStorage(STORAGE_KEYS.purchases, []);
-  const [sales, setSales] = useLocalStorage(STORAGE_KEYS.sales, []);
-  const [payments, setPayments] = useLocalStorage(STORAGE_KEYS.payments, []);
-  const [expenses, setExpenses] = useLocalStorage(STORAGE_KEYS.expenses, []);
-  const [cashData, setCashData] = useLocalStorage(STORAGE_KEYS.cashData, []);
+
+  // States ko LocalStorage se normal React state mein convert kiya taake Firebase handle kare
+  const [products, setProductsState] = useState([]);
+  const [customers, setCustomersState] = useState([]);
+  const [suppliers, setSuppliersState] = useState([]);
+  const [purchases, setPurchasesState] = useState([]);
+  const [sales, setSalesState] = useState([]);
+  const [payments, setPaymentsState] = useState([]);
+  const [expenses, setExpensesState] = useState([]);
+  const [cashData, setCashDataState] = useState([]);
+
+  // Firebase Real-time Synchronization Listener (onSnapshot)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const unsubscribers = [
+      onSnapshot(collection(db, "products"), (snapshot) => {
+        setProductsState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }),
+      onSnapshot(collection(db, "customers"), (snapshot) => {
+        setCustomersState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }),
+      onSnapshot(collection(db, "suppliers"), (snapshot) => {
+        setSuppliersState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }),
+      onSnapshot(collection(db, "purchases"), (snapshot) => {
+        setPurchasesState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }),
+      onSnapshot(collection(db, "sales"), (snapshot) => {
+        setSalesState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }),
+      onSnapshot(collection(db, "payments"), (snapshot) => {
+        setPaymentsState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }),
+      onSnapshot(collection(db, "expenses"), (snapshot) => {
+        setExpensesState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }),
+      onSnapshot(collection(db, "cashData"), (snapshot) => {
+        setCashDataState(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      })
+    ];
+
+    return () => unsubscribers.forEach(unsub => unsub());
+  }, [currentUser]);
+
+  // Cloud Database mein real-time entry aur edit save karne ke wrappers
+  const setProducts = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "products", String(item.id)), item, { merge: true });
+      }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "products", String(updatedData.id)), updatedData, { merge: true });
+    }
+  };
+
+  const setCustomers = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "customers", String(item.id)), item, { merge: true });
+      }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "customers", String(updatedData.id)), updatedData, { merge: true });
+    }
+  };
+
+  const setSuppliers = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "suppliers", String(item.id)), item, { merge: true });
+      }
+    }
+  };
+
+  const setPurchases = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "purchases", String(item.id)), item, { merge: true });
+      }
+    }
+  };
+
+  const setSales = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "sales", String(item.id)), item, { merge: true });
+      }
+    }
+  };
+
+  const setPayments = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "payments", String(item.id)), item, { merge: true });
+      }
+    }
+  };
+
+  const setExpenses = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "expenses", String(item.id)), item, { merge: true });
+      }
+    }
+  };
+
+  const setCashData = async (updatedData) => {
+    if (Array.isArray(updatedData)) {
+      for (const item of updatedData) {
+        if (item.id) await setDoc(doc(db, "cashData", String(item.id)), item, { merge: true });
+      }
+    }
+  };
 
   const stats = useMemo(() => {
-    // Sales array jab bhi change hoga (jaise ProductReturn se), ye function foran chalega
     const today = new Date().toISOString().split('T')[0];
     
     let totalSale = 0;
     let totalCost = 0;
     let todaySales = 0;
+    let totalReturnAmount = 0; 
 
-    // Sales par loop chala kar naya total calculate kar rahe hain
     sales.forEach(s => {
       const net = Number(s.netTotal || 0);
       totalSale += net;
+      
+      if (s.refundAmount || s.returnAmount) {
+        totalReturnAmount += Number(s.refundAmount || s.returnAmount || 0);
+      }
       
       if (s.date && s.date.includes(today)) {
         todaySales += net;
@@ -99,7 +211,6 @@ function App() {
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     
-    // Ledger Outstanding Calculation
     let totalOutstandingFromLedger = 0;
     customers.forEach(cust => {
       const openingBal = Number(cust.openingBalance || 0);
@@ -122,9 +233,10 @@ function App() {
       totalExpense, 
       profit: netProfit, 
       totalRecovery, 
-      outstanding: totalOutstandingFromLedger 
+      outstanding: totalOutstandingFromLedger,
+      productReturn: totalReturnAmount 
     };
-  }, [sales, expenses, payments, products, customers]); // Yahan JSON.stringify(sales) add kiya hai taake deep update pakray
+  }, [JSON.stringify(sales), expenses, payments, products, customers]);
 
   const getStock = useCallback((productName) => {
     const target = String(productName || '').trim().toLowerCase();
@@ -171,6 +283,15 @@ function App() {
             sales={sales || []} 
             onReturnSuccess={(updatedBill) => {
               const originalBill = sales.find(s => s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo);
+              let calculatedRefund = 0;
+
+              if (originalBill) {
+                const oldTotal = Number(originalBill.netTotal || 0);
+                const newTotal = Number(updatedBill.netTotal || 0);
+                if (oldTotal > newTotal) {
+                  calculatedRefund = oldTotal - newTotal;
+                }
+              }
               
               if (originalBill && originalBill.items && updatedBill.items) {
                 const updatedQtyMap = {};
@@ -200,7 +321,11 @@ function App() {
 
               const refreshedSales = sales.map(s => {
                 if (s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo) {
-                  return { ...s, ...updatedBill };
+                  return { 
+                    ...s, 
+                    ...updatedBill, 
+                    refundAmount: (Number(s.refundAmount || 0) + calculatedRefund) 
+                  };
                 }
                 return s;
               });
