@@ -265,7 +265,7 @@ function App() {
     }
   }, []);
 
-  if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || "Naveed & Zeeshan Traders, Mailsi"} />;
+  if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || "Naveed & Zeeshan Traders"} />;
 
   const renderModule = () => {
     switch (activeTab) {
@@ -367,7 +367,7 @@ function App() {
               </div>
               <div className="overflow-hidden">
                 <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">
-                  {settings.companyName && settings.companyName !== "Naveed Zeeshan Traders" ? settings.companyName : "Naveed & Zeeshan Traders, Mailsi"}
+                  {settings.companyName && settings.companyName !== "Naveed Zeeshan Traders" ? settings.companyName : "Naveed & Zeeshan Traders"}
                 </h2>
               </div>
             </div>
