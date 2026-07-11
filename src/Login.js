@@ -108,7 +108,6 @@ const Login = ({ onLogin }) => {
 
             {/* System Info Link Text */}
             <p className="text-center text-[9px] text-slate-500 font-bold tracking-widest pt-1 uppercase">
-              Node Node: Admin / 1234
             </p>
           </form>
 
