@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Eye, Pencil, Trash2, X } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, getProductPurchaseRate, getProductSaleRate } from './utils/helpers';
 
-const Products = ({ products, setProducts }) => {
+const Products = ({ products: parentProducts, setProducts: parentSetProducts }) => {
+  // Local state taake agar parent se update na bhi ho rha ho, component khud delete execute kare
+  const [products, setLocalProducts] = useState(parentProducts || []);
   const [form, setForm] = useState({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
   const [editingProduct, setEditingProduct] = useState(null); // Edit Popup ki state
   const [search, setSearch] = useState('');
+
+  // Agar parent products change hon to local state update ho
+  useEffect(() => {
+    if (parentProducts) {
+      setLocalProducts(parentProducts);
+    }
+  }, [parentProducts]);
 
   const resetForm = () => setForm({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
 
@@ -15,45 +24,47 @@ const Products = ({ products, setProducts }) => {
       window.alert('Product name and sale rate are required.');
       return;
     }
-    setProducts([...products, { ...form, id: generateId(), pRate: Number(form.pRate) || 0, sRate: Number(form.sRate), minStock: Number(form.minStock) || 5 }]);
+    const newProduct = { ...form, id: generateId(), pRate: Number(form.pRate) || 0, sRate: Number(form.sRate), minStock: Number(form.minStock) || 5 };
+    const updatedList = [...products, newProduct];
+    
+    setLocalProducts(updatedList);
+    if (typeof parentSetProducts === 'function') {
+      parentSetProducts(updatedList);
+    }
     resetForm();
   };
 
-  const deleteProduct = async (row) => {
+  const deleteProduct = (row) => {
     if (window.confirm('Delete this product?')) {
       const targetId = row.id || row._id || row.productId;
-
-      try {
-        // Agar aap API or backend use kar rhe hain to ye database se bhi delete karega
-        if (targetId) {
-          await fetch(`/api/products/${targetId}`, {
-            method: 'DELETE',
-          }).catch(err => console.log("API Delete URL not matched, fallback to frontend filter"));
+      
+      const updatedList = products.filter((p) => {
+        const productId = p.id || p._id || p.productId;
+        if (targetId && productId) {
+          return productId !== targetId;
         }
+        return p.name !== row.name || p.sku !== row.sku;
+      });
 
-        // Frontend state se product delete karne ka mukammal logic
-        setProducts(products.filter((p) => {
-          const productId = p.id || p._id || p.productId;
-          if (targetId && productId) {
-            return productId !== targetId;
-          }
-          return p.name !== row.name || p.sku !== row.sku;
-        }));
-      } catch (error) {
-        // Agar API fail bhi ho jaye tab bhi frontend se har haal me delete ho
-        setProducts(products.filter((p) => {
-          const productId = p.id || p._id || p.productId;
-          if (targetId && productId) {
-            return productId !== targetId;
-          }
-          return p.name !== row.name || p.sku !== row.sku;
-        }));
+      // Local state aur parent state dono ko update kar rhe hain
+      setLocalProducts(updatedList);
+      if (typeof parentSetProducts === 'function') {
+        parentSetProducts(updatedList);
       }
     }
   };
 
   const updateProduct = () => {
-    setProducts(products.map(p => p.id === editingProduct.id ? editingProduct : p));
+    const updatedList = products.map(p => {
+      const pId = p.id || p._id;
+      const editId = editingProduct.id || editingProduct._id;
+      return pId === editId ? editingProduct : p;
+    });
+
+    setLocalProducts(updatedList);
+    if (typeof parentSetProducts === 'function') {
+      parentSetProducts(updatedList);
+    }
     setEditingProduct(null); // Popup band karne ke liye
   };
 
