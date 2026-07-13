@@ -3,6 +3,11 @@ import { Eye, Pencil, Trash2, X } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, getProductPurchaseRate, getProductSaleRate } from './utils/helpers';
 
+// Firebase Firestore ki imports (Aapki config file se db import hoga)
+// Agar aapki firebase db file ka path thoda farq hai to niche is line ko us mutabiq set kar lijiye ga:
+import { db } from './firebase'; // ya jahan bhi aapka firebase/firestore init hua hai
+import { doc, deleteDoc } from 'firebase/firestore';
+
 const Products = ({ products, setProducts }) => {
   const [form, setForm] = useState({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
   const [editingProduct, setEditingProduct] = useState(null); // Edit Popup ki state
@@ -22,44 +27,30 @@ const Products = ({ products, setProducts }) => {
   const deleteProduct = async (row) => {
     // Confirmation popup OK aur Cancel ke sath
     if (window.confirm('Delete this product?')) {
-      // Database ki primary ID nikalne ke liye teeno preferred methods (_id, id) ko check kia
-      const targetId = row._id || row.id;
+      // Firebase standard document ID nikalne ke liye
+      const targetId = row.id || row._id;
+
+      if (!targetId) {
+        window.alert("Product ID not found. Cannot delete from Firebase.");
+        return;
+      }
 
       try {
-        if (targetId) {
-          // 1. Yeh line automatic aapke backend database ko delete ka signal bheje gi
-          const response = await fetch(`/api/products/${targetId}`, {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
+        // 1. Firebase Firestore database se directly product document delete karna
+        // Yahan 'products' aapke Firestore collection ka name hai
+        const productDocRef = doc(db, 'products', targetId);
+        await deleteDoc(productDocRef);
 
-          // Agar standard route match na ho to query parameter dynamic route check karega
-          if (!response.ok) {
-            await fetch(`/api/products?id=${targetId}`, { method: 'DELETE' });
-          }
-        }
-
-        // 2. Database se request bhejne ke baad, frontend screen se bhi product ko filter (remove) kar dega
+        // 2. Database se delete hone ke baad frontend local state se filter karna
         setProducts(products.filter((p) => {
-          const productId = p._id || p.id;
-          if (targetId && productId) {
-            return productId !== targetId;
-          }
-          return p.name !== row.name || p.sku !== row.sku;
+          const productId = p.id || p._id;
+          return productId !== targetId;
         }));
 
+        console.log("Product successfully deleted from Firebase Firestore.");
       } catch (error) {
-        console.error("Database deletion error:", error);
-        // Fallback: Agar API endpoint me thoda farq bhi ho, tab bhi local screen se temporary gayab lazmi ho
-        setProducts(products.filter((p) => {
-          const productId = p._id || p.id;
-          if (targetId && productId) {
-            return productId !== targetId;
-          }
-          return p.name !== row.name || p.sku !== row.sku;
-        }));
+        console.error("Firebase deletion error:", error);
+        window.alert("Database se delete karte hue error aya: " + error.message);
       }
     }
   };
@@ -107,7 +98,6 @@ const Products = ({ products, setProducts }) => {
                 <div className="flex items-center gap-2">
                   <button onClick={() => alert('Previewing ' + row.name)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded" title="Preview"><Eye size={18} /></button>
                   <button onClick={() => setEditingProduct(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded" title="Edit"><Pencil size={18} /></button>
-                  {/* Pura row object pass kia taake ID nikal sake */}
                   <button onClick={() => deleteProduct(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded" title="Delete"><Trash2 size={18} /></button>
                 </div>
               ),
