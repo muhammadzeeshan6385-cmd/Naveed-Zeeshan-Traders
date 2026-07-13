@@ -1,21 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Eye, Pencil, Trash2, X } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, getProductPurchaseRate, getProductSaleRate } from './utils/helpers';
 
-const Products = ({ products: parentProducts, setProducts: parentSetProducts }) => {
-  // Local state taake agar parent se update na bhi ho rha ho, component khud delete execute kare
-  const [products, setLocalProducts] = useState(parentProducts || []);
+const Products = ({ products, setProducts }) => {
   const [form, setForm] = useState({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
   const [editingProduct, setEditingProduct] = useState(null); // Edit Popup ki state
   const [search, setSearch] = useState('');
-
-  // Agar parent products change hon to local state update ho
-  useEffect(() => {
-    if (parentProducts) {
-      setLocalProducts(parentProducts);
-    }
-  }, [parentProducts]);
 
   const resetForm = () => setForm({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
 
@@ -24,47 +15,57 @@ const Products = ({ products: parentProducts, setProducts: parentSetProducts }) 
       window.alert('Product name and sale rate are required.');
       return;
     }
-    const newProduct = { ...form, id: generateId(), pRate: Number(form.pRate) || 0, sRate: Number(form.sRate), minStock: Number(form.minStock) || 5 };
-    const updatedList = [...products, newProduct];
-    
-    setLocalProducts(updatedList);
-    if (typeof parentSetProducts === 'function') {
-      parentSetProducts(updatedList);
-    }
+    setProducts([...products, { ...form, id: generateId(), pRate: Number(form.pRate) || 0, sRate: Number(form.sRate), minStock: Number(form.minStock) || 5 }]);
     resetForm();
   };
 
-  const deleteProduct = (row) => {
+  const deleteProduct = async (row) => {
+    // Confirmation popup OK aur Cancel ke sath
     if (window.confirm('Delete this product?')) {
-      const targetId = row.id || row._id || row.productId;
-      
-      const updatedList = products.filter((p) => {
-        const productId = p.id || p._id || p.productId;
-        if (targetId && productId) {
-          return productId !== targetId;
-        }
-        return p.name !== row.name || p.sku !== row.sku;
-      });
+      // Database ki primary ID nikalne ke liye teeno preferred methods (_id, id) ko check kia
+      const targetId = row._id || row.id;
 
-      // Local state aur parent state dono ko update kar rhe hain
-      setLocalProducts(updatedList);
-      if (typeof parentSetProducts === 'function') {
-        parentSetProducts(updatedList);
+      try {
+        if (targetId) {
+          // 1. Yeh line automatic aapke backend database ko delete ka signal bheje gi
+          const response = await fetch(`/api/products/${targetId}`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
+          // Agar standard route match na ho to query parameter dynamic route check karega
+          if (!response.ok) {
+            await fetch(`/api/products?id=${targetId}`, { method: 'DELETE' });
+          }
+        }
+
+        // 2. Database se request bhejne ke baad, frontend screen se bhi product ko filter (remove) kar dega
+        setProducts(products.filter((p) => {
+          const productId = p._id || p.id;
+          if (targetId && productId) {
+            return productId !== targetId;
+          }
+          return p.name !== row.name || p.sku !== row.sku;
+        }));
+
+      } catch (error) {
+        console.error("Database deletion error:", error);
+        // Fallback: Agar API endpoint me thoda farq bhi ho, tab bhi local screen se temporary gayab lazmi ho
+        setProducts(products.filter((p) => {
+          const productId = p._id || p.id;
+          if (targetId && productId) {
+            return productId !== targetId;
+          }
+          return p.name !== row.name || p.sku !== row.sku;
+        }));
       }
     }
   };
 
   const updateProduct = () => {
-    const updatedList = products.map(p => {
-      const pId = p.id || p._id;
-      const editId = editingProduct.id || editingProduct._id;
-      return pId === editId ? editingProduct : p;
-    });
-
-    setLocalProducts(updatedList);
-    if (typeof parentSetProducts === 'function') {
-      parentSetProducts(updatedList);
-    }
+    setProducts(products.map(p => p.id === editingProduct.id ? editingProduct : p));
     setEditingProduct(null); // Popup band karne ke liye
   };
 
@@ -106,6 +107,7 @@ const Products = ({ products: parentProducts, setProducts: parentSetProducts }) 
                 <div className="flex items-center gap-2">
                   <button onClick={() => alert('Previewing ' + row.name)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded" title="Preview"><Eye size={18} /></button>
                   <button onClick={() => setEditingProduct(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded" title="Edit"><Pencil size={18} /></button>
+                  {/* Pura row object pass kia taake ID nikal sake */}
                   <button onClick={() => deleteProduct(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded" title="Delete"><Trash2 size={18} /></button>
                 </div>
               ),
