@@ -19,12 +19,18 @@ const Products = ({ products, setProducts }) => {
     resetForm();
   };
 
-  const deleteProduct = (id) => {
+  const deleteProduct = (row) => {
     if (window.confirm('Delete this product?')) {
-      // Yahan humne check ko behtar kiya hai taake agar data me 'id' ya '_id' me se jo bhi ho, delete sahi se kaam kare
+      // Is unique filter me hum ID, SKU aur Name teeno tariko se check kar rahe hain taake delete 100% execute ho jaye
       setProducts(products.filter((p) => {
+        const rowId = row.id || row._id;
         const productId = p.id || p._id;
-        return productId !== id;
+        
+        if (rowId && productId) {
+          return productId !== rowId;
+        }
+        // Agar ID na mile to SKU aur Name ka match check karega taake ghaib ho sake
+        return p.name !== row.name || p.sku !== row.sku;
       }));
     }
   };
@@ -72,7 +78,8 @@ const Products = ({ products, setProducts }) => {
                 <div className="flex items-center gap-2">
                   <button onClick={() => alert('Previewing ' + row.name)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded" title="Preview"><Eye size={18} /></button>
                   <button onClick={() => setEditingProduct(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded" title="Edit"><Pencil size={18} /></button>
-                  <button onClick={() => deleteProduct(row.id || row._id)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded" title="Delete"><Trash2 size={18} /></button>
+                  {/* Yahan humne direct row bhej diya hai */}
+                  <button onClick={() => deleteProduct(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded" title="Delete"><Trash2 size={18} /></button>
                 </div>
               ),
             },
