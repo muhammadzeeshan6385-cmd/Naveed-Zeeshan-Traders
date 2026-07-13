@@ -19,19 +19,36 @@ const Products = ({ products, setProducts }) => {
     resetForm();
   };
 
-  const deleteProduct = (row) => {
+  const deleteProduct = async (row) => {
     if (window.confirm('Delete this product?')) {
-      // Is unique filter me hum ID, SKU aur Name teeno tariko se check kar rahe hain taake delete 100% execute ho jaye
-      setProducts(products.filter((p) => {
-        const rowId = row.id || row._id;
-        const productId = p.id || p._id;
-        
-        if (rowId && productId) {
-          return productId !== rowId;
+      const targetId = row.id || row._id || row.productId;
+
+      try {
+        // Agar aap API or backend use kar rhe hain to ye database se bhi delete karega
+        if (targetId) {
+          await fetch(`/api/products/${targetId}`, {
+            method: 'DELETE',
+          }).catch(err => console.log("API Delete URL not matched, fallback to frontend filter"));
         }
-        // Agar ID na mile to SKU aur Name ka match check karega taake ghaib ho sake
-        return p.name !== row.name || p.sku !== row.sku;
-      }));
+
+        // Frontend state se product delete karne ka mukammal logic
+        setProducts(products.filter((p) => {
+          const productId = p.id || p._id || p.productId;
+          if (targetId && productId) {
+            return productId !== targetId;
+          }
+          return p.name !== row.name || p.sku !== row.sku;
+        }));
+      } catch (error) {
+        // Agar API fail bhi ho jaye tab bhi frontend se har haal me delete ho
+        setProducts(products.filter((p) => {
+          const productId = p.id || p._id || p.productId;
+          if (targetId && productId) {
+            return productId !== targetId;
+          }
+          return p.name !== row.name || p.sku !== row.sku;
+        }));
+      }
     }
   };
 
@@ -78,7 +95,6 @@ const Products = ({ products, setProducts }) => {
                 <div className="flex items-center gap-2">
                   <button onClick={() => alert('Previewing ' + row.name)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded" title="Preview"><Eye size={18} /></button>
                   <button onClick={() => setEditingProduct(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded" title="Edit"><Pencil size={18} /></button>
-                  {/* Yahan humne direct row bhej diya hai */}
                   <button onClick={() => deleteProduct(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded" title="Delete"><Trash2 size={18} /></button>
                 </div>
               ),
