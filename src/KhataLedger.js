@@ -384,7 +384,6 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
   return (
     <PageShell 
       title="Account Ledger" 
-      subtitle="Track retailer credit accounts, market recoveries, and outstanding risk parameters"
     >
       <div className="space-y-6 pb-12">
         {/* --- TOP ANALYTICS METRICS BAR --- */}
