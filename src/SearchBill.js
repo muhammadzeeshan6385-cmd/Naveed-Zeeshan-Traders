@@ -84,7 +84,7 @@ const SearchBill = ({ sales }) => {
   };
 
   return (
-    <PageShell title="Search Previous Bills">
+    <PageShell title="Search Bills">
       <Card title="Find & Reprint Bills">
         <Input placeholder="Search by Bill No or Customer Name..." value={billSearch} onChange={(e) => setBillSearch(e.target.value)} className="mb-4" />
         <DataTable columns={[

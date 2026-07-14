@@ -43,7 +43,7 @@ const CashBank = ({ cashData = [], setCashData }) => {
   const recentTransactions = [...cashData].slice(-20).reverse();
 
   return (
-    <PageShell title="Cash & Bank" subtitle="Monitor liquidity across cash and bank accounts">
+    <PageShell title="Finance Hub">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <StatCard title="Cash in Hand" value={formatRs(totals.cash)} tone="emerald" />
         <StatCard title="Bank Balance" value={formatRs(totals.bank)} tone="blue" />

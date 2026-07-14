@@ -55,7 +55,7 @@ const Expenses = ({ expenses, setExpenses, cashData, setCashData }) => {
   const recentExpenses = [...expenses].slice(-20).reverse();
 
   return (
-    <PageShell title="Expenses" subtitle="Track operating costs and sync them with cash and bank balances">
+    <PageShell title="Business Expenses">
       <Card title="Expense Entry">
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Input label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Rent, Fuel, Salary..." />

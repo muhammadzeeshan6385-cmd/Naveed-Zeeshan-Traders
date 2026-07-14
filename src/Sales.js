@@ -166,7 +166,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   };
 
   return (
-    <PageShell title="Sales Invoice" className="py-2">
+    <PageShell title="Sales Terminal" className="py-2">
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         <div className="xl:col-span-3 space-y-4">
           <Card title="Invoice Details" className="py-2">

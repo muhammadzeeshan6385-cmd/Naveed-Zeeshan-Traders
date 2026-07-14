@@ -46,7 +46,7 @@ const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
   );
 
   return (
-    <PageShell title="Customers" subtitle="Manage retailers, routes, credit limits, and outstanding balances">
+    <PageShell title="Client Directory">
       <Card title="Add Customer">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Input label="Customer Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

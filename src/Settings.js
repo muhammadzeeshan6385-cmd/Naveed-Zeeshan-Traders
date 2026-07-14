@@ -98,7 +98,7 @@ const Settings = ({
   };
 
   return (
-    <PageShell title="Settings" subtitle="Company profile, users, permissions, and data backup">
+    <PageShell title="System Settings">
       <Card title="Company Profile">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Input label="Company Name" value={settings.companyName} onChange={(e) => setSettings({ ...settings, companyName: e.target.value })} />

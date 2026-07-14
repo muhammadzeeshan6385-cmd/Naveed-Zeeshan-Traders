@@ -118,7 +118,7 @@ const ProductReturnManager = ({ sales = [], onReturnSuccess }) => {
   };
 
   return (
-    <PageShell title="Product Return & Reverse Logistics" className="py-2">
+    <PageShell title="Product Return" className="py-2">
       <div className="space-y-4">
         
         {/* Top Search bar interface input controller node */}

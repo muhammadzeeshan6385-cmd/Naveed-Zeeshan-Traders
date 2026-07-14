@@ -48,7 +48,7 @@ const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sal
   const recentPayments = [...payments].slice(-15).reverse();
 
   return (
-    <PageShell title="Recovery" subtitle="Record customer payments and sync cash, bank, and khata automatically">
+    <PageShell title="Payment Recovery">
       <Card title="Payment Entry">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />

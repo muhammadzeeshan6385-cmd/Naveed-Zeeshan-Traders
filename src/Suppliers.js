@@ -36,8 +36,8 @@ const Suppliers = ({ suppliers, setSuppliers, purchases = [] }) => {
   );
 
   return (
-    <PageShell title="Suppliers" subtitle="Manage manufacturers, vendors, and purchase relationships">
-      <Card title="Add Supplier">
+    <PageShell title="Vendors">
+      <Card title="Add Vendor">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Input label="Supplier Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <Input label="Company / Firm" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />

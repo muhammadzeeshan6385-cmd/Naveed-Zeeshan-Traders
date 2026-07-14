@@ -79,7 +79,7 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
   const recentPurchases = useMemo(() => [...purchases].slice(-20).reverse(), [purchases]);
 
   return (
-    <PageShell title="Purchases" subtitle="Record stock-in from suppliers and sync inventory automatically">
+    <PageShell title="Procurement">
       <Card title="Purchase Entry">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
