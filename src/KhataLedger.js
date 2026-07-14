@@ -4,7 +4,8 @@ import { Card, DataTable, PageShell } from './components/ui';
 import { formatRs, getCreditSalesTotal } from './utils/helpers';
 
 // Firebase Firestore setup
-import { db } from '../firebase'; // Apne project ke mutabik firebase path verify karein
+// KhataLedger.js me line number 7 aur 8 ko is se replace karein:
+import { db } from './firebase'; 
 import { doc, updateDoc } from 'firebase/firestore';
 
 import { 
