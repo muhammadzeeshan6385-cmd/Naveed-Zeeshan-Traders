@@ -15,7 +15,8 @@ import {
   UserCheck, 
   AlertCircle, 
   FileText,
-  RotateCcw
+  RotateCcw,
+  PlusCircle
 } from 'lucide-react';
 
 const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }) => {
@@ -32,6 +33,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
     let activeDebtorsCount = 0;
 
     customers.forEach((customer) => {
+      const prevBal = Number(customer.previousBalance || customer.openingBalance || 0);
       const totalSales = getCreditSalesTotal(sales, customer.name);
       const totalPaid = payments
         .filter((p) => p.customer === customer.name)
@@ -40,7 +42,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
         .filter((r) => (r.customer || r.customerName) === customer.name)
         .reduce((sum, r) => sum + Number(r.refundAmount || r.netTotal || 0), 0);
       
-      const balance = totalSales - totalPaid - totalReturned;
+      const balance = prevBal + totalSales - totalPaid - totalReturned;
 
       if (balance > 0) {
         totalOutstanding += balance;
@@ -65,6 +67,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
     () =>
       customers
         .map((customer) => {
+          const prevBal = Number(customer.previousBalance || customer.openingBalance || 0);
           const totalSales = getCreditSalesTotal(sales, customer.name);
           const totalPaid = payments
             .filter((payment) => (payment.customer || payment.customerName) === customer.name)
@@ -73,7 +76,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
             .filter((returnItem) => (returnItem.customer || returnItem.customerName) === customer.name)
             .reduce((sum, returnItem) => sum + Number(returnItem.refundAmount || returnItem.netTotal || 0), 0);
           
-          const balance = totalSales - totalPaid - totalReturned;
+          const balance = prevBal + totalSales - totalPaid - totalReturned;
 
           return {
             id: customer.id,
@@ -81,6 +84,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
             shopName: customer.shopName || '-',
             phone: customer.phone || '-',
             area: customer.area || 'Mailsi Mandi',
+            previousBalance: prevBal,
             totalSales,
             totalPaid,
             totalReturned,
@@ -106,6 +110,21 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
   // 3. Customer Detailed Date-wise Transaction Ledger History Logic
   const customerHistory = useMemo(() => {
     if (!selectedCustomer) return [];
+
+    const historyArray = [];
+
+    // Add Opening/Previous Balance as the very first entry if it exists
+    if (selectedCustomer.previousBalance > 0) {
+      historyArray.push({
+        date: '-',
+        type: 'Opening Balance',
+        reference: 'OPB-001',
+        description: 'Previous Ledger Opening Balance',
+        debit: selectedCustomer.previousBalance,
+        credit: 0,
+        isOpening: true
+      });
+    }
 
     const customerSales = sales
       .filter((sale) => {
@@ -149,18 +168,33 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
         credit: Number(returnItem.refundAmount || returnItem.netTotal || 0),
       }));
 
-    return [...customerSales, ...customerPayments, ...customerReturns].sort(
+    const sortedTransactions = [...customerSales, ...customerPayments, ...customerReturns].sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
+
+    return [...historyArray, ...sortedTransactions];
   }, [selectedCustomer, sales, payments, returns]);
 
-  // 4. Standard Popup Window Print Engine - Rows Closed & Spacing Compacted
+  // 4. Standard Popup Window Print Engine
   const handlePrintLedger = (customer) => {
     setSelectedCustomer(customer);
     setTimeout(() => {
       const windowUrl = 'about:blank';
       const uniqueName = new Date().getTime();
       const printWindow = window.open(windowUrl, uniqueName, 'left=50,top=50,width=850,height=900');
+
+      const printHistory = [];
+
+      // Add Opening Balance to Print History
+      if (customer.previousBalance > 0) {
+        printHistory.push({
+          date: '-',
+          type: 'Opening Balance',
+          reference: 'OPB-001',
+          debit: customer.previousBalance,
+          credit: 0,
+        });
+      }
 
       const invoiceHistory = sales
         .filter((sale) => (sale.customerName || sale.customer) === customer.name)
@@ -192,9 +226,11 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
           credit: Number(returnItem.refundAmount || returnItem.netTotal || 0),
         }));
 
-      const printHistory = [...invoiceHistory, ...recoveryHistory, ...returnHistory].sort(
+      const sortedTransactions = [...invoiceHistory, ...recoveryHistory, ...returnHistory].sort(
         (a, b) => new Date(a.date) - new Date(b.date)
       );
+
+      printHistory.push(...sortedTransactions);
 
       printWindow.document.write(`
         <html>
@@ -255,6 +291,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
                       return printHistory.map(item => {
                         cumulativeSum += (item.debit - item.credit);
                         let displayType = 'Credit Invoice';
+                        if (item.type === 'Opening Balance') displayType = 'Previous Balance';
                         if (item.type === 'Recovery') displayType = 'Market Recovery';
                         if (item.type === 'Return') displayType = 'Product Return';
 
@@ -274,6 +311,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
               </tbody>
             </table>
             <div class="summary">
+              ${customer.previousBalance > 0 ? `Previous Opening Balance: Rs. ${customer.previousBalance}<br />` : ''}
               Total Credit Khata Log: Rs. ${customer.totalSales}<br />
               Total Recovery Payments Log: Rs. ${customer.totalPaid}<br />
               ${customer.totalReturned > 0 ? `Total Product Returns Log: Rs. ${customer.totalReturned}<br />` : ''}
@@ -300,8 +338,8 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
   };
 
   const exportToCSV = () => {
-    const headers = ['Customer Name', 'Shop Name', 'Total Sales', 'Total Paid', 'Total Returned', 'Current Balance\n'];
-    const csvRows = rows.map(r => `"${r.name}","${r.shopName}",${r.totalSales},${r.totalPaid},${r.totalReturned || 0},${r.balance}\n`);
+    const headers = ['Customer Name', 'Shop Name', 'Previous Balance', 'Total Sales', 'Total Paid', 'Total Returned', 'Current Balance\n'];
+    const csvRows = rows.map(r => `"${r.name}","${r.shopName}",${r.previousBalance},${r.totalSales},${r.totalPaid},${r.totalReturned || 0},${r.balance}\n`);
     const blob = new Blob([headers.join(','), ...csvRows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -372,6 +410,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
               { key: 'name', label: 'Customer Name', render: (row) => <span className="font-bold text-slate-200">{row.name}</span> },
               { key: 'shopName', label: 'Shop Identity' },
               { key: 'area', label: 'Market Location', render: (row) => <span className="text-xs text-slate-400">{row.area}</span> },
+              { key: 'previousBalance', label: 'Prev Balance', render: (row) => <span className="text-blue-300 font-medium">{formatRs(row.previousBalance)}</span> },
               { key: 'totalSales', label: 'Total Credit (Dr)', render: (row) => <span className="text-rose-300 font-medium">{formatRs(row.totalSales)}</span> },
               { key: 'totalPaid', label: 'Recovered (Cr)', render: (row) => <span className="text-emerald-300 font-medium">{formatRs(row.totalPaid)}</span> },
               {
@@ -457,9 +496,20 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
                           <tr key={idx} className="hover:bg-slate-900/30 transition">
                             <td className="py-3 pl-2 text-slate-400">{item.date}</td>
                             <td className="py-3">
-                              <span className={`inline-flex items-center gap-1 font-bold ${item.type === 'Invoice' ? 'text-rose-400' : item.type === 'Return' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                {item.type === 'Invoice' ? <ArrowUpRight size={11} /> : item.type === 'Return' ? <RotateCcw size={11} /> : <ArrowDownRight size={11} />}
-                                {item.type === 'Invoice' ? 'Credit Invoice' : item.type === 'Return' ? 'Product Return' : 'Recovery Received'}
+                              <span className={`inline-flex items-center gap-1 font-bold ${
+                                item.type === 'Invoice' ? 'text-rose-400' : 
+                                item.type === 'Return' ? 'text-amber-400' : 
+                                item.type === 'Opening Balance' ? 'text-blue-400' : 
+                                'text-emerald-400'
+                              }`}>
+                                {item.type === 'Invoice' ? <ArrowUpRight size={11} /> : 
+                                 item.type === 'Return' ? <RotateCcw size={11} /> : 
+                                 item.type === 'Opening Balance' ? <PlusCircle size={11} /> : 
+                                 <ArrowDownRight size={11} />}
+                                {item.type === 'Invoice' ? 'Credit Invoice' : 
+                                 item.type === 'Return' ? 'Product Return' : 
+                                 item.type === 'Opening Balance' ? 'Previous Balance' : 
+                                 'Recovery Received'}
                               </span>
                             </td>
                             <td className="py-3 font-semibold text-slate-300">{item.reference}</td>
@@ -478,6 +528,9 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
 
             <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 border-t border-slate-900 mt-4 pt-4 text-xs font-bold text-slate-400">
               <div className="flex flex-wrap gap-4">
+                {selectedCustomer.previousBalance > 0 && (
+                  <div>Opening Balance: <span className="text-blue-300 font-bold">{formatRs(selectedCustomer.previousBalance)}</span></div>
+                )}
                 <div>Aggregate Invoiced Dr: <span className="text-rose-300 font-bold">{formatRs(selectedCustomer.totalSales)}</span></div>
                 <div>Aggregate Recovered Cr: <span className="text-emerald-300 font-bold">{formatRs(selectedCustomer.totalPaid)}</span></div>
                 {selectedCustomer.totalReturned > 0 && (
