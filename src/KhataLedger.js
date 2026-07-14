@@ -1,7 +1,12 @@
-import ProductReturnManager from './ProductReturnManager'; // Agar same folder me hai to path check kr lein
+import ProductReturnManager from './ProductReturnManager'; // Path check kr lein
 import React, { useMemo, useState, useRef } from 'react';
 import { Card, DataTable, PageShell } from './components/ui';
 import { formatRs, getCreditSalesTotal } from './utils/helpers';
+
+// Firebase Firestore setup
+import { db } from '../firebase'; // Apne project ke mutabik firebase path verify karein
+import { doc, updateDoc } from 'firebase/firestore';
+
 import { 
   Eye, 
   Printer, 
@@ -16,7 +21,8 @@ import {
   AlertCircle, 
   FileText,
   RotateCcw,
-  PlusCircle
+  PlusCircle,
+  Edit2
 } from 'lucide-react';
 
 const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }) => {
@@ -24,9 +30,15 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // --- DATABASE UPDATE STATES ---
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [newPrevBalance, setNewPrevBalance] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  
   const printRef = useRef(null);
 
-  // 1. Core Analytics State Calculations for Ledger Header Widgets
+  // 1. Core Analytics Calculations
   const ledgerMetrics = useMemo(() => {
     let totalOutstanding = 0;
     let totalRecoveredThisMonth = 0;
@@ -62,7 +74,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
     return { totalOutstanding, totalRecoveredThisMonth, activeDebtorsCount };
   }, [customers, sales, payments, returns]);
 
-  // 2. Base Ledger Rows Mapping with Full Structural Safety
+  // 2. Rows Mapping
   const rows = useMemo(
     () =>
       customers
@@ -107,13 +119,34 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
     [customers, sales, payments, returns, searchTerm, filterType]
   );
 
-  // 3. Customer Detailed Date-wise Transaction Ledger History Logic
+  // --- FIREBASE SAVE FUNCTION ---
+  const handleSavePreviousBalance = async () => {
+    if (!editingCustomer) return;
+    setIsSaving(true);
+    try {
+      // Firebase document reference
+      const customerDocRef = doc(db, 'customers', editingCustomer.id);
+      
+      await updateDoc(customerDocRef, {
+        previousBalance: Number(newPrevBalance || 0)
+      });
+      
+      alert('Previous Balance database me save ho gaya hai!');
+      setEditingCustomer(null);
+    } catch (error) {
+      console.error("Firebase Error: ", error);
+      alert('Firebase database me update fail ho gaya. Configuration ya rules check karein!');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 3. Detailed Transactions Logic
   const customerHistory = useMemo(() => {
     if (!selectedCustomer) return [];
 
     const historyArray = [];
 
-    // Add Opening/Previous Balance as the very first entry if it exists
     if (selectedCustomer.previousBalance > 0) {
       historyArray.push({
         date: '-',
@@ -175,7 +208,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
     return [...historyArray, ...sortedTransactions];
   }, [selectedCustomer, sales, payments, returns]);
 
-  // 4. Standard Popup Window Print Engine
+  // 4. Print Window Engine
   const handlePrintLedger = (customer) => {
     setSelectedCustomer(customer);
     setTimeout(() => {
@@ -185,7 +218,6 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
 
       const printHistory = [];
 
-      // Add Opening Balance to Print History
       if (customer.previousBalance > 0) {
         printHistory.push({
           date: '-',
@@ -379,7 +411,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
           </div>
         </div>
 
-        {/* --- SEARCH AND CONTROL PANEL FILTER SECTION --- */}
+        {/* --- FILTER CONTROL BAR --- */}
         <div className="bg-slate-900/40 border border-slate-800/80 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="relative w-full md:w-96">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500"><Search size={16} /></span>
@@ -398,12 +430,12 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
               <button onClick={() => setFilterType('highRisk')} className={`px-3 py-1.5 rounded-lg transition ${filterType === 'highRisk' ? 'bg-slate-800 text-white font-bold' : 'hover:text-slate-200'}`}>High Risk</button>
               <button onClick={() => setFilterType('clear')} className={`px-3 py-1.5 rounded-lg transition ${filterType === 'clear' ? 'bg-slate-800 text-white font-bold' : 'hover:text-slate-200'}`}>Clear</button>
             </div>
-            <button onClick={exportToCSV} className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-xl transition" title="Export Ledger Data"><Download size={15} /></button>
-            <button onClick={handleRefreshData} className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-xl transition" title="Reload Ledger Modules"><RefreshCw size={15} className={isRefreshing ? 'animate-spin' : ''} /></button>
+            <button onClick={exportToCSV} className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-xl transition"><Download size={15} /></button>
+            <button onClick={handleRefreshData} className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-xl transition"><RefreshCw size={15} className={isRefreshing ? 'animate-spin' : ''} /></button>
           </div>
         </div>
 
-        {/* --- MAIN KHATA LEDGER DATA TABLE CORE UI --- */}
+        {/* --- MAIN LEDGER DATA TABLE --- */}
         <Card>
           <DataTable
             columns={[
@@ -426,20 +458,33 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
                 key: 'actions',
                 label: 'Statement Action',
                 render: (row) => (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 justify-start">
+                    {/* VIEW STATEMENT BUTTON */}
                     <button
                       onClick={() => setSelectedCustomer(row)}
-                      className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white transition cursor-pointer"
-                      title="View Transaction History"
+                      className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+                      title="View Ledger"
                     >
                       <Eye size={14} />
                     </button>
+                    {/* PRINT STATEMENT BUTTON */}
                     <button
                       onClick={() => handlePrintLedger(row)}
-                      className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-600 text-amber-400 hover:text-white transition cursor-pointer"
-                      title="Print Customer Ledger Sheet"
+                      className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-600 text-amber-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+                      title="Print Statement"
                     >
                       <Printer size={14} />
+                    </button>
+                    {/* EDIT PREVIOUS BALANCE BUTTON */}
+                    <button
+                      onClick={() => {
+                        setEditingCustomer(row);
+                        setNewPrevBalance(row.previousBalance);
+                      }}
+                      className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+                      title="Edit Previous Balance"
+                    >
+                      <Edit2 size={14} />
                     </button>
                   </div>
                 ),
@@ -449,7 +494,61 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
           />
         </Card>
 
-        {/* --- LIVE INTERACTIVE ON-SCREEN STATEMENT MODULE PANEL --- */}
+        {/* --- EDIT PREVIOUS BALANCE POPUP MODAL (FIREBASE INTEGRATED) --- */}
+        {editingCustomer && (
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center z-50 animate-[fadeIn_0.15s_ease-out]">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
+              <button
+                onClick={() => setEditingCustomer(null)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+              
+              <h3 className="text-xs font-black uppercase text-slate-200 tracking-wider mb-2">
+                Update Previous / Opening Balance
+              </h3>
+              <p className="text-[11px] text-slate-400 mb-5">
+                Customer Party: <strong className="text-amber-400 font-bold">{editingCustomer.name}</strong> ({editingCustomer.shopName})
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                    Opening Balance Amount (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    value={newPrevBalance}
+                    onChange={(e) => setNewPrevBalance(e.target.value)}
+                    placeholder="Enter previous balance (e.g. 15000)"
+                    className="w-full px-4 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-slate-700 text-slate-100 placeholder-slate-600 font-bold"
+                    autoFocus
+                  />
+                </div>
+                
+                <div className="flex gap-2 justify-end pt-2">
+                  <button
+                    onClick={() => setEditingCustomer(null)}
+                    className="px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl transition cursor-pointer"
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSavePreviousBalance}
+                    className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving to Database...' : 'Save Balance'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- DETAILED STATEMENT LEDGER BOARD --- */}
         {selectedCustomer && (
           <Card className="border border-slate-800 bg-slate-950/40 p-6 rounded-3xl animate-[fadeIn_0.25s_ease-out]">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
