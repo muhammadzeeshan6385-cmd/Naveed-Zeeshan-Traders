@@ -65,7 +65,7 @@ const Products = ({ products, setProducts }) => {
   );
 
   return (
-    <PageShell title="Products" subtitle="Manage distributor product catalog, rates, and reorder levels">
+    <PageShell title="StockItems">
       <Card title="Add Product">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Input label="Product Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
