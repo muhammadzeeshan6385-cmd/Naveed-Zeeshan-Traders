@@ -38,7 +38,7 @@ const InventorySummary = ({ products, getStock, sales }) => {
   };
 
   return (
-    <PageShell title="Inventory" subtitle="Real-time stock levels based on purchases and sales">
+    <PageShell title="Inventory Logs">
       <StatCard title="Items Needing Attention" value={String(lowStockCount)} tone="amber" />
 
       <Card>
