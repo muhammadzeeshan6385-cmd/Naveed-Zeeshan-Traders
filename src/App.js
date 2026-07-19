@@ -37,7 +37,8 @@ function App() {
     setCurrentUser(null);
     removeFromStorage(STORAGE_KEYS.currentUser);
     
-    // Clear custom login session keys safely
+    // Clear custom login session keys safely aur active tab ko clear krein
+    localStorage.removeItem('nzt_activeTab'); // <-- Login screen par hamesha dashboard aaye
     localStorage.removeItem('login_session_expiry');
     localStorage.removeItem('user_session_active');
     
@@ -296,7 +297,19 @@ function App() {
     }
   }, []);
 
-  if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || "Naveed & Zeeshan Traders"} />;
+  // --- UPDATED: Login par hamesha dashboard ko load krne ka feature add kr diya gaya hai ---
+  if (!currentUser) {
+    return (
+      <Login 
+        onLogin={(user) => {
+          localStorage.setItem('nzt_activeTab', 'Dashboard'); 
+          setActiveTab('Dashboard');
+          setCurrentUser(user);
+        }} 
+        companyName={settings.companyName || "Naveed & Zeeshan Traders"} 
+      />
+    );
+  }
 
   // User role variable block checks ko evaluate karne ke liye
   const userRole = currentUser?.role || 'operator';
