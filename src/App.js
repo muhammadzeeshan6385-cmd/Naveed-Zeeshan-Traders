@@ -27,34 +27,65 @@ import { db } from './firebase';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 
 function App() {
-  // --- Auto Logout Start ---
+  const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
+
+  // --- Auto Logout & Hard Expiry Layer Start ---
   const logoutTimer = useRef();
   const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 minutes
 
   const handleLogout = useCallback(() => {
     setCurrentUser(null);
     removeFromStorage(STORAGE_KEYS.currentUser);
+    
+    // Clear custom login session keys safely
+    localStorage.removeItem('login_session_expiry');
+    localStorage.removeItem('user_session_active');
+    
     window.location.reload();
-  }, []);
+  }, [setCurrentUser]);
 
+  // 1. Hard absolute timestamp verification on app load/refresh
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const sessionExpiry = localStorage.getItem('login_session_expiry');
+    if (sessionExpiry && Date.now() > Number(sessionExpiry)) {
+      handleLogout();
+    }
+  }, [currentUser, handleLogout]);
+
+  // 2. Inactivity tracking engine
   const resetTimer = useCallback(() => {
     clearTimeout(logoutTimer.current);
+    
+    // Secondary safety check during active intervals
+    const sessionExpiry = localStorage.getItem('login_session_expiry');
+    if (sessionExpiry && Date.now() > Number(sessionExpiry)) {
+      handleLogout();
+      return;
+    }
+
     logoutTimer.current = setTimeout(() => {
       handleLogout();
     }, INACTIVITY_LIMIT);
-  }, [handleLogout]);
+  }, [handleLogout, INACTIVITY_LIMIT]);
 
   useEffect(() => {
+    if (!currentUser) return;
+
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     events.forEach(event => window.addEventListener(event, resetTimer));
     resetTimer();
-    return () => events.forEach(event => window.removeEventListener(event, resetTimer));
-  }, [resetTimer]);
-  // --- Auto Logout End ---
+    
+    return () => {
+      clearTimeout(logoutTimer.current);
+      events.forEach(event => window.removeEventListener(event, resetTimer));
+    };
+  }, [currentUser, resetTimer]);
+  // --- Auto Logout & Hard Expiry Layer End ---
 
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
-  const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
   const [activeTab, setActiveTab] = useLocalStorage('nzt_activeTab', 'Dashboard');
   const [settings] = useLocalStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
   const [selectedReport, setSelectedReport] = useState(null);
@@ -267,6 +298,9 @@ function App() {
 
   if (!currentUser) return <Login onLogin={setCurrentUser} companyName={settings.companyName || "Naveed & Zeeshan Traders"} />;
 
+  // User role variable block checks ko evaluate karne ke liye
+  const userRole = currentUser?.role || 'operator';
+
   const renderModule = () => {
     switch (activeTab) {
       case 'Dashboard': 
@@ -280,17 +314,42 @@ function App() {
             sales={sales} 
           />
         );
-      case 'Products': return <Products title="Stock Items" products={products} setProducts={setProducts} />;
-      case 'Inventory': return <InventorySummary title="Inventory Logs" products={products} getStock={getStock} sales={sales} />;
-      case 'Customers': return <CustomerForm title="Client Directory" customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} />;
-      case 'Suppliers': return <Suppliers title="Vendors" suppliers={suppliers} setSuppliers={setSuppliers} />;
-      case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} />;
-      case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} />;
-      case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} />;
+      case 'Products': return <Products title="Stock Items" products={products} setProducts={setProducts} userRole={userRole} />;
+      case 'Inventory': return <InventorySummary title="Inventory Logs" products={products} getStock={getStock} sales={sales} userRole={userRole} />;
+      case 'Customers': return <CustomerForm title="Client Directory" customers={customers} setCustomers={setCustomers} sales={sales} payments={payments} userRole={userRole} />;
+      
+      case 'Suppliers': 
+        return (
+          <Suppliers 
+            title="Vendors" 
+            suppliers={suppliers} 
+            setSuppliers={setSuppliers} 
+            purchases={purchases} 
+            payments={payments} 
+            userRole={userRole}
+            onSavePayment={async (newPayment) => {
+              try {
+                const newDocRef = doc(collection(db, "payments"));
+                await setDoc(newDocRef, {
+                  id: newDocRef.id,
+                  ...newPayment
+                });
+              } catch (error) {
+                console.error("Firebase Payment Save Error: ", error);
+                window.alert("Database me payment save nahi ho saki.");
+              }
+            }}
+          />
+        );
+
+      case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} userRole={userRole} />;
+      case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} userRole={userRole} />;
+      case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} userRole={userRole} />;
       case 'ProductReturn': 
         return (
           <ProductReturnManager 
             sales={sales || []} 
+            userRole={userRole}
             onReturnSuccess={(updatedBill) => {
               const originalBill = sales.find(s => s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo);
               let calculatedRefund = 0;
@@ -343,12 +402,12 @@ function App() {
             }} 
           />
         );
-      case 'Recovery': return <Recovery title="Payment Recovery" payments={payments} setPayments={setPayments} customers={customers} sales={sales} cashData={cashData} setCashData={setCashData} />;
-      case 'Khata': return <KhataLedger title="Account Ledger" customers={customers} sales={sales} payments={payments} />;
-      case 'Expenses': return <Expenses title="Business Expenses" expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} />;
-      case 'Cash/Bank': return <CashBank title="Finance Hub" cashData={cashData} setCashData={setCashData} />;
-      case 'Reports': return <Reports selectedReport={selectedReport} sales={sales} expenses={expenses} payments={payments} cashData={cashData} purchases={purchases} products={products} customers={customers} />;
-      case 'Settings': return <Settings title="System Settings" products={products} setProducts={setProducts} />;
+      case 'Recovery': return <Recovery title="Payment Recovery" payments={payments} setPayments={setPayments} customers={customers} sales={sales} cashData={cashData} setCashData={setCashData} userRole={userRole} />;
+      case 'Khata': return <KhataLedger title="Account Ledger" customers={customers} sales={sales} payments={payments} userRole={userRole} />;
+      case 'Expenses': return <Expenses title="Business Expenses" expenses={expenses} setExpenses={setExpenses} cashData={cashData} setCashData={setCashData} currentRole="admin" />;
+      case 'Cash/Bank': return <CashBank title="Finance Hub" cashData={cashData} setCashData={setCashData} userRole={userRole} />;
+      case 'Reports': return <Reports selectedReport={selectedReport} sales={sales} expenses={expenses} payments={payments} cashData={cashData} purchases={purchases} products={products} customers={customers} userRole={userRole} />;
+      case 'Settings': return <Settings title="System Settings" products={products} setProducts={setProducts} userRole={userRole} />;
       default: return <Dashboard stats={stats} sales={sales} />;
     }
   };

@@ -3,32 +3,68 @@ import { Eye, Pencil, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, getProductPurchaseRate, getProductSaleRate } from './utils/helpers';
 
-// Firebase Firestore ki imports
+// Firebase Firestore imports
 import { db } from './firebase'; 
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
-const Products = ({ products, setProducts }) => {
+const Products = ({ products, setProducts, userRole }) => {
+  // Case-insensitivity aur potential string formats ko handle karne ke liye check
+  const isAdmin = userRole && typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
+
   const [form, setForm] = useState({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
-  const [editingProduct, setEditingProduct] = useState(null); // Edit Popup ki state
+  const [editingProduct, setEditingProduct] = useState(null); // Edit Popup state
   const [search, setSearch] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- PAGINATION STATES ---
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10); // Default 10 products per page
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const resetForm = () => setForm({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
 
-  const addProduct = () => {
+  const addProduct = async () => {
+    if (!isAdmin) {
+      window.alert('Unauthorized access. Only admins can add products.');
+      return;
+    }
     if (!form.name.trim() || !form.sRate) {
       window.alert('Product name and sale rate are required.');
       return;
     }
-    setProducts([...products, { ...form, id: generateId(), pRate: Number(form.pRate) || 0, sRate: Number(form.sRate), minStock: Number(form.minStock) || 5 }]);
-    resetForm();
-    setCurrentPage(1); // Naya product add hone par pehle page par le jayein
+
+    try {
+      setIsSubmitting(true);
+      const customId = generateId();
+      const productPayload = {
+        id: customId,
+        name: form.name.trim(),
+        category: form.category.trim(),
+        sku: form.sku.trim(),
+        unit: form.unit,
+        pRate: Number(form.pRate) || 0,
+        sRate: Number(form.sRate) || 0,
+        minStock: Number(form.minStock) || 5
+      };
+
+      await setDoc(doc(db, 'products', customId), productPayload);
+
+      setProducts([...products, productPayload]);
+      resetForm();
+      setCurrentPage(1); 
+      console.log("Product successfully added to Firebase Firestore.");
+    } catch (error) {
+      console.error("Firebase write error:", error);
+      window.alert("Database me save karte hue error aya: " + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const deleteProduct = async (row) => {
+    if (!isAdmin) {
+      window.alert('Unauthorized action. Only admins can delete products.');
+      return;
+    }
     if (window.confirm('Delete this product?')) {
       const targetId = row.id || row._id;
 
@@ -46,7 +82,6 @@ const Products = ({ products, setProducts }) => {
           return productId !== targetId;
         }));
 
-        // Agar aakhri page ka akela product delete ho to page adjust karein
         const totalPagesAfterDelete = Math.ceil((products.length - 1) / itemsPerPage);
         if (currentPage > totalPagesAfterDelete && totalPagesAfterDelete > 0) {
           setCurrentPage(totalPagesAfterDelete);
@@ -60,12 +95,42 @@ const Products = ({ products, setProducts }) => {
     }
   };
 
-  const updateProduct = () => {
-    setProducts(products.map(p => p.id === editingProduct.id ? editingProduct : p));
-    setEditingProduct(null); 
+  const updateProduct = async () => {
+    if (!isAdmin) {
+      window.alert('Unauthorized data modification attempt.');
+      return;
+    }
+
+    const targetId = editingProduct.id || editingProduct._id;
+    if (!targetId) {
+      window.alert("Product ID missing for tracking execution.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const productDocRef = doc(db, 'products', targetId);
+      
+      const updatedPayload = {
+        ...editingProduct,
+        pRate: Number(editingProduct.pRate) || 0,
+        sRate: Number(editingProduct.sRate) || 0
+      };
+
+      await updateDoc(productDocRef, updatedPayload);
+
+      setProducts(products.map(p => (p.id === targetId || p._id === targetId) ? updatedPayload : p));
+      setEditingProduct(null); 
+      console.log("Product fields updated successfully inside Firestore.");
+    } catch (error) {
+      console.error("Firebase update path error:", error);
+      window.alert("Database record update error: " + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // 1. Pehle pure products ko filter karein
+  // 1. Filter products base
   const filteredProducts = products.filter((p) =>
     [p.name, p.category, p.sku].join(' ').toLowerCase().includes(search.toLowerCase())
   );
@@ -73,49 +138,47 @@ const Products = ({ products, setProducts }) => {
   // 2. Pagination Math calculations
   const totalItems = filteredProducts.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
-
-  // Jab user search kare to current page adjust ho sake
   const activePage = currentPage > totalPages ? Math.max(1, totalPages) : currentPage;
 
   const indexOfLastItem = activePage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  
-  // Is page par show hone wale specific products
   const paginatedProducts = filteredProducts.slice(indexOfFirstItem, indexOfLastItem);
 
-  const handlePageChange = (pageNumber) => {
-    setCurrentPage(pageNumber);
-  };
+  const handlePageChange = (pageNumber) => setCurrentPage(pageNumber);
 
   const handleSearchChange = (e) => {
     setSearch(e.target.value);
-    setCurrentPage(1); // Search badalne par hamesha Page 1 par reset karein
+    setCurrentPage(1); 
   };
 
   const handleItemsPerPageChange = (e) => {
     setItemsPerPage(Number(e.target.value));
-    setCurrentPage(1); // Dropdown badalne par Page 1 par le jayein
+    setCurrentPage(1); 
   };
 
   return (
     <PageShell title="Stock Items">
-      <Card title="Add Product">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Input label="Product Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
-          <Input label="SKU / Code" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
-          <Select label="Unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
-            <option>Piece</option><option>Carton</option><option>Bag</option><option>Kg</option>
-          </Select>
-          <Input label="Purchase Rate" type="number" value={form.pRate} onChange={(e) => setForm({ ...form, pRate: e.target.value })} />
-          <Input label="Sale Rate" type="number" value={form.sRate} onChange={(e) => setForm({ ...form, sRate: e.target.value })} />
-          <Input label="Min Stock Alert" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} />
-        </div>
-        <Button className="mt-4" onClick={addProduct}>Save Product</Button>
-      </Card>
+      {/* Form Add Box Layer */}
+      {isAdmin && (
+        <Card title="Add Product">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Input label="Product Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+            <Input label="SKU / Code" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
+            <Select label="Unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+              <option>Piece</option><option>Carton</option><option>Bag</option><option>Kg</option>
+            </Select>
+            <Input label="Purchase Rate" type="number" value={form.pRate} onChange={(e) => setForm({ ...form, pRate: e.target.value })} />
+            <Input label="Sale Rate" type="number" value={form.sRate} onChange={(e) => setForm({ ...form, sRate: e.target.value })} />
+            <Input label="Min Stock Alert" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} />
+          </div>
+          <Button className="mt-4" onClick={addProduct} disabled={isSubmitting}>
+            {isSubmitting ? 'Saving...' : 'Save Product'}
+          </Button>
+        </Card>
+      )}
 
       <Card title="Product List">
-        {/* Search & Rows Per Page Dropdown Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
           <Input 
             className="w-full sm:max-w-md" 
@@ -138,7 +201,6 @@ const Products = ({ products, setProducts }) => {
           </div>
         </div>
 
-        {/* Dynamic Items Info Statement */}
         <div className="text-[11px] text-slate-400 font-semibold mb-2 pl-1">
           Showing {totalItems > 0 ? indexOfFirstItem + 1 : 0} to {Math.min(indexOfLastItem, totalItems)} of {totalItems} entries
         </div>
@@ -157,13 +219,19 @@ const Products = ({ products, setProducts }) => {
               render: (row) => (
                 <div className="flex items-center gap-2">
                   <button onClick={() => alert('Previewing ' + row.name)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded cursor-pointer" title="Preview"><Eye size={18} /></button>
-                  <button onClick={() => setEditingProduct(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded cursor-pointer" title="Edit"><Pencil size={18} /></button>
-                  <button onClick={() => deleteProduct(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded cursor-pointer" title="Delete"><Trash2 size={18} /></button>
+                  
+                  {/* Strict variable evaluation logic */}
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => setEditingProduct(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded cursor-pointer" title="Edit"><Pencil size={18} /></button>
+                      <button onClick={() => deleteProduct(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded cursor-pointer" title="Delete"><Trash2 size={18} /></button>
+                    </>
+                  )}
                 </div>
               ),
             },
           ]}
-          rows={paginatedProducts} // Sirf page-wise filter huye products render honge
+          rows={paginatedProducts}
         />
 
         {/* --- DYNAMIC PAGINATION CONTROLS BAR --- */}
@@ -173,7 +241,6 @@ const Products = ({ products, setProducts }) => {
               Page {activePage} of {totalPages}
             </span>
             <div className="flex items-center gap-1">
-              {/* Previous Button */}
               <button
                 disabled={activePage === 1}
                 onClick={() => handlePageChange(activePage - 1)}
@@ -186,7 +253,6 @@ const Products = ({ products, setProducts }) => {
                 <ChevronLeft size={14} /> Previous
               </button>
 
-              {/* Number Buttons */}
               {Array.from({ length: totalPages }, (_, index) => {
                 const pageNum = index + 1;
                 return (
@@ -204,7 +270,6 @@ const Products = ({ products, setProducts }) => {
                 );
               })}
 
-              {/* Next Button */}
               <button
                 disabled={activePage === totalPages}
                 onClick={() => handlePageChange(activePage + 1)}
@@ -221,8 +286,8 @@ const Products = ({ products, setProducts }) => {
         )}
       </Card>
 
-      {/* Edit Popup Modal */}
-      {editingProduct && (
+      {/* Edit Popup Modal Terminal Portal */}
+      {isAdmin && editingProduct && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="flex justify-between items-center mb-6">
@@ -235,7 +300,9 @@ const Products = ({ products, setProducts }) => {
               <Input label="P.Rate" type="number" value={editingProduct.pRate} onChange={(e) => setEditingProduct({...editingProduct, pRate: e.target.value})} />
               <Input label="S.Rate" type="number" value={editingProduct.sRate} onChange={(e) => setEditingProduct({...editingProduct, sRate: e.target.value})} />
             </div>
-            <Button className="w-full mt-6" onClick={updateProduct}>Save Changes</Button>
+            <Button className="w-full mt-6" onClick={updateProduct} disabled={isSubmitting}>
+              {isSubmitting ? 'Updating...' : 'Save Changes'}
+            </Button>
           </div>
         </div>
       )}

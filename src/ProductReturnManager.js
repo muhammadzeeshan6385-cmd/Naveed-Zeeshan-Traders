@@ -78,7 +78,6 @@ const ProductReturnManager = ({ sales = [], onReturnSuccess }) => {
       const newNetTotal = newGross - newDiscAmount;
 
       // --- INSTANT CLIENT STATE UPDATE DIRECT CHANNEL ---
-      // FIX: Yahan '...selectedSale' lagaya hai taake customer, date, aur baki fields dashboard calculation ke liye safe rahein.
       if (onReturnSuccess) {
         onReturnSuccess({
           ...selectedSale, 

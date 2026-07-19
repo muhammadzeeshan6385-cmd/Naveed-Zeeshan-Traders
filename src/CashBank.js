@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Button, Card, DataTable, Input, PageShell, Select, StatCard } from './components/ui';
 import { formatRs, generateId, todayISO } from './utils/helpers';
 
-const CashBank = ({ cashData = [], setCashData }) => {
+const CashBank = ({ cashData = [], setCashData, userRole }) => {
   const [form, setForm] = useState({
     date: todayISO(),
     account: 'Cash',
@@ -49,24 +49,27 @@ const CashBank = ({ cashData = [], setCashData }) => {
         <StatCard title="Bank Balance" value={formatRs(totals.bank)} tone="blue" />
       </div>
 
-      <Card title="Manual Transaction">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-          <Select label="Account" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
-            <option value="Cash">Cash</option>
-            <option value="Bank">Bank</option>
-          </Select>
-          <Select label="Type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-            <option value="receipt">Receipt (+)</option>
-            <option value="payment">Payment (-)</option>
-          </Select>
-          <Input label="Amount" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-          <Input label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-        </div>
-        <Button className="mt-4" onClick={addTransaction}>
-          Add Transaction
-        </Button>
-      </Card>
+      {/* Manual Transaction Card and Button are only accessible/visible to the admin user */}
+      {userRole === 'admin' && (
+        <Card title="Manual Transaction">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            <Select label="Account" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
+              <option value="Cash">Cash</option>
+              <option value="Bank">Bank</option>
+            </Select>
+            <Select label="Type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option value="receipt">Receipt (+)</option>
+              <option value="payment">Payment (-)</option>
+            </Select>
+            <Input label="Amount" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            <Input label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </div>
+          <Button className="mt-4" onClick={addTransaction}>
+            Add Transaction
+          </Button>
+        </Card>
+      )}
 
       <Card title="Recent Transactions">
         <DataTable

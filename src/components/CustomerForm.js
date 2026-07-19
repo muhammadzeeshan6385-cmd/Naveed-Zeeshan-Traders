@@ -1,10 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { Button, Card, DataTable, Input, PageShell } from './ui';
 import { formatRs, generateId, getCreditSalesTotal } from '../utils/helpers';
-import { Edit2, Trash2, CheckCircle2, X } from 'lucide-react'; // Zaruri icons import kiye hain
+import { Edit2, Trash2, CheckCircle2, X, Search, Layers, List } from 'lucide-react';
 
-const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
-  // Main form sirf add karne ke liye khali rahega
+const CustomerForm = ({ customers, setCustomers, sales, payments, userRole }) => {
+  // Case-Insensitive Admin Check Pattern
+  const isAdmin = useMemo(() => {
+    return typeof userRole === 'string' && userRole.trim().toLowerCase() === 'admin';
+  }, [userRole]);
+
+  // Main form states
   const [form, setForm] = useState({ name: '', shopName: '', mobile: '', address: '', route: '', creditLimit: '' });
   
   // Edit modal state aur uski field values
@@ -12,11 +17,22 @@ const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', shopName: '', mobile: '', address: '', route: '', creditLimit: '' });
 
-  // Success (Tick Mark) Popup State
+  // Success Popup State
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Naya customer add karne ke liye
+  // SEARCH & PAGINATION STATES
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showAll, setShowAll] = useState(false); 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Naya customer add karne ke liye (With strict write boundary guard)
   const addCustomer = () => {
+    if (!isAdmin) {
+      window.alert('Unauthorized: Access denied.');
+      return;
+    }
+
     if (!form.name.trim()) {
       window.alert('Customer name is required.');
       return;
@@ -35,12 +51,16 @@ const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
       },
     ]);
     
-    // Form Reset
     setForm({ name: '', shopName: '', mobile: '', address: '', route: '', creditLimit: '' });
   };
 
-  // Edit popup kholne ke liye
+  // Edit popup kholne ke liye (With handler boundary guard)
   const startEdit = (customer) => {
+    if (!isAdmin) {
+      window.alert('Unauthorized: Operation not permitted.');
+      return;
+    }
+
     setEditingId(customer.id);
     setEditForm({
       name: customer.name,
@@ -53,8 +73,13 @@ const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
     setIsEditOpen(true);
   };
 
-  // Popup se data update karne ke liye
+  // Popup se data update karne ke liye (With strict mutation guard)
   const updateCustomer = () => {
+    if (!isAdmin) {
+      window.alert('Unauthorized: Execution halted.');
+      return;
+    }
+
     if (!editForm.name.trim()) {
       window.alert('Customer name is required.');
       return;
@@ -76,17 +101,22 @@ const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
       )
     );
 
-    setIsEditOpen(false); // Edit modal band karein
+    setIsEditOpen(false);
     setEditingId(null);
     
-    // Success Modal (Tick) show karein aur 2 seconds baad band kar dein
     setShowSuccess(true);
     setTimeout(() => {
       setShowSuccess(false);
     }, 2000);
   };
 
+  // Delete customer routine (With runtime protection)
   const deleteCustomer = (id) => {
+    if (!isAdmin) {
+      window.alert('Unauthorized: Deletion denied.');
+      return;
+    }
+
     if (window.confirm('Delete this customer?')) {
       setCustomers(customers.filter((customer) => customer.id !== id));
       if (editingId === id) {
@@ -96,37 +126,103 @@ const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
     }
   };
 
-  const rows = useMemo(
-    () =>
-      customers.map((customer) => {
-        const creditSales = getCreditSalesTotal(sales, customer.name);
-        const recovered = payments
-          .filter((payment) => payment.customer === customer.name)
-          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        return {
-          ...customer,
-          balance: creditSales - recovered,
-        };
-      }),
-    [customers, sales, payments]
-  );
+  // Raw rows balance calculation
+  const rows = useMemo(() => {
+    return customers.map((customer) => {
+      const creditSales = getCreditSalesTotal(sales, customer.name);
+      const recovered = payments
+        .filter((payment) => payment.customer === customer.name)
+        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      return {
+        ...customer,
+        balance: creditSales - recovered,
+      };
+    });
+  }, [customers, sales, payments]);
+
+  // Search filtering logic
+  const filteredRows = useMemo(() => {
+    const cleanSearch = searchTerm.toLowerCase().trim();
+    return rows.filter((row) => 
+      (row.name && row.name.toLowerCase().includes(cleanSearch)) ||
+      (row.shopName && row.shopName.toLowerCase().includes(cleanSearch)) ||
+      (row.route && row.route.toLowerCase().includes(cleanSearch)) ||
+      (row.mobile && row.mobile.includes(cleanSearch))
+    );
+  }, [rows, searchTerm]);
+
+  // Pagination bounds management
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
+  
+  const finalDisplayedRows = useMemo(() => {
+    if (showAll) return filteredRows;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredRows.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredRows, showAll, currentPage]);
+
+  const goToPage = (pageNumber) => {
+    if (pageNumber >= 1 && pageNumber <= totalPages) {
+      setCurrentPage(pageNumber);
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1);
+  };
 
   return (
     <PageShell title="Client Directory">
-      {/* --- ADD CUSTOMER CARD --- */}
-      <Card title="Add Customer">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Input label="Customer Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input label="Shop Name" value={form.shopName} onChange={(e) => setForm({ ...form, shopName: e.target.value })} />
-          <Input label="Mobile" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
-          <Input label="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-          <Input label="Route / Beat" value={form.route} onChange={(e) => setForm({ ...form, route: e.target.value })} />
-          <Input label="Credit Limit" type="number" value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} />
+      {/* --- ADD CUSTOMER CARD (Strict structural UI check) --- */}
+      {isAdmin && (
+        <Card title="Add Customer">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Input label="Customer Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input label="Shop Name" value={form.shopName} onChange={(e) => setForm({ ...form, shopName: e.target.value })} />
+            <Input label="Mobile" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+            <Input label="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+            <Input label="Route / Beat" value={form.route} onChange={(e) => setForm({ ...form, route: e.target.value })} />
+            <Input label="Credit Limit" type="number" value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} />
+          </div>
+          <Button className="mt-4" onClick={addCustomer}>
+            Save Customer
+          </Button>
+        </Card>
+      )}
+
+      {/* --- SEARCH AND VIEW MODE TOGGLE BAR --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 mb-4 items-end">
+        <div className="md:col-span-2 relative">
+          <Input 
+            label="Search Customer" 
+            value={searchTerm} 
+            onChange={handleSearchChange} 
+            placeholder="Search by Name, Shop, Mobile, or Route..."
+            className="pl-10"
+          />
+          <div className="absolute left-3 bottom-3 text-slate-500">
+            <Search size={16} />
+          </div>
         </div>
-        <Button className="mt-4" onClick={addCustomer}>
-          Save Customer
-        </Button>
-      </Card>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-400 mb-1.5">View Mode</label>
+          <Button 
+            onClick={() => {
+              setShowAll(!showAll);
+              setCurrentPage(1);
+            }} 
+            className={`w-full flex items-center justify-center gap-2 text-xs font-bold py-2.5 rounded-lg transition border cursor-pointer ${
+              showAll 
+                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20' 
+                : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900'
+            }`}
+          >
+            {showAll ? <List size={14} /> : <Layers size={14} />}
+            {showAll ? 'Switch to Pages (10 items)' : 'Show All Pages'}
+          </Button>
+        </div>
+      </div>
 
       {/* --- CUSTOMER LIST CARD --- */}
       <Card title="Customer List">
@@ -142,30 +238,82 @@ const CustomerForm = ({ customers, setCustomers, sales, payments }) => {
               label: 'Action',
               render: (row) => (
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => startEdit(row)}
-                    className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-white transition cursor-pointer flex items-center justify-center"
-                    title="Edit Customer"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => deleteCustomer(row.id)}
-                    className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white transition cursor-pointer flex items-center justify-center"
-                    title="Delete Customer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {isAdmin ? (
+                    <>
+                      <button
+                        onClick={() => startEdit(row)}
+                        className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+                        title="Edit Customer"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => deleteCustomer(row.id)}
+                        className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+                        title="Delete Customer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-slate-500 italic px-1">View Only</span>
+                  )}
                 </div>
               ),
             },
           ]}
-          rows={rows}
+          rows={finalDisplayedRows}
         />
+
+        {/* --- DYNAMIC PAGINATION BAR --- */}
+        {!showAll && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-4 border-t border-slate-800">
+            <span className="text-xs font-semibold text-slate-400">
+              Showing <b className="text-slate-200">{filteredRows.length === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1}</b> to <b className="text-slate-200">{Math.min(currentPage * itemsPerPage, filteredRows.length)}</b> of <b className="text-slate-200">{filteredRows.length}</b> Customers
+            </span>
+            
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-800 disabled:opacity-30 disabled:pointer-events-none text-slate-300 text-xs px-3 py-1.5 rounded-lg cursor-pointer"
+                disabled={currentPage === 1}
+                onClick={() => goToPage(currentPage - 1)}
+              >
+                Previous
+              </Button>
+
+              {Array.from({ length: totalPages }, (_, idx) => {
+                const pageNum = idx + 1;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => goToPage(pageNum)}
+                    className={`w-8 h-8 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                      currentPage === pageNum
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <Button
+                size="sm"
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-800 disabled:opacity-30 disabled:pointer-events-none text-slate-300 text-xs px-3 py-1.5 rounded-lg cursor-pointer"
+                disabled={currentPage === totalPages}
+                onClick={() => goToPage(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
-      {/* --- EDIT CUSTOMER POPUP MODAL --- */}
-      {isEditOpen && (
+      {/* --- EDIT CUSTOMER POPUP MODAL (Double layer backup check) --- */}
+      {isAdmin && isEditOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 animate-[fadeIn_0.15s_ease-out]">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 relative shadow-2xl mx-4">
             <button

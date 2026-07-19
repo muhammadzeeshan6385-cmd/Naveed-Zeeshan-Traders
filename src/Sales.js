@@ -8,15 +8,24 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   const [customer, setCustomer] = useState('');
   const [walkInName, setWalkInName] = useState('');
   const [paymentType, setPaymentType] = useState('Credit');
-  const [discountPercent, setDiscountPercent] = useState(0);
   const [items, setItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => { setInvoiceNo(nextInvoiceNo(sales)); }, [sales]);
 
+  // --- CALCULATIONS BASED ON ITEM-WISE % DISCOUNT ---
+  // Gross Total: Bina discount ke actual items ka sum
   const gross = useMemo(() => items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0), [items]);
-  const discountAmount = (gross * discountPercent) / 100;
-  const netTotal = gross - discountAmount;
+  
+  // Total Discount Amount: Har row ke Percentage (%) ke mutabiq banti hui total raqam ka sum
+  const totalDiscountAmount = useMemo(() => items.reduce((sum, item) => {
+    const itemGross = Number(item.qty) * Number(item.rate);
+    const itemDiscAmount = itemGross * ((Number(item.discount) || 0) / 100);
+    return sum + itemDiscAmount;
+  }, 0), [items]);
+  
+  // Net Payable Amount
+  const netTotal = gross - totalDiscountAmount;
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -41,19 +50,41 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     const existing = items.find((item) => item.name === product.name);
     
     if (existing) {
-      // FIX: Items list map karte waqt purchaseRate ko preserve rakha gaya hai taake profit break na ho
-      setItems(items.map((i) => i.name === product.name ? { ...i, purchaseRate: i.purchaseRate || purchaseRate, qty: i.qty + 1, total: (i.qty + 1) * i.rate } : i));
+      setItems(items.map((i) => {
+        if (i.name === product.name) {
+          const newQty = i.qty + 1;
+          const currentDiscountPercent = Number(i.discount) || 0; // % store hoga
+          const itemGross = newQty * i.rate;
+          const itemDiscAmount = itemGross * (currentDiscountPercent / 100);
+          return { 
+            ...i, 
+            purchaseRate: i.purchaseRate || purchaseRate, 
+            qty: newQty, 
+            total: itemGross - itemDiscAmount 
+          };
+        }
+        return i;
+      }));
     } else {
       const rate = getProductSaleRate(product);
-      setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, purchaseRate, qty: 1, ctnSize, total: rate }]);
+      setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, purchaseRate, qty: 1, ctnSize, discount: 0, total: rate }]);
     }
   };
 
-  const updateQty = (id, newQty) => {
+  // Update Quantity or % Discount dynamically
+  const updateItemRow = (id, newQty, newDiscountPercent) => {
     setItems(items.map((item) => {
       if (item.id === id) {
         const qty = Number(newQty);
-        return { ...item, qty, total: qty * item.rate };
+        const discount = Number(newDiscountPercent); // Ab yeh percentage hai
+        const itemGross = qty * item.rate;
+        const itemDiscAmount = itemGross * (discount / 100);
+        return { 
+          ...item, 
+          qty, 
+          discount,
+          total: itemGross - itemDiscAmount 
+        };
       }
       return item;
     }));
@@ -101,16 +132,21 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
           </div>
           <table>
-            <thead><tr><th>Ser</th><th>Product Name</th><th>Piece</th><th>Rate</th><th>Total</th></tr></thead>
+            <thead><tr><th>Ser</th><th>Product Name</th><th>Piece</th><th>Rate</th><th>Disc (Rs.)</th><th>Total</th></tr></thead>
             <tbody>
-              ${(invoiceData.items || []).map((i, idx) => `
+              ${(invoiceData.items || []).map((i, idx) => {
+                const itemGross = Number(i.qty) * Number(i.rate);
+                const calcDiscRs = itemGross * ((Number(i.discount) || 0) / 100);
+                return `
                 <tr>
                   <td>${idx + 1}</td>
                   <td class="product-name">${i.name}</td>
                   <td>${i.qty}</td>
                   <td>${formatRs(i.rate || 0)}</td>
+                  <td>${calcDiscRs > 0 ? formatRs(calcDiscRs) : '—'}</td>
                   <td>${formatRs(i.total)}</td>
-                </tr>`).join('')}
+                </tr>`;
+              }).join('')}
             </tbody>
           </table>
           <div class="totals-container">
@@ -118,7 +154,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
               <tr><td class="label-col">Grand Total:</td><td class="amount-col">${formatRs(invoiceData.grossTotal)}</td></tr>
               <tr><td class="label-col">Discount:</td><td class="amount-col">${formatRs(invoiceData.discount)}</td></tr>
               <tr><td class="label-col">Prev Balance:</td><td class="amount-col">${formatRs(invoiceData.prevBalance || 0)}</td></tr>
-              <td class="label-col" style="border-top: 2px solid #000;">Payable Amount:</td><td class="amount-col" style="border-top: 2px solid #000;">${formatRs(Number(invoiceData.netTotal) + Number(invoiceData.prevBalance || 0))}</td></tr>
+              <tr><td class="label-col" style="border-top: 2px solid #000;">Payable Amount:</td><td class="amount-col" style="border-top: 2px solid #000;">${formatRs(Number(invoiceData.netTotal) + Number(invoiceData.prevBalance || 0))}</td></tr>
             </table>
           </div>
           <div style="margin-top: 100px; display: flex; justify-content: flex-end;">
@@ -127,6 +163,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             </div>
           </div>    
           <script>window.onload = () => { window.print(); window.close(); }</script>
+         </div>
         </body>
       </html>
     `);
@@ -153,16 +190,27 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
     const prevBalance = totalSales - totalPaid; 
 
-    const invoice = { id: generateId(), invoiceNo, date: currentDate, customer: finalCustomer, paymentType, items, grossTotal: gross, discount: discountAmount, prevBalance: prevBalance, netTotal, createdBy: currentUser?.username || 'System' };
+    const invoice = { 
+      id: generateId(), 
+      invoiceNo, 
+      date: currentDate, 
+      customer: finalCustomer, 
+      paymentType, 
+      items, 
+      grossTotal: gross, 
+      discount: totalDiscountAmount, // Percentage se nikali hui actual dynamic Rs raqam save hogi
+      prevBalance: prevBalance, 
+      netTotal, 
+      createdBy: currentUser?.username || 'System' 
+    };
     
     setSales(prevSales => [...prevSales, invoice]);
     
     if (paymentType === 'Cash') {
-      // FIX: setCashData ko safe functional variant diya taake cash state instant updates handle kare
       setCashData(prevCash => [...prevCash, { id: generateId(), date: currentDate, account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${finalCustomer}`, type: 'receipt' }]);
     }
     handlePrint(invoice);
-    setItems([]); setCustomer(''); setWalkInName(''); setDiscountPercent(0); setPaymentType('Credit');
+    setItems([]); setCustomer(''); setWalkInName(''); setPaymentType('Credit');
   };
 
   return (
@@ -199,8 +247,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             <DataTable columns={[
               { key: 'ser', label: 'Ser', render: (_, index) => index + 1 },
               { key: 'name', label: 'Product' },
-              { key: 'pcs_input', label: 'Piece', render: (row) => <Input type="number" style={{ width: '60px' }} value={row.qty} onChange={(e) => updateQty(row.id, e.target.value)} /> },
+              { key: 'pcs_input', label: 'Piece', render: (row) => <Input type="number" style={{ width: '65px' }} value={row.qty} onChange={(e) => updateItemRow(row.id, e.target.value, row.discount)} /> },
               { key: 'rate', label: 'Rate', render: (row) => formatRs(row.rate) },
+              { key: 'discount_input', label: 'Disc (%)', render: (row) => <Input type="number" style={{ width: '75px' }} value={row.discount || ''} placeholder="0" onChange={(e) => updateItemRow(row.id, row.qty, e.target.value)} /> },
               { key: 'total', label: 'Total', render: (row) => formatRs(row.total) },
               { key: 'action', render: (row) => <button onClick={() => removeItem(row.id)} className="p-1 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"><Trash2 className="text-red-500 w-4 h-4" /></button> }
             ]} rows={items} />
@@ -209,14 +258,16 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
         
         <div className="xl:col-span-1">
           <Card title="Summary">
-            <div className="text-lg">Gross: {formatRs(gross)}</div>
-            <Input label="Discount (%)" type="number" value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} />
-            <div className="text-xl font-bold py-2">Payable: {formatRs(netTotal)}</div>
-            <Button onClick={saveInvoice} className="w-full bg-emerald-600 mt-3">Save & Print</Button>
+            <div className="text-base font-semibold text-slate-400">Gross: {formatRs(gross)}</div>
+            <div className="text-base font-semibold text-red-400 mt-1">Total Disc: {formatRs(totalDiscountAmount)}</div>
+            <hr className="border-slate-800 my-2" />
+            <div className="text-xl font-bold py-1 text-emerald-400">Payable: {formatRs(netTotal)}</div>
+            <Button onClick={saveInvoice} className="w-full bg-emerald-600 mt-4 py-2 text-sm font-bold">Save & Print</Button>
           </Card>
         </div>
       </div>
     </PageShell>
   );
 };
+
 export default Sales;

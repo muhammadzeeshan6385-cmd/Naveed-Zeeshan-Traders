@@ -4,7 +4,6 @@ import { Card, DataTable, PageShell } from './components/ui';
 import { formatRs, getCreditSalesTotal } from './utils/helpers';
 
 // Firebase Firestore setup
-// KhataLedger.js me line number 7 aur 8 ko is se replace karein:
 import { db } from './firebase'; 
 import { doc, updateDoc } from 'firebase/firestore';
 
@@ -26,7 +25,8 @@ import {
   Edit2
 } from 'lucide-react';
 
-const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }) => {
+// currentRole prop ko add kia hai aur default fallback 'admin' rakha hai taake access seamless rahe
+const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [], currentRole = 'admin' }) => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -38,6 +38,11 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
   const [isSaving, setIsSaving] = useState(false);
   
   const printRef = useRef(null);
+
+  // Strict Admin Boolean state configuration
+  const isAdmin = useMemo(() => {
+    return String(currentRole || '').trim().toLowerCase() === 'admin';
+  }, [currentRole]);
 
   // 1. Core Analytics Calculations
   const ledgerMetrics = useMemo(() => {
@@ -122,10 +127,15 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
 
   // --- FIREBASE SAVE FUNCTION ---
   const handleSavePreviousBalance = async () => {
+    // Strict protection barrier line
+    if (!isAdmin) {
+      alert('Aapke paas is record ko change karne ki authority nahi hai!');
+      return;
+    }
+    
     if (!editingCustomer) return;
     setIsSaving(true);
     try {
-      // Firebase document reference
       const customerDocRef = doc(db, 'customers', editingCustomer.id);
       
       await updateDoc(customerDocRef, {
@@ -226,7 +236,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
           reference: 'OPB-001',
           debit: customer.previousBalance,
           credit: 0,
-        });
+         });
       }
 
       const invoiceHistory = sales
@@ -382,9 +392,7 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
   };
 
   return (
-    <PageShell 
-      title="Account Ledger" 
-    >
+    <PageShell title="Account Ledger">
       <div className="space-y-6 pb-12">
         {/* --- TOP ANALYTICS METRICS BAR --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -459,7 +467,6 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
                 label: 'Statement Action',
                 render: (row) => (
                   <div className="flex items-center gap-1.5 justify-start">
-                    {/* VIEW STATEMENT BUTTON */}
                     <button
                       onClick={() => setSelectedCustomer(row)}
                       className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white transition cursor-pointer flex items-center justify-center"
@@ -467,7 +474,6 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
                     >
                       <Eye size={14} />
                     </button>
-                    {/* PRINT STATEMENT BUTTON */}
                     <button
                       onClick={() => handlePrintLedger(row)}
                       className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-600 text-amber-400 hover:text-white transition cursor-pointer flex items-center justify-center"
@@ -475,17 +481,19 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
                     >
                       <Printer size={14} />
                     </button>
-                    {/* EDIT PREVIOUS BALANCE BUTTON */}
-                    <button
-                      onClick={() => {
-                        setEditingCustomer(row);
-                        setNewPrevBalance(row.previousBalance);
-                      }}
-                      className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-white transition cursor-pointer flex items-center justify-center"
-                      title="Edit Previous Balance"
-                    >
-                      <Edit2 size={14} />
-                    </button>
+                    {/* EDIT PREVIOUS BALANCE BUTTON - STRICTLY LOCKED FOR AUTHENTIC ADMIN ONLY */}
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setEditingCustomer(row);
+                          setNewPrevBalance(row.previousBalance);
+                        }}
+                        className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+                        title="Edit Previous Balance"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    )}
                   </div>
                 ),
               },
@@ -494,8 +502,8 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
           />
         </Card>
 
-        {/* --- EDIT PREVIOUS BALANCE POPUP MODAL (FIREBASE INTEGRATED) --- */}
-        {editingCustomer && (
+        {/* --- EDIT PREVIOUS BALANCE POPUP MODAL --- */}
+        {editingCustomer && isAdmin && (
           <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center z-50 animate-[fadeIn_0.15s_ease-out]">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
               <button
@@ -632,12 +640,6 @@ const KhataLedger = ({ customers = [], sales = [], payments = [], returns = [] }
                 )}
                 <div>Aggregate Invoiced Dr: <span className="text-rose-300 font-bold">{formatRs(selectedCustomer.totalSales)}</span></div>
                 <div>Aggregate Recovered Cr: <span className="text-emerald-300 font-bold">{formatRs(selectedCustomer.totalPaid)}</span></div>
-                {selectedCustomer.totalReturned > 0 && (
-                  <div>Aggregate Returned Cr: <span className="text-amber-300 font-bold">{formatRs(selectedCustomer.totalReturned)}</span></div>
-                )}
-              </div>
-              <div className="text-xs bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
-                Net Outstanding Risk Balance: <span className="text-amber-400 font-black text-sm ml-1">{formatRs(selectedCustomer.balance)}</span>
               </div>
             </div>
           </Card>
