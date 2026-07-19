@@ -107,7 +107,6 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
             Operational Overview
           </h1>
           <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
-            Naveed & Zeeshan Traders Portal
           </p>
         </div>
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-2xl">
