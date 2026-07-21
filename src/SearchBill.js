@@ -178,7 +178,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               label: 'Action',
               render: (row) => (
                 <div className="flex gap-1 items-center">
-                  {/* Reprint Icon Only */}
+                  {/* Reprint: Tamam Accounts k liye */}
                   <button
                     onClick={() => handlePrint && handlePrint(row)}
                     title="Reprint Bill"
@@ -187,24 +187,25 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
                     <Printer className="w-4 h-4" />
                   </button>
 
-                  {/* Edit Icon Only */}
-                  <button
-                    onClick={() => handleOpenEditModal(row)}
-                    title="Edit Full Bill Items"
-                    className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-500 rounded-lg transition-colors"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-
-                  {/* Delete Icon Only */}
+                  {/* Edit aur Delete: Sirf ADMIN Account k liye */}
                   {isAdmin && (
-                    <button
-                      onClick={() => handleDeleteBill(row)}
-                      title="Delete Bill"
-                      className="p-2 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleOpenEditModal(row)}
+                        title="Edit Full Bill Items"
+                        className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-500 rounded-lg transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteBill(row)}
+                        title="Delete Bill"
+                        className="p-2 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
                   )}
                 </div>
               ),
