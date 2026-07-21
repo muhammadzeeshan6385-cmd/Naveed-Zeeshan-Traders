@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Printer } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
-import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, todayISO, getCreditSalesTotal } from './utils/helpers';
+import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, getCreditSalesTotal } from './utils/helpers';
+
+// Firebase Firestore Imports
+import { db } from './firebase';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCashData, currentUser, payments }) => {
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -10,21 +14,24 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   const [paymentType, setPaymentType] = useState('Credit');
   const [items, setItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Strict Admin Check for Edit/Delete Permissions
+  const activeUsername = String(currentUser?.username || currentUser?.id || '').trim().toLowerCase();
+  const activeRole = String(currentUser?.role || '').trim().toLowerCase();
+  const isAdmin = activeUsername === 'admin' || activeRole === 'admin';
 
   useEffect(() => { setInvoiceNo(nextInvoiceNo(sales)); }, [sales]);
 
   // --- CALCULATIONS BASED ON ITEM-WISE % DISCOUNT ---
-  // Gross Total: Bina discount ke actual items ka sum
   const gross = useMemo(() => items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0), [items]);
   
-  // Total Discount Amount: Har row ke Percentage (%) ke mutabiq banti hui total raqam ka sum
   const totalDiscountAmount = useMemo(() => items.reduce((sum, item) => {
     const itemGross = Number(item.qty) * Number(item.rate);
     const itemDiscAmount = itemGross * ((Number(item.discount) || 0) / 100);
     return sum + itemDiscAmount;
   }, 0), [items]);
   
-  // Net Payable Amount
   const netTotal = gross - totalDiscountAmount;
 
   const handleKeyDown = (e) => {
@@ -53,7 +60,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
       setItems(items.map((i) => {
         if (i.name === product.name) {
           const newQty = i.qty + 1;
-          const currentDiscountPercent = Number(i.discount) || 0; // % store hoga
+          const currentDiscountPercent = Number(i.discount) || 0;
           const itemGross = newQty * i.rate;
           const itemDiscAmount = itemGross * (currentDiscountPercent / 100);
           return { 
@@ -71,12 +78,11 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     }
   };
 
-  // Update Quantity or % Discount dynamically
   const updateItemRow = (id, newQty, newDiscountPercent) => {
     setItems(items.map((item) => {
       if (item.id === id) {
         const qty = Number(newQty);
-        const discount = Number(newDiscountPercent); // Ab yeh percentage hai
+        const discount = Number(newDiscountPercent);
         const itemGross = qty * item.rate;
         const itemDiscAmount = itemGross * (discount / 100);
         return { 
@@ -94,6 +100,8 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
   const handlePrint = (invoiceData) => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) return;
+    
     printWindow.document.write(`
       <html>
         <head>
@@ -169,53 +177,123 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     `);
   };
 
-  const saveInvoice = () => {
+  // --- SAFE FIREBASE DIRECT SAVE INVOICE FUNCTION ---
+  const saveInvoice = async () => {
     const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
-    if (!finalCustomer || items.length === 0) { window.alert('Please fill details.'); return; }
+    if (!finalCustomer || items.length === 0) { 
+      window.alert('Please fill details and add items.'); 
+      return; 
+    }
 
     const currentDate = new Date().toISOString().split('T')[0];
 
+    // Stock verification
     for (let item of items) {
-      const product = products.find(p => p.id === item.productId);
-      const currentStock = getStock(product.name);
-      if (item.qty > currentStock) {
-        window.alert(`Insufficient stock for ${item.name}! Available: ${currentStock}`);
-        return;
+      const product = products.find(p => p.id === item.productId || p.name === item.name);
+      if (product) {
+        const currentStock = getStock(product.name);
+        if (item.qty > currentStock) {
+          window.alert(`Insufficient stock for ${item.name}! Available: ${currentStock}`);
+          return;
+        }
       }
     }
+
     const totalSales = getCreditSalesTotal(sales, finalCustomer);
     const totalPaid = (payments || [])
       .filter((p) => p.customer === finalCustomer)
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-    const prevBalance = totalSales - totalPaid; 
+    const prevBalance = totalSales - totalPaid;
 
     const invoice = { 
-      id: generateId(), 
+      id: invoiceNo ? String(invoiceNo) : generateId(), 
       invoiceNo, 
       date: currentDate, 
       customer: finalCustomer, 
       paymentType, 
       items, 
       grossTotal: gross, 
-      discount: totalDiscountAmount, // Percentage se nikali hui actual dynamic Rs raqam save hogi
+      discount: totalDiscountAmount,
       prevBalance: prevBalance, 
       netTotal, 
-      createdBy: currentUser?.username || 'System' 
+      createdBy: currentUser?.username || 'System',
+      createdAt: new Date().toISOString()
     };
     
-    setSales(prevSales => [...prevSales, invoice]);
-    
-    if (paymentType === 'Cash') {
-      setCashData(prevCash => [...prevCash, { id: generateId(), date: currentDate, account: 'Cash', amount: netTotal, description: `Sale ${invoiceNo} - ${finalCustomer}`, type: 'receipt' }]);
+    setIsSaving(true);
+
+    try {
+      // 1. Direct Cloud Database Save (Firebase Firestore)
+      const saleDocRef = doc(db, "sales", String(invoice.id));
+      await setDoc(saleDocRef, invoice);
+
+      // 2. Local State Sync
+      setSales(prevSales => [...prevSales, invoice]);
+      
+      if (paymentType === 'Cash') {
+        const cashObj = { 
+          id: generateId(), 
+          date: currentDate, 
+          account: 'Cash', 
+          amount: netTotal, 
+          description: `Sale ${invoiceNo} - ${finalCustomer}`, 
+          type: 'receipt' 
+        };
+        setCashData(prevCash => [...prevCash, cashObj]);
+        
+        // Save Cash Entry to Firestore
+        try {
+          await setDoc(doc(db, "cashData", String(cashObj.id)), cashObj);
+        } catch (err) {
+          console.error("Cash ledger sync error:", err);
+        }
+      }
+
+      // 3. Print & Clear Form
+      handlePrint(invoice);
+      setItems([]); 
+      setCustomer(''); 
+      setWalkInName(''); 
+      setPaymentType('Credit');
+
+    } catch (error) {
+      console.error("Firebase Invoice Save Error: ", error);
+      window.alert(`ALERT: Bill Cloud Database me save NAHI ho saka!\nError: ${error.message}\n\nMeharbani kar ke Internet Connection check karein aur dobara try karein.`);
+    } finally {
+      setIsSaving(false);
     }
-    handlePrint(invoice);
-    setItems([]); setCustomer(''); setWalkInName(''); setPaymentType('Credit');
+  };
+
+  // Delete Invoice Function (Strict Admin Only)
+  const handleDeleteInvoice = async (invoiceToDelete) => {
+    if (!isAdmin) {
+      window.alert("Apko Bill Delete krne ki Permission nahi hai!");
+      return;
+    }
+
+    if (!window.confirm(`Kya aap Bill No: ${invoiceToDelete.invoiceNo} delete karna chahte hain?`)) {
+      return;
+    }
+
+    try {
+      // Delete from Firebase
+      await deleteDoc(doc(db, "sales", String(invoiceToDelete.id)));
+      
+      // Update local state
+      setSales(prev => prev.filter(s => s.id !== invoiceToDelete.id));
+      window.alert("Bill success fully delete ho gaya hai.");
+    } catch (err) {
+      console.error("Delete Error:", err);
+      window.alert("Bill delete karne me error aya hai: " + err.message);
+    }
   };
 
   return (
     <PageShell title="Sales Terminal" className="py-2">
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+        
+        {/* Left Form Section */}
         <div className="xl:col-span-3 space-y-4">
           <Card title="Invoice Details" className="py-2">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -256,16 +334,67 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
           </Card>
         </div>
         
+        {/* Right Summary Section */}
         <div className="xl:col-span-1">
           <Card title="Summary">
             <div className="text-base font-semibold text-slate-400">Gross: {formatRs(gross)}</div>
             <div className="text-base font-semibold text-red-400 mt-1">Total Disc: {formatRs(totalDiscountAmount)}</div>
             <hr className="border-slate-800 my-2" />
             <div className="text-xl font-bold py-1 text-emerald-400">Payable: {formatRs(netTotal)}</div>
-            <Button onClick={saveInvoice} className="w-full bg-emerald-600 mt-4 py-2 text-sm font-bold">Save & Print</Button>
+            <Button 
+              onClick={saveInvoice} 
+              disabled={isSaving}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-4 py-2 text-sm font-bold transition-all"
+            >
+              {isSaving ? 'Saving to Cloud...' : 'Save & Print'}
+            </Button>
           </Card>
         </div>
       </div>
+
+      {/* --- RECENT INVOICES LIST (WITH ADMIN-ONLY DELETE ACCESS) --- */}
+      <div className="mt-6">
+        <Card title="Recent Sales Bills">
+          <DataTable 
+            columns={[
+              { key: 'invoiceNo', label: 'Invoice No' },
+              { key: 'date', label: 'Date' },
+              { key: 'customer', label: 'Customer' },
+              { key: 'paymentType', label: 'Payment' },
+              { key: 'netTotal', label: 'Net Amount', render: (row) => formatRs(row.netTotal) },
+              { key: 'createdBy', label: 'Created By' },
+              { 
+                key: 'actions', 
+                label: 'Actions', 
+                render: (row) => (
+                  <div className="flex gap-2 items-center">
+                    <button 
+                      onClick={() => handlePrint(row)} 
+                      title="Reprint Bill" 
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                    
+                    {/* Strictly visible only for Admin Accounts */}
+                    {isAdmin && (
+                      <button 
+                        onClick={() => handleDeleteInvoice(row)} 
+                        title="Delete Bill (Admin Only)" 
+                        className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-red-500"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ) 
+              }
+            ]}
+            rows={[...sales].reverse().slice(0, 15)} 
+          />
+        </Card>
+      </div>
+
     </PageShell>
   );
 };
