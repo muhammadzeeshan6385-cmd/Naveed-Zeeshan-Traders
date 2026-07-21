@@ -7,7 +7,7 @@ import { Edit, Trash2, Printer, Plus } from 'lucide-react';
 import { db } from './firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
-const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) => {
+const SearchBills = ({ sales = [], setSales, products = [], currentUser, handlePrint }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Modal Edit States
@@ -15,8 +15,9 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
   const [editingBill, setEditingBill] = useState(null);
   const [editItems, setEditItems] = useState([]);
   const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Flexible Admin Check (Checks username, name, role or fallback to true if no role structure)
+  // Flexible Admin Check
   const userStr = JSON.stringify(currentUser || {}).toLowerCase();
   const isAdmin = userStr.includes('admin') || !currentUser || currentUser?.role === 'admin';
 
@@ -32,7 +33,6 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
   // Open Full Itemized Edit Modal
   const handleOpenEditModal = (bill) => {
     setEditingBill({ ...bill });
-    // Deep copy items so main state doesn't mutate before saving
     setEditItems(bill.items ? JSON.parse(JSON.stringify(bill.items)) : []);
     setEditModalOpen(true);
   };
@@ -82,17 +82,19 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
     setSelectedProductToAdd('');
   };
 
-  // Save Full Updated Bill to Firebase & Local State
+  // Safe Save Full Updated Bill to Firebase & Local State
   const handleSaveFullBill = async () => {
     if (editItems.length === 0) {
       window.alert("Bill me kam se kam 1 item honi chahiye!");
       return;
     }
 
-    // Recalculate Totals
-    const newGross = editItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0);
+    setIsSaving(true);
+
+    // Recalculate Totals safely
+    const newGross = editItems.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0)), 0);
     const newTotalDisc = editItems.reduce((sum, item) => {
-      const gross = Number(item.qty) * Number(item.rate);
+      const gross = Number(item.qty || 0) * Number(item.rate || 0);
       return sum + (gross * ((Number(item.discount) || 0) / 100));
     }, 0);
     const newNetTotal = newGross - newTotalDisc;
@@ -107,17 +109,24 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
     };
 
     try {
-      // 1. Firebase Direct Update
-      await setDoc(doc(db, "sales", String(updatedBillObj.id)), updatedBillObj, { merge: true });
+      // 1. Safe Document Reference Key Mismatch Handler
+      const docId = String(updatedBillObj.id || updatedBillObj.invoiceNo);
+      
+      // Direct Firebase Save
+      await setDoc(doc(db, "sales", docId), updatedBillObj, { merge: true });
 
-      // 2. React State Update
-      setSales(prev => prev.map(s => s.id === updatedBillObj.id ? updatedBillObj : s));
+      // 2. Safe React State Update
+      if (typeof setSales === 'function') {
+        setSales(prevSales => (prevSales || []).map(s => String(s.id || s.invoiceNo) === docId ? updatedBillObj : s));
+      }
 
       setEditModalOpen(false);
       window.alert("Bill kamyabi se update ho gaya hai!");
     } catch (err) {
       console.error("Bill Edit Error: ", err);
-      window.alert("Bill database par update nahi ho saka: " + err.message);
+      window.alert("Bill database par update nahi ho saka: " + (err?.message || "Unknown error"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -126,8 +135,11 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
     if (!window.confirm(`Kya aap Bill No: ${bill.invoiceNo} delete karna chahte hain?`)) return;
 
     try {
-      await deleteDoc(doc(db, "sales", String(bill.id)));
-      setSales(prev => prev.filter(s => s.id !== bill.id));
+      const docId = String(bill.id || bill.invoiceNo);
+      await deleteDoc(doc(db, "sales", docId));
+      if (typeof setSales === 'function') {
+        setSales(prev => (prev || []).filter(s => String(s.id || s.invoiceNo) !== docId));
+      }
       window.alert("Bill delete ho gaya hai.");
     } catch (err) {
       window.alert("Delete Error: " + err.message);
@@ -135,9 +147,9 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
   };
 
   // Modal Net Calculations live
-  const modalGross = editItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0);
+  const modalGross = editItems.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0)), 0);
   const modalDisc = editItems.reduce((sum, item) => {
-    const gross = Number(item.qty) * Number(item.rate);
+    const gross = Number(item.qty || 0) * Number(item.rate || 0);
     return sum + (gross * ((Number(item.discount) || 0) / 100));
   }, 0);
   const modalNetTotal = modalGross - modalDisc;
@@ -168,7 +180,6 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
                     <Printer className="w-4 h-4 mr-1 inline" /> Reprint
                   </Button>
 
-                  {/* Edit & Delete Buttons */}
                   <button
                     onClick={() => handleOpenEditModal(row)}
                     title="Edit Full Bill Items"
@@ -297,8 +308,12 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
               </div>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => setEditModalOpen(false)}>Cancel</Button>
-                <Button onClick={handleSaveFullBill} className="bg-emerald-600 hover:bg-emerald-700 font-bold">
-                  Save Changes
+                <Button 
+                  onClick={handleSaveFullBill} 
+                  disabled={isSaving}
+                  className="bg-emerald-600 hover:bg-emerald-700 font-bold"
+                >
+                  {isSaving ? "Saving..." : "Save Changes"}
                 </Button>
               </div>
             </div>
