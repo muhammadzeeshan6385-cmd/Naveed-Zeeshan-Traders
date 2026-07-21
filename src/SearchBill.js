@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Card, DataTable, Input, PageShell } from './components/ui';
+import { Card, DataTable, Input, PageShell } from './components/ui';
 import { formatRs } from './utils/helpers';
 import { Edit, Trash2, Printer, Plus, CheckCircle2 } from 'lucide-react';
 
@@ -158,9 +158,10 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
   return (
     <PageShell title="Search Bills">
       <Card title="Find & Reprint Bills">
-        <div className="mb-4">
+        {/* Compact Normal-sized Search Bar */}
+        <div className="mb-4 max-w-xs">
           <Input
-            placeholder="Search by Bill No or Customer Name..."
+            placeholder="Search Bill No or Customer..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -176,11 +177,17 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               key: 'actions',
               label: 'Action',
               render: (row) => (
-                <div className="flex gap-2 items-center">
-                  <Button variant="secondary" onClick={() => handlePrint && handlePrint(row)}>
-                    <Printer className="w-4 h-4 mr-1 inline" /> Reprint
-                  </Button>
+                <div className="flex gap-1 items-center">
+                  {/* Reprint Icon Only */}
+                  <button
+                    onClick={() => handlePrint && handlePrint(row)}
+                    title="Reprint Bill"
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg transition-colors"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
 
+                  {/* Edit Icon Only */}
                   <button
                     onClick={() => handleOpenEditModal(row)}
                     title="Edit Full Bill Items"
@@ -189,6 +196,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
                     <Edit className="w-4 h-4" />
                   </button>
 
+                  {/* Delete Icon Only */}
                   {isAdmin && (
                     <button
                       onClick={() => handleDeleteBill(row)}
@@ -235,9 +243,9 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
                 <option value="">Select Item to Add in this Bill...</option>
                 {products?.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
               </select>
-              <Button onClick={() => handleAddItemToBill(selectedProductToAdd)} className="bg-emerald-600 hover:bg-emerald-700">
+              <button onClick={() => handleAddItemToBill(selectedProductToAdd)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center">
                 <Plus className="w-4 h-4 mr-1 inline" /> Add Item
-              </Button>
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto mb-4 border border-slate-200 dark:border-slate-800 rounded-lg">
@@ -304,14 +312,14 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
                 <span className="text-emerald-400 text-base font-bold">Net Total: {formatRs(modalNetTotal)}</span>
               </div>
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => setEditModalOpen(false)}>Cancel</Button>
-                <Button 
+                <button onClick={() => setEditModalOpen(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancel</button>
+                <button 
                   onClick={handleSaveFullBill} 
                   disabled={isSaving}
-                  className="bg-emerald-600 hover:bg-emerald-700 font-bold"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-4 py-2 rounded-lg"
                 >
                   {isSaving ? "Saving..." : "Save Changes"}
-                </Button>
+                </button>
               </div>
             </div>
 
