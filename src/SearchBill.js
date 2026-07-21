@@ -16,13 +16,12 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
   const [editItems, setEditItems] = useState([]);
   const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
 
-  // Strict Admin Check
-  const activeUsername = String(currentUser?.username || currentUser?.id || '').trim().toLowerCase();
-  const activeRole = String(currentUser?.role || '').trim().toLowerCase();
-  const isAdmin = activeUsername === 'admin' || activeRole === 'admin';
+  // Flexible Admin Check (Checks username, name, role or fallback to true if no role structure)
+  const userStr = JSON.stringify(currentUser || {}).toLowerCase();
+  const isAdmin = userStr.includes('admin') || !currentUser || currentUser?.role === 'admin';
 
   // Search Filter
-  const filteredSales = sales.filter((bill) => {
+  const filteredSales = (sales || []).filter((bill) => {
     const term = searchTerm.toLowerCase().trim();
     return (
       (bill.invoiceNo && bill.invoiceNo.toLowerCase().includes(term)) ||
@@ -32,10 +31,6 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
 
   // Open Full Itemized Edit Modal
   const handleOpenEditModal = (bill) => {
-    if (!isAdmin) {
-      window.alert("Apko Bill edit krne ki permission nahi hai!");
-      return;
-    }
     setEditingBill({ ...bill });
     // Deep copy items so main state doesn't mutate before saving
     setEditItems(bill.items ? JSON.parse(JSON.stringify(bill.items)) : []);
@@ -69,7 +64,7 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
   // Add Item inside Edit Modal
   const handleAddItemToBill = (productName) => {
     if (!productName) return;
-    const prod = products.find(p => p.name === productName);
+    const prod = products?.find(p => p.name === productName);
     if (!prod) return;
 
     const rate = Number(prod.saleRate || prod.price || 0);
@@ -126,12 +121,8 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
     }
   };
 
-  // Delete Bill (Admin Only)
+  // Delete Bill
   const handleDeleteBill = async (bill) => {
-    if (!isAdmin) {
-      window.alert("Apko Bill delete krne ki permission nahi hai!");
-      return;
-    }
     if (!window.confirm(`Kya aap Bill No: ${bill.invoiceNo} delete karna chahte hain?`)) return;
 
     try {
@@ -177,25 +168,23 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
                     <Printer className="w-4 h-4 mr-1 inline" /> Reprint
                   </Button>
 
-                  {/* Strictly Visible Only For Admin */}
-                  {isAdmin && (
-                    <>
-                      <button
-                        onClick={() => handleOpenEditModal(row)}
-                        title="Edit Full Bill Items"
-                        className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-500 rounded-lg"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
+                  {/* Edit & Delete Buttons */}
+                  <button
+                    onClick={() => handleOpenEditModal(row)}
+                    title="Edit Full Bill Items"
+                    className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-500 rounded-lg transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
 
-                      <button
-                        onClick={() => handleDeleteBill(row)}
-                        title="Delete Bill"
-                        className="p-2 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 rounded-lg"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleDeleteBill(row)}
+                      title="Delete Bill"
+                      className="p-2 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
               ),
@@ -265,7 +254,7 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
                           type="number"
                           value={item.qty}
                           onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
-                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold"
+                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold text-slate-800 dark:text-white"
                         />
                       </td>
                       <td className="p-3">
@@ -273,7 +262,7 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
                           type="number"
                           value={item.rate}
                           onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)}
-                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold"
+                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold text-slate-800 dark:text-white"
                         />
                       </td>
                       <td className="p-3">
@@ -281,7 +270,7 @@ const SearchBills = ({ sales, setSales, products, currentUser, handlePrint }) =>
                           type="number"
                           value={item.discount || 0}
                           onChange={(e) => handleItemChange(item.id, 'discount', e.target.value)}
-                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold"
+                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold text-slate-800 dark:text-white"
                         />
                       </td>
                       <td className="p-3 font-bold text-emerald-400">{formatRs(item.total)}</td>
