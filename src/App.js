@@ -18,7 +18,7 @@ import Dashboard from './Dashboard';
 import Settings from './Settings';
 import SearchBill from './SearchBill';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { STORAGE_KEYS, MENU_ITEMS, DEFAULT_SETTINGS, COMPANY_NAME } from './utils/constants';
+import { STORAGE_KEYS, MENU_ITEMS, DEFAULT_SETTINGS } from './utils/constants';
 import { removeFromStorage } from './utils/storage';
 import { Logo } from './components/ui';
 
@@ -164,6 +164,8 @@ function App() {
       for (const item of updatedData) {
         if (item.id) await setDoc(doc(db, "suppliers", String(item.id)), item, { merge: true });
       }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "suppliers", String(updatedData.id)), updatedData, { merge: true });
     }
   };
 
@@ -172,6 +174,8 @@ function App() {
       for (const item of updatedData) {
         if (item.id) await setDoc(doc(db, "purchases", String(item.id)), item, { merge: true });
       }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "purchases", String(updatedData.id)), updatedData, { merge: true });
     }
   };
 
@@ -180,6 +184,8 @@ function App() {
       for (const item of updatedData) {
         if (item.id) await setDoc(doc(db, "sales", String(item.id)), item, { merge: true });
       }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "sales", String(updatedData.id)), updatedData, { merge: true });
     }
   };
 
@@ -188,6 +194,8 @@ function App() {
       for (const item of updatedData) {
         if (item.id) await setDoc(doc(db, "payments", String(item.id)), item, { merge: true });
       }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "payments", String(updatedData.id)), updatedData, { merge: true });
     }
   };
 
@@ -196,6 +204,8 @@ function App() {
       for (const item of updatedData) {
         if (item.id) await setDoc(doc(db, "expenses", String(item.id)), item, { merge: true });
       }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "expenses", String(updatedData.id)), updatedData, { merge: true });
     }
   };
 
@@ -204,6 +214,8 @@ function App() {
       for (const item of updatedData) {
         if (item.id) await setDoc(doc(db, "cashData", String(item.id)), item, { merge: true });
       }
+    } else if (updatedData && updatedData.id) {
+      await setDoc(doc(db, "cashData", String(updatedData.id)), updatedData, { merge: true });
     }
   };
 
@@ -271,7 +283,7 @@ function App() {
       outstanding: totalOutstandingFromLedger,
       productReturn: totalReturnAmount 
     };
-  }, [JSON.stringify(sales), expenses, payments, products, customers]);
+  }, [sales, expenses, payments, products, customers]);
 
   const getStock = useCallback((productName) => {
     const target = String(productName || '').trim().toLowerCase();
@@ -297,7 +309,6 @@ function App() {
     }
   }, []);
 
-  // --- UPDATED: Login par hamesha dashboard ko load krne ka feature add kr diya gaya hai ---
   if (!currentUser) {
     return (
       <Login 
@@ -311,10 +322,28 @@ function App() {
     );
   }
 
-  // User role variable block checks ko evaluate karne ke liye
   const userRole = currentUser?.role || 'operator';
 
+  const checkPermission = (moduleId) => {
+    const target = String(moduleId || '').trim().toLowerCase();
+    
+    if (String(userRole).trim().toLowerCase() === 'admin') return true;
+    if (target === 'dashboard' || target === 'overview') return true;
+    
+    if (!currentUser?.modules || !Array.isArray(currentUser.modules)) return false;
+    
+    return currentUser.modules.some(mod => {
+      if (!mod) return false;
+      const nameToCheck = typeof mod === 'object' ? (mod.id || mod.name || '') : mod;
+      return String(nameToCheck).trim().toLowerCase() === target;
+    });
+  };
+
   const renderModule = () => {
+    if (!checkPermission(activeTab)) {
+      return <Dashboard stats={stats} recentExpenses={expenses.slice(-5)} recentSales={sales.slice(-5)} getSaleCustomer={(s) => s.customer} getSaleTotal={(s) => s.netTotal} sales={sales} />;
+    }
+
     switch (activeTab) {
       case 'Dashboard': 
         return (
@@ -363,7 +392,7 @@ function App() {
           <ProductReturnManager 
             sales={sales || []} 
             userRole={userRole}
-            onReturnSuccess={(updatedBill) => {
+            onReturnSuccess={async (updatedBill) => {
               const originalBill = sales.find(s => s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo);
               let calculatedRefund = 0;
 
@@ -382,7 +411,7 @@ function App() {
                   updatedQtyMap[itemId] = Number(item.qty || 0);
                 });
 
-                const refreshedProducts = products.map(p => {
+                for (const p of products) {
                   const invoiceItem = originalBill.items.find(i => (i.productId === p.id || i.id === p.id || i.name === p.name));
                   if (invoiceItem) {
                     const originalQty = Number(invoiceItem.qty || 0);
@@ -390,28 +419,22 @@ function App() {
                     const returnedQuantity = originalQty - currentNewQty;
 
                     if (returnedQuantity > 0) {
-                      return {
+                      await setDoc(doc(db, "products", String(p.id)), {
                         ...p,
                         stock: Number(p.stock || 0) + returnedQuantity
-                      };
+                      }, { merge: true });
                     }
                   }
-                  return p;
-                });
-                setProducts(refreshedProducts);
+                }
               }
 
-              const refreshedSales = sales.map(s => {
-                if (s.id === updatedBill.id || s.invoiceNo === updatedBill.invoiceNo) {
-                  return { 
-                    ...s, 
-                    ...updatedBill, 
-                    refundAmount: (Number(s.refundAmount || 0) + calculatedRefund) 
-                  };
-                }
-                return s;
-              });
-              setSales([...refreshedSales]);
+              if (originalBill) {
+                await setDoc(doc(db, "sales", String(originalBill.id)), {
+                  ...originalBill,
+                  ...updatedBill,
+                  refundAmount: (Number(originalBill.refundAmount || 0) + calculatedRefund)
+                }, { merge: true });
+              }
             }} 
           />
         );
@@ -428,7 +451,6 @@ function App() {
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300">
       <div className="flex min-h-screen relative">
-        {/* Responsive Sidebar Layout classes update */}
         <aside className={`fixed md:sticky top-0 z-50 flex h-screen w-72 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 p-5 transition-transform duration-300 ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:hidden'
         }`}>
@@ -443,7 +465,6 @@ function App() {
                 </h2>
               </div>
             </div>
-            {/* Mobile Close Button */}
             <button 
               onClick={() => setIsSidebarOpen(false)} 
               className="md:hidden p-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg"
@@ -452,99 +473,106 @@ function App() {
             </button>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto">
-            {MENU_ITEMS.map((item) => (
-              <React.Fragment key={item.id}>
-                {item.id === 'Reports' ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setIsReportsOpen(!isReportsOpen)}
-                      className={`flex items-center justify-between gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
-                        activeTab === 'Reports'
-                          ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">{item.icon} {item.label}</div>
-                      <span>{isReportsOpen ? '▲' : '▼'}</span>
-                    </button>
-                    {isReportsOpen && (
-                      <div className="pl-4 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-800 ml-6">
-                        {['Sales', 'Expense', 'Recovery', 'Purchase', 'Profit & Loss', 'Stock Inventory'].map((rep) => (
-                          <button
-                            key={rep}
-                            onClick={() => {
-                              let reportKey = rep.toLowerCase();
-                              if (reportKey.includes('profit')) reportKey = 'profit_loss';
-                              if (reportKey.includes('stock') || reportKey.includes('inventory')) reportKey = 'inventory';
-                              
-                              setSelectedReport(reportKey);
-                              setActiveTab('Reports');
-                              if (window.innerWidth < 768) setIsSidebarOpen(false); // Mobile automatic close
-                            }}
-                            className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition"
-                          >
-                            {rep.includes('Report') ? rep : `${rep} Report`}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab(item.id);
-                      if (window.innerWidth < 768) setIsSidebarOpen(false); // Mobile automatic close
-                    }}
-                    className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
-                      activeTab === item.id
-                        ? 'bg-emerald-600 text-white shadow-lg'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </button>
-                )}
-                {item.id === 'Sales' && (
-                  <>
+            {MENU_ITEMS.map((item) => {
+              if (!checkPermission(item.id)) return null;
+
+              return (
+                <React.Fragment key={item.id}>
+                  {item.id === 'Reports' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsReportsOpen(!isReportsOpen)}
+                        className={`flex items-center justify-between gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                          activeTab === 'Reports'
+                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">{item.icon} {item.label}</div>
+                        <span>{isReportsOpen ? '▲' : '▼'}</span>
+                      </button>
+                      {isReportsOpen && (
+                        <div className="pl-4 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-800 ml-6">
+                          {['Sales', 'Expense', 'Recovery', 'Purchase', 'Profit & Loss', 'Stock Inventory'].map((rep) => (
+                            <button
+                              key={rep}
+                              onClick={() => {
+                                let reportKey = rep.toLowerCase();
+                                if (reportKey.includes('profit')) reportKey = 'profit_loss';
+                                if (reportKey.includes('stock') || reportKey.includes('inventory')) reportKey = 'inventory';
+                                
+                                setSelectedReport(reportKey);
+                                setActiveTab('Reports');
+                                if (window.innerWidth < 768) setIsSidebarOpen(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition"
+                            >
+                              {rep.includes('Report') ? rep : `${rep} Report`}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveTab('SearchBill');
+                        setActiveTab(item.id);
                         if (window.innerWidth < 768) setIsSidebarOpen(false);
                       }}
                       className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
-                        activeTab === 'SearchBill'
+                        activeTab === item.id
                           ? 'bg-emerald-600 text-white shadow-lg'
                           : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <Search size={18} /> Search Bill
+                      {item.icon}
+                      {item.label}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('ProductReturn');
-                        if (window.innerWidth < 768) setIsSidebarOpen(false);
-                      }}
-                      className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
-                        activeTab === 'ProductReturn'
-                          ? 'bg-emerald-600 text-white shadow-lg'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <RotateCcw size={18} /> Product Return
-                    </button>
-                  </>
-                )}
-              </React.Fragment>
-            ))}
+                  )}
+                  {item.id === 'Sales' && (
+                    <>
+                      {checkPermission('SearchBill') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('SearchBill');
+                            if (window.innerWidth < 768) setIsSidebarOpen(false);
+                          }}
+                          className={`flex items-center gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                            activeTab === 'SearchBill'
+                              ? 'bg-emerald-600 text-white shadow-lg'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Search size={18} /> Search Bill
+                        </button>
+                      )}
+                      {checkPermission('ProductReturn') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('ProductReturn');
+                            if (window.innerWidth < 768) setIsSidebarOpen(false);
+                          }}
+                          className={`flex items-xl gap-3 w-full rounded-xl px-4 py-3 text-sm font-medium transition ${
+                            activeTab === 'ProductReturn'
+                              ? 'bg-emerald-600 text-white shadow-lg'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <RotateCcw size={18} /> Product Return
+                        </button>
+                      )}
+                    </>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </nav>
         </aside>
 
-        {/* Mobile Sidebar overlay */}
         {isSidebarOpen && (
           <div 
             onClick={() => setIsSidebarOpen(false)} 
@@ -555,7 +583,6 @@ function App() {
         <div className="flex-1 flex flex-col h-screen overflow-hidden">
           <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 bg-white dark:bg-slate-950">
             <div className="flex items-center gap-3">
-              {/* Toggle Menu Button Left Side Top */}
               <button 
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
                 className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"

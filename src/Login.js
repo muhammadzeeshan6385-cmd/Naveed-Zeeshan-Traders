@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { STORAGE_KEYS, DEFAULT_USERS } from './utils/constants';
-import { loadFromStorage } from './utils/storage';
+
+// Firebase Database imports
+import { db } from './firebase';
+import { collection, getDocs } from 'firebase/firestore';
 import { verifyPassword } from './utils/helpers';
 
 const Login = ({ onLogin }) => {
@@ -20,28 +22,44 @@ const Login = ({ onLogin }) => {
     }
   }, []);
 
-  const handleLogin = (event) => {
+  const handleLogin = async (event) => {
     event.preventDefault();
     setError('');
 
-    const storedUsers = loadFromStorage(STORAGE_KEYS.users, DEFAULT_USERS);
-    const user = storedUsers.find((entry) => entry.username === username && verifyPassword(password, entry.pass));
+    try {
+      // Firebase Firestore se live users fetch karne ka naya layer
+      const querySnapshot = await getDocs(collection(db, "users"));
+      const dbUsers = [];
+      querySnapshot.forEach((doc) => {
+        dbUsers.push({ id: doc.id, ...doc.data() });
+      });
 
-    if (user) {
-      // 10 minutes session validation (10 * 60 * 1000 milliseconds)
-      const tenMinutesInMs = 600000;
-      const expiryTimestamp = Date.now() + tenMinutesInMs;
+      // User check matching (Case-insensitive check taake space ya capital letter ka masla na aaye)
+      const user = dbUsers.find(
+        (entry) => 
+          entry.username.trim().toLowerCase() === username.trim().toLowerCase() && 
+          verifyPassword(password, entry.pass)
+      );
 
-      // Device-agnostic persistent state validation set up
-      localStorage.setItem('login_session_expiry', expiryTimestamp.toString());
-      localStorage.setItem('user_session_active', 'true');
+      if (user) {
+        // 10 minutes session validation (10 * 60 * 1000 milliseconds)
+        const tenMinutesInMs = 600000;
+        const expiryTimestamp = Date.now() + tenMinutesInMs;
 
-      // System notification tracking for active role mapping
-      onLogin({ username: user.username, role: user.role });
-      return;
+        // Device-agnostic persistent state validation set up
+        localStorage.setItem('login_session_expiry', expiryTimestamp.toString());
+        localStorage.setItem('user_session_active', 'true');
+
+        // System notification tracking for active role mapping aur permissions load karne ke liye complete user object pass kiya
+        onLogin({ username: user.username, role: user.role, modules: user.modules || [] });
+        return;
+      }
+
+      setError('Invalid username or password.');
+    } catch (err) {
+      console.error("Login Firebase Error: ", err);
+      setError('Database connect nahi ho saka. Internet check krein.');
     }
-
-    setError('Invalid username or password.');
   };
 
   return (
