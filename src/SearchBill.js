@@ -1,394 +1,364 @@
 import React, { useState } from 'react';
-import { Search, Printer, Edit, Trash2, X, Save, Eye } from 'lucide-react';
+import { Card, DataTable, Input, PageShell } from './components/ui';
+import { formatRs } from './utils/helpers';
+import { Edit, Trash2, Printer, Plus, CheckCircle2 } from 'lucide-react';
+
+// Firebase Imports
 import { db } from './firebase';
-import { doc, deleteDoc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
-const SearchBill = ({ title = "Search Bills", sales = [], setSales, products = [], customers = [], userRole = "operator" }) => {
+const SearchBills = ({ sales = [], setSales, products = [], currentUser, handlePrint }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBill, setSelectedBill] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editFormData, setEditFormData] = useState(null);
+  
+  // Modal Edit States
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingBill, setEditingBill] = useState(null);
+  const [editItems, setEditItems] = useState([]);
+  const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Admin Role Check
-  const isAdmin = String(userRole || '').trim().toLowerCase() === 'admin';
+  // Custom Success Alert State
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
-  // Search Filtering
-  const filteredSales = sales.filter((bill) => {
+  // --- ROBUST ADMIN CHECK ---
+  // Direct prop check + LocalStorage fallback check
+  const localUserData = localStorage.getItem('currentUser') || localStorage.getItem('user') || '';
+  const combinedUserStr = (JSON.stringify(currentUser || {}) + ' ' + JSON.stringify(localUserData)).toLowerCase();
+  
+  const isAdmin = combinedUserStr.includes('admin');
+
+  // Search Filter
+  const filteredSales = (sales || []).filter((bill) => {
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return true;
-    
-    const invoiceNo = String(bill.invoiceNo || bill.billNo || bill.id || '').toLowerCase();
-    const customer = String(bill.customer || bill.customerName || '').toLowerCase();
-    const date = String(bill.date || '').toLowerCase();
-    
-    return invoiceNo.includes(term) || customer.includes(term) || date.includes(term);
+    return (
+      (bill.invoiceNo && bill.invoiceNo.toLowerCase().includes(term)) ||
+      (bill.customer && bill.customer.toLowerCase().includes(term))
+    );
   });
 
-  // Delete Bill Handler
-  const handleDeleteBill = async (billId) => {
-    if (!isAdmin) {
-      alert("Aapke paas bill delete karne ki ijazat nahi hai.");
+  // Open Full Itemized Edit Modal
+  const handleOpenEditModal = (bill) => {
+    setEditingBill({ ...bill });
+    setEditItems(bill.items ? JSON.parse(JSON.stringify(bill.items)) : []);
+    setEditModalOpen(true);
+  };
+
+  // Item Row Level Changes (Qty / Rate / Discount)
+  const handleItemChange = (itemId, field, value) => {
+    setEditItems(prevItems => prevItems.map(item => {
+      if (item.id === itemId) {
+        const updatedItem = { ...item, [field]: Number(value) };
+        const qty = Number(updatedItem.qty) || 0;
+        const rate = Number(updatedItem.rate) || 0;
+        const discPercent = Number(updatedItem.discount) || 0;
+        
+        const gross = qty * rate;
+        const discRs = gross * (discPercent / 100);
+        updatedItem.total = gross - discRs;
+
+        return updatedItem;
+      }
+      return item;
+    }));
+  };
+
+  // Remove Item from Bill Modal
+  const handleRemoveItem = (itemId) => {
+    setEditItems(prev => prev.filter(i => i.id !== itemId));
+  };
+
+  // Add Item inside Edit Modal
+  const handleAddItemToBill = (productName) => {
+    if (!productName) return;
+    const prod = products?.find(p => p.name === productName);
+    if (!prod) return;
+
+    const rate = Number(prod.saleRate || prod.price || 0);
+    const newItem = {
+      id: Date.now() + Math.random(),
+      productId: prod.id,
+      name: prod.name,
+      qty: 1,
+      rate: rate,
+      discount: 0,
+      total: rate
+    };
+
+    setEditItems(prev => [...prev, newItem]);
+    setSelectedProductToAdd('');
+  };
+
+  // Save Full Updated Bill
+  const handleSaveFullBill = async () => {
+    if (editItems.length === 0) {
+      window.alert("Bill me kam se kam 1 item honi chahiye!");
       return;
     }
 
-    if (window.confirm("Kyu aap waqai is bill ko delete karna chahte hain? Stock rollback nahi hoga.")) {
-      try {
-        await deleteDoc(doc(db, "sales", String(billId)));
-        alert("Bill safalta se delete ho gaya.");
-        if (selectedBill?.id === billId) setSelectedBill(null);
-      } catch (error) {
-        console.error("Delete bill error:", error);
-        alert("Bill delete karne mein masla aaya.");
-      }
-    }
-  };
+    setIsSaving(true);
 
-  // Open Edit Modal
-  const handleStartEdit = (bill) => {
-    setEditFormData(JSON.parse(JSON.stringify(bill)));
-    setIsEditing(true);
-  };
+    const newGross = editItems.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0)), 0);
+    const newTotalDisc = editItems.reduce((sum, item) => {
+      const gross = Number(item.qty || 0) * Number(item.rate || 0);
+      return sum + (gross * ((Number(item.discount) || 0) / 100));
+    }, 0);
+    const newNetTotal = newGross - newTotalDisc;
 
-  // Save Edit Bill
-  const handleSaveEdit = async () => {
-    if (!editFormData || !editFormData.id) return;
+    const updatedBillObj = {
+      ...editingBill,
+      items: editItems,
+      grossTotal: newGross,
+      discount: newTotalDisc,
+      netTotal: newNetTotal,
+      lastEditedAt: new Date().toISOString()
+    };
 
     try {
-      // Recalculate Totals
-      let newTotal = 0;
-      if (editFormData.items && Array.isArray(editFormData.items)) {
-        newTotal = editFormData.items.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0)), 0);
-      }
+      const docId = String(updatedBillObj.id || updatedBillObj.invoiceNo);
       
-      const discount = Number(editFormData.discount || 0);
-      const netTotal = Math.max(0, newTotal - discount);
+      // Save to Firebase
+      await setDoc(doc(db, "sales", docId), updatedBillObj, { merge: true });
 
-      const updatedBill = {
-        ...editFormData,
-        total: newTotal,
-        netTotal: netTotal,
-        updatedAt: new Date().toISOString()
-      };
-
-      if (setSales) {
-        await setSales(updatedBill);
-      } else {
-        await setDoc(doc(db, "sales", String(updatedBill.id)), updatedBill, { merge: true });
+      // Update Local State
+      if (typeof setSales === 'function') {
+        setSales(prevSales => (prevSales || []).map(s => String(s.id || s.invoiceNo) === docId ? updatedBillObj : s));
       }
 
-      alert("Bill kamyabi se update ho gaya!");
-      setIsEditing(false);
-      setSelectedBill(updatedBill);
-    } catch (error) {
-      console.error("Update bill error:", error);
-      alert("Bill update nahi ho saka.");
+      setEditModalOpen(false);
+      // Show Beautiful Tick Popup
+      setShowSuccessPopup(true);
+    } catch (err) {
+      console.error("Bill Edit Error: ", err);
+      window.alert("Bill database par update nahi ho saka: " + (err?.message || "Unknown error"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  // Print Bill
-  const handlePrint = (bill) => {
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Invoice #${bill.invoiceNo || bill.id}</title>
-          <style>
-            body { font-family: monospace; padding: 20px; }
-            h2 { text-align: center; margin-bottom: 5px; }
-            p { margin: 2px 0; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            th, td { border-bottom: 1px dashed #000; text-align: left; padding: 6px 2px; font-size: 13px; }
-            th { border-top: 1px dashed #000; }
-            .total-sec { margin-top: 15px; border-top: 1px solid #000; padding-top: 5px; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <h2>INVOICE</h2>
-          <p><strong>Bill No:</strong> ${bill.invoiceNo || bill.id}</p>
-          <p><strong>Customer:</strong> ${bill.customer || 'Cash Customer'}</p>
-          <p><strong>Date:</strong> ${bill.date || new Date().toLocaleDateString()}</p>
-          <table>
-            <thead>
-              <tr><th>Item</th><th>Qty</th><th>Rate</th><th>Total</th></tr>
-            </thead>
-            <tbody>
-              ${(bill.items || []).map(i => `
-                <tr>
-                  <td>${i.name || i.productName}</td>
-                  <td>${i.qty}</td>
-                  <td>${i.rate}</td>
-                  <td>${Number(i.qty) * Number(i.rate)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <div class="total-sec">
-            <p>Net Total: Rs. ${bill.netTotal || bill.total || 0}</p>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+  // Delete Bill
+  const handleDeleteBill = async (bill) => {
+    if (!window.confirm(`Kya aap Bill No: ${bill.invoiceNo} delete karna chahte hain?`)) return;
+
+    try {
+      const docId = String(bill.id || bill.invoiceNo);
+      await deleteDoc(doc(db, "sales", docId));
+      if (typeof setSales === 'function') {
+        setSales(prev => (prev || []).filter(s => String(s.id || s.invoiceNo) !== docId));
+      }
+      window.alert("Bill delete ho gaya hai.");
+    } catch (err) {
+      window.alert("Delete Error: " + err.message);
+    }
   };
 
-  return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">{title}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Search, print, edit or delete sales invoices</p>
-        </div>
+  const modalGross = editItems.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0)), 0);
+  const modalDisc = editItems.reduce((sum, item) => {
+    const gross = Number(item.qty || 0) * Number(item.rate || 0);
+    return sum + (gross * ((Number(item.discount) || 0) / 100));
+  }, 0);
+  const modalNetTotal = modalGross - modalDisc;
 
+  return (
+    <PageShell title="Search Bills">
+      <Card title="Find & Reprint Bills">
         {/* Search Bar */}
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Search by Invoice # or Customer..."
+        <div className="mb-4 max-w-xs">
+          <Input
+            placeholder="Search Bill No or Customer..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
           />
         </div>
-      </div>
 
-      {/* Bill Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 text-xs font-semibold uppercase border-b border-slate-200 dark:border-slate-800">
-                <th className="p-4">Invoice #</th>
-                <th className="p-4">Date</th>
-                <th className="p-4">Customer</th>
-                <th className="p-4">Total Items</th>
-                <th className="p-4">Net Amount</th>
-                <th className="p-4 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
-              {filteredSales.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-slate-500 dark:text-slate-400">
-                    No bills found.
-                  </td>
-                </tr>
-              ) : (
-                filteredSales.map((bill) => (
-                  <tr key={bill.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="p-4 font-semibold text-emerald-600 dark:emerald-400">
-                      #{bill.invoiceNo || bill.id}
-                    </td>
-                    <td className="p-4 text-slate-600 dark:text-slate-300">
-                      {bill.date ? new Date(bill.date).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="p-4 font-medium text-slate-800 dark:text-white">
-                      {bill.customer || 'Walk-in Customer'}
-                    </td>
-                    <td className="p-4 text-slate-600 dark:text-slate-300">
-                      {bill.items?.length || 0}
-                    </td>
-                    <td className="p-4 font-bold text-slate-900 dark:text-white">
-                      Rs. {Number(bill.netTotal || bill.total || 0).toLocaleString()}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-center gap-2">
-                        {/* View Button */}
-                        <button
-                          onClick={() => setSelectedBill(bill)}
-                          title="View Details"
-                          className="p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
-                        >
-                          <Eye size={18} />
-                        </button>
+        <DataTable
+          columns={[
+            { key: 'invoiceNo', label: 'Bill No' },
+            { key: 'date', label: 'Date' },
+            { key: 'customer', label: 'Customer' },
+            { key: 'netTotal', label: 'Total', render: (row) => formatRs(row.netTotal) },
+            {
+              key: 'actions',
+              label: 'Action',
+              render: (row) => (
+                <div className="flex gap-1 items-center">
+                  {/* Reprint: All Accounts */}
+                  <button
+                    onClick={() => handlePrint && handlePrint(row)}
+                    title="Reprint Bill"
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg transition-colors"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
 
-                        {/* Print Button */}
-                        <button
-                          onClick={() => handlePrint(bill)}
-                          title="Print Bill"
-                          className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition"
-                        >
-                          <Printer size={18} />
-                        </button>
+                  {/* Edit & Delete: ADMIN ONLY */}
+                  {isAdmin && (
+                    <>
+                      <button
+                        onClick={() => handleOpenEditModal(row)}
+                        title="Edit Full Bill Items"
+                        className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-500 rounded-lg transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
 
-                        {/* ADMIN ONLY ACTIONS */}
-                        {isAdmin && (
-                          <>
-                            {/* Edit Button */}
-                            <button
-                              onClick={() => handleStartEdit(bill)}
-                              title="Edit Bill"
-                              className="p-2 text-amber-600 hover:text-amber-800 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition"
-                            >
-                              <Edit size={18} />
-                            </button>
-
-                            {/* Delete Button */}
-                            <button
-                              onClick={() => handleDeleteBill(bill.id)}
-                              title="Delete Bill"
-                              className="p-2 text-rose-600 hover:text-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* VIEW BILL MODAL */}
-      {selectedBill && !isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
-            <button
-              onClick={() => setSelectedBill(null)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
-            >
-              <X size={20} />
-            </button>
-            <h3 className="text-xl font-bold mb-4 text-slate-900 dark:text-white">
-              Invoice #{selectedBill.invoiceNo || selectedBill.id}
-            </h3>
-            <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300 mb-4">
-              <p><strong>Customer:</strong> {selectedBill.customer || 'Walk-in Customer'}</p>
-              <p><strong>Date:</strong> {selectedBill.date}</p>
-            </div>
-            
-            <div className="border-t border-b border-slate-200 dark:border-slate-800 py-3 my-3">
-              <h4 className="font-semibold mb-2 text-slate-800 dark:text-slate-200">Items:</h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {(selectedBill.items || []).map((item, index) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <span>{item.name || item.productName} (x{item.qty})</span>
-                    <span className="font-semibold">Rs. {Number(item.qty || 0) * Number(item.rate || 0)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex justify-between text-lg font-bold text-slate-900 dark:text-white mt-4">
-              <span>Total Amount:</span>
-              <span className="text-emerald-600">Rs. {Number(selectedBill.netTotal || selectedBill.total || 0).toLocaleString()}</span>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => handlePrint(selectedBill)}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium"
-              >
-                <Printer size={18} /> Print Invoice
-              </button>
-              {isAdmin && (
-                <button
-                  onClick={() => handleStartEdit(selectedBill)}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-medium"
-                >
-                  <Edit size={18} /> Edit
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT BILL MODAL */}
-      {isEditing && editFormData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setIsEditing(false)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
-            >
-              <X size={20} />
-            </button>
-            <h3 className="text-xl font-bold mb-4 text-slate-900 dark:text-white">
-              Edit Invoice #{editFormData.invoiceNo || editFormData.id}
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Customer Name</label>
-                <input
-                  type="text"
-                  value={editFormData.customer || ''}
-                  onChange={(e) => setEditFormData({ ...editFormData, customer: e.target.value })}
-                  className="w-full p-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Discount (Rs.)</label>
-                <input
-                  type="number"
-                  value={editFormData.discount || 0}
-                  onChange={(e) => setEditFormData({ ...editFormData, discount: e.target.value })}
-                  className="w-full p-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800 dark:text-white"
-                />
-              </div>
-            </div>
-
-            <h4 className="font-semibold text-sm mb-2 text-slate-800 dark:text-slate-200">Items List:</h4>
-            <div className="space-y-3 mb-4">
-              {(editFormData.items || []).map((item, idx) => (
-                <div key={idx} className="flex gap-2 items-center bg-slate-50 dark:bg-slate-800 p-2 rounded-lg">
-                  <span className="flex-1 text-sm font-medium dark:text-white truncate">{item.name || item.productName}</span>
-                  <div className="w-24">
-                    <label className="text-[10px] text-slate-400 block">Qty</label>
-                    <input
-                      type="number"
-                      value={item.qty}
-                      onChange={(e) => {
-                        const updatedItems = [...editFormData.items];
-                        updatedItems[idx].qty = Number(e.target.value);
-                        setEditFormData({ ...editFormData, items: updatedItems });
-                      }}
-                      className="w-full p-1 border rounded dark:bg-slate-700 dark:text-white text-sm"
-                    />
-                  </div>
-                  <div className="w-24">
-                    <label className="text-[10px] text-slate-400 block">Rate</label>
-                    <input
-                      type="number"
-                      value={item.rate}
-                      onChange={(e) => {
-                        const updatedItems = [...editFormData.items];
-                        updatedItems[idx].rate = Number(e.target.value);
-                        setEditFormData({ ...editFormData, items: updatedItems });
-                      }}
-                      className="w-full p-1 border rounded dark:bg-slate-700 dark:text-white text-sm"
-                    />
-                  </div>
+                      <button
+                        onClick={() => handleDeleteBill(row)}
+                        title="Delete Bill"
+                        className="p-2 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
-              ))}
+              ),
+            },
+          ]}
+          rows={[...filteredSales].reverse()}
+        />
+      </Card>
+
+      {/* --- ITEM EDIT MODAL --- */}
+      {editModalOpen && editingBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-6 w-full max-w-4xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
+            
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                  Edit Bill Items (Bill No: {editingBill.invoiceNo})
+                </h3>
+                <p className="text-xs text-slate-400">Customer: {editingBill.customer} | Date: {editingBill.date}</p>
+              </div>
+              <button 
+                onClick={() => setEditModalOpen(false)} 
+                className="text-slate-400 hover:text-white font-bold text-xl"
+              >
+                ✕
+              </button>
             </div>
 
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setIsEditing(false)}
-                className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300"
+            <div className="mb-4 flex gap-2">
+              <select
+                value={selectedProductToAdd}
+                onChange={(e) => setSelectedProductToAdd(e.target.value)}
+                className="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm text-slate-800 dark:text-white"
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium"
-              >
-                <Save size={18} /> Save Changes
+                <option value="">Select Item to Add in this Bill...</option>
+                {products?.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
+              <button onClick={() => handleAddItemToBill(selectedProductToAdd)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center">
+                <Plus className="w-4 h-4 mr-1 inline" /> Add Item
               </button>
             </div>
+
+            <div className="flex-1 overflow-y-auto mb-4 border border-slate-200 dark:border-slate-800 rounded-lg">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 font-semibold">
+                  <tr>
+                    <th className="p-3">#</th>
+                    <th className="p-3">Product</th>
+                    <th className="p-3 w-28">Qty</th>
+                    <th className="p-3 w-32">Rate (Rs)</th>
+                    <th className="p-3 w-28">Disc (%)</th>
+                    <th className="p-3">Total</th>
+                    <th className="p-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {editItems.map((item, idx) => (
+                    <tr key={item.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="p-3 font-medium text-slate-400">{idx + 1}</td>
+                      <td className="p-3 font-semibold text-slate-700 dark:text-slate-200">{item.name}</td>
+                      <td className="p-3">
+                        <input
+                          type="number"
+                          value={item.qty}
+                          onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
+                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold text-slate-800 dark:text-white"
+                        />
+                      </td>
+                      <td className="p-3">
+                        <input
+                          type="number"
+                          value={item.rate}
+                          onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)}
+                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold text-slate-800 dark:text-white"
+                        />
+                      </td>
+                      <td className="p-3">
+                        <input
+                          type="number"
+                          value={item.discount || 0}
+                          onChange={(e) => handleItemChange(item.id, 'discount', e.target.value)}
+                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded p-1 text-center font-bold text-slate-800 dark:text-white"
+                        />
+                      </td>
+                      <td className="p-3 font-bold text-emerald-400">{formatRs(item.total)}</td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="p-1 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 rounded"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex gap-4 text-sm font-semibold">
+                <span className="text-slate-400">Gross: {formatRs(modalGross)}</span>
+                <span className="text-red-400">Disc: {formatRs(modalDisc)}</span>
+                <span className="text-emerald-400 text-base font-bold">Net Total: {formatRs(modalNetTotal)}</span>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setEditModalOpen(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancel</button>
+                <button 
+                  onClick={handleSaveFullBill} 
+                  disabled={isSaving}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-4 py-2 rounded-lg"
+                >
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
-    </div>
+
+      {/* --- CUSTOM BEAUTIFUL SUCCESS TICK POPUP --- */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl transform transition-all scale-100">
+            
+            <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mb-4 text-emerald-500 animate-bounce">
+              <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+            </div>
+
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+              Success!
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              The bill has been updated successfully.
+            </p>
+
+            <button
+              onClick={() => setShowSuccessPopup(false)}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/30 transition-all active:scale-95"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+    </PageShell>
   );
 };
 
-export default SearchBill;
+export default SearchBills;
