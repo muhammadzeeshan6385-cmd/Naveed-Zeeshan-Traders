@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Card, DataTable, Input, PageShell } from './components/ui';
 import { formatRs } from './utils/helpers';
-import { Edit, Trash2, Printer, Plus } from 'lucide-react';
+import { Edit, Trash2, Printer, Plus, CheckCircle2 } from 'lucide-react';
 
 // Firebase Imports
 import { db } from './firebase';
@@ -16,6 +16,9 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
   const [editItems, setEditItems] = useState([]);
   const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Custom Success Alert State
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
   // Flexible Admin Check
   const userStr = JSON.stringify(currentUser || {}).toLowerCase();
@@ -82,7 +85,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
     setSelectedProductToAdd('');
   };
 
-  // Safe Save Full Updated Bill to Firebase & Local State
+  // Save Full Updated Bill
   const handleSaveFullBill = async () => {
     if (editItems.length === 0) {
       window.alert("Bill me kam se kam 1 item honi chahiye!");
@@ -91,7 +94,6 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
 
     setIsSaving(true);
 
-    // Recalculate Totals safely
     const newGross = editItems.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0)), 0);
     const newTotalDisc = editItems.reduce((sum, item) => {
       const gross = Number(item.qty || 0) * Number(item.rate || 0);
@@ -109,19 +111,19 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
     };
 
     try {
-      // 1. Safe Document Reference Key Mismatch Handler
       const docId = String(updatedBillObj.id || updatedBillObj.invoiceNo);
       
-      // Direct Firebase Save
+      // Save to Firebase
       await setDoc(doc(db, "sales", docId), updatedBillObj, { merge: true });
 
-      // 2. Safe React State Update
+      // Update Local State
       if (typeof setSales === 'function') {
         setSales(prevSales => (prevSales || []).map(s => String(s.id || s.invoiceNo) === docId ? updatedBillObj : s));
       }
 
       setEditModalOpen(false);
-      window.alert("Bill kamyabi se update ho gaya hai!");
+      // Show Beautiful Tick Popup
+      setShowSuccessPopup(true);
     } catch (err) {
       console.error("Bill Edit Error: ", err);
       window.alert("Bill database par update nahi ho saka: " + (err?.message || "Unknown error"));
@@ -146,7 +148,6 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
     }
   };
 
-  // Modal Net Calculations live
   const modalGross = editItems.reduce((sum, item) => sum + (Number(item.qty || 0) * Number(item.rate || 0)), 0);
   const modalDisc = editItems.reduce((sum, item) => {
     const gross = Number(item.qty || 0) * Number(item.rate || 0);
@@ -205,12 +206,11 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
         />
       </Card>
 
-      {/* --- FULL ITEMIZED BILL EDIT MODAL --- */}
+      {/* --- ITEM EDIT MODAL --- */}
       {editModalOpen && editingBill && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-900 rounded-xl p-6 w-full max-w-4xl shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col">
             
-            {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200 dark:border-slate-800">
               <div>
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">
@@ -226,7 +226,6 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               </button>
             </div>
 
-            {/* Add New Item Row in Modal */}
             <div className="mb-4 flex gap-2">
               <select
                 value={selectedProductToAdd}
@@ -241,7 +240,6 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               </Button>
             </div>
 
-            {/* Item Table inside Modal */}
             <div className="flex-1 overflow-y-auto mb-4 border border-slate-200 dark:border-slate-800 rounded-lg">
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 font-semibold">
@@ -299,7 +297,6 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               </table>
             </div>
 
-            {/* Modal Footer / Calculation Summary */}
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
               <div className="flex gap-4 text-sm font-semibold">
                 <span className="text-slate-400">Gross: {formatRs(modalGross)}</span>
@@ -321,6 +318,34 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
           </div>
         </div>
       )}
+
+      {/* --- CUSTOM BEAUTIFUL SUCCESS TICK POPUP --- */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl transform transition-all scale-100">
+            
+            {/* Animated Tick Icon Container */}
+            <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mb-4 text-emerald-500 animate-bounce">
+              <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+            </div>
+
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+              Success!
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              Bill kamyabi se update ho gaya hai.
+            </p>
+
+            <button
+              onClick={() => setShowSuccessPopup(false)}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/30 transition-all active:scale-95"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
     </PageShell>
   );
 };
