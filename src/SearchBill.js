@@ -20,9 +20,9 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
   // Custom Success Alert State
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
-  // Smart Admin Check: Agar object me name/role/username me 'admin' hai to true
+  // Smart Admin Check: Agar object me name/role/username me 'Admin' hai to true
   const userStr = JSON.stringify(currentUser || {}).toLowerCase();
-  const isAdmin = userStr.includes('admin');
+  const isAdmin = userStr.includes('Admin');
 
   // Search Filter
   const filteredSales = (sales || []).filter((bill) => {
