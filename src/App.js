@@ -386,7 +386,10 @@ function App() {
 
       case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} userRole={userRole} />;
       case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} userRole={userRole} />;
-      case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} userRole={userRole} />;
+      
+      // Updated SearchBill component line with all necessary data props
+      case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} setSales={setSales} products={products} customers={customers} userRole={userRole} />;
+      
       case 'ProductReturn': 
         return (
           <ProductReturnManager 

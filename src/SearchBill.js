@@ -20,9 +20,12 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
   // Custom Success Alert State
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
-  // Smart Admin Check: Agar object me name/role/username me 'Admin' hai to true
-  const userStr = JSON.stringify(currentUser || {}).toLowerCase();
-  const isAdmin = userStr.includes('Admin');
+  // --- ROBUST ADMIN CHECK ---
+  // Direct prop check + LocalStorage fallback check
+  const localUserData = localStorage.getItem('currentUser') || localStorage.getItem('user') || '';
+  const combinedUserStr = (JSON.stringify(currentUser || {}) + ' ' + JSON.stringify(localUserData)).toLowerCase();
+  
+  const isAdmin = combinedUserStr.includes('admin');
 
   // Search Filter
   const filteredSales = (sales || []).filter((bill) => {
@@ -158,7 +161,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
   return (
     <PageShell title="Search Bills">
       <Card title="Find & Reprint Bills">
-        {/* Compact Normal-sized Search Bar */}
+        {/* Search Bar */}
         <div className="mb-4 max-w-xs">
           <Input
             placeholder="Search Bill No or Customer..."
@@ -178,7 +181,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               label: 'Action',
               render: (row) => (
                 <div className="flex gap-1 items-center">
-                  {/* Reprint: Tamam Accounts k liye */}
+                  {/* Reprint: All Accounts */}
                   <button
                     onClick={() => handlePrint && handlePrint(row)}
                     title="Reprint Bill"
@@ -187,7 +190,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
                     <Printer className="w-4 h-4" />
                   </button>
 
-                  {/* Edit aur Delete: SIRF ADMIN Account k liye */}
+                  {/* Edit & Delete: ADMIN ONLY */}
                   {isAdmin && (
                     <>
                       <button
@@ -333,7 +336,6 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl transform transition-all scale-100">
             
-            {/* Animated Tick Icon Container */}
             <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mb-4 text-emerald-500 animate-bounce">
               <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
             </div>
