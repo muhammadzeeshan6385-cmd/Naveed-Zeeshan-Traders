@@ -20,8 +20,9 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
   // Custom Success Alert State
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
-  // Strict Admin Check (Sirf tab true hoga jab user role 'admin' ho)
-  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  // Smart Admin Check: Agar object me name/role/username me 'admin' hai to true
+  const userStr = JSON.stringify(currentUser || {}).toLowerCase();
+  const isAdmin = userStr.includes('admin');
 
   // Search Filter
   const filteredSales = (sales || []).filter((bill) => {
@@ -177,7 +178,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               label: 'Action',
               render: (row) => (
                 <div className="flex gap-1 items-center">
-                  {/* Reprint: Sub Users ke liye */}
+                  {/* Reprint: Tamam Accounts k liye */}
                   <button
                     onClick={() => handlePrint && handlePrint(row)}
                     title="Reprint Bill"
@@ -186,7 +187,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
                     <Printer className="w-4 h-4" />
                   </button>
 
-                  {/* Edit & Delete: STRICTLY FOR ADMIN ONLY */}
+                  {/* Edit aur Delete: SIRF ADMIN Account k liye */}
                   {isAdmin && (
                     <>
                       <button
