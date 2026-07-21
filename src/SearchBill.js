@@ -333,7 +333,7 @@ const SearchBills = ({ sales = [], setSales, products = [], currentUser, handleP
               Success!
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-              Bill kamyabi se update ho gaya hai.
+              The bill has been updated successfully.
             </p>
 
             <button
