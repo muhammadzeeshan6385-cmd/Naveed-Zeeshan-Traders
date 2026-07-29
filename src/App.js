@@ -219,60 +219,107 @@ function App() {
     }
   };
 
+  // =========================================================================
+  // PERFECTED STATS CALCULATIONS (COGS & CASH BALANCED)
+  // =========================================================================
   const stats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    
+
     let totalSale = 0;
-    let totalCost = 0;
     let todaySales = 0;
-    let totalReturnAmount = 0; 
+    let totalReturnAmount = 0;
+    let directCashSales = 0;
+    let costOfGoodsSold = 0;
 
     sales.forEach(s => {
-      const net = Number(s.netTotal || 0);
+      const net = Number(s.netTotal || s.total || s.grandTotal || 0);
       totalSale += net;
-      
-      if (s.refundAmount || s.returnAmount) {
-        totalReturnAmount += Number(s.refundAmount || s.returnAmount || 0);
-      }
-      
-      if (s.date && s.date.includes(today)) {
+
+      // Product Return Calculation
+      const refund = Number(s.refundAmount || s.returnAmount || 0);
+      totalReturnAmount += refund;
+
+      // Today Sales Calculation
+      if (s.date && String(s.date).includes(today)) {
         todaySales += net;
       }
 
+      // Check Counter Cash vs Credit Sale
+      const custName = String(s.customer || s.customerName || '').trim().toLowerCase();
+      const pMethod = String(s.paymentMethod || s.paymentType || s.type || '').trim().toLowerCase();
+
+      const isCounterCash = pMethod === 'cash' || 
+                             custName === '' || 
+                             custName === 'counter sale' || 
+                             custName === 'cash customer' || 
+                             custName === 'cash' || 
+                             s.isCredit === false;
+
+      if (isCounterCash) {
+        directCashSales += net;
+      } else {
+        const receivedUpfront = Number(s.paid || s.received || s.paidAmount || 0);
+        if (receivedUpfront > 0) {
+          directCashSales += Math.min(receivedUpfront, net);
+        }
+      }
+
+      // Cost of Goods Sold (COGS) Calculation for Accurate Profit
       if (s.items && Array.isArray(s.items)) {
         s.items.forEach(item => {
-          const originalProduct = products.find(p => p.id === item.productId || p.name === item.name);
-          const purchaseRate = originalProduct ? Number(originalProduct.purchaseRate || 0) : Number(item.purchaseRate || 0);
-          const saleRate = Number(item.rate || 0);
-          
-          if (saleRate > 0 && purchaseRate > 0) {
-            const costRatio = purchaseRate / saleRate;
-            totalCost += (Number(item.total || 0) * costRatio);
-          } else {
-            totalCost += (purchaseRate * Number(item.qty || 0));
-          }
+          const originalProduct = products.find(p => 
+            (p.id && item.productId && String(p.id) === String(item.productId)) || 
+            (p.name && item.name && String(p.name).trim().toLowerCase() === String(item.name).trim().toLowerCase())
+          );
+
+          const buyRate = Number(
+            item?.purchaseRate || 
+            item?.costPrice || 
+            item?.purchasePrice || 
+            item?.cost || 
+            item?.buyPrice ||
+            originalProduct?.purchaseRate || 
+            originalProduct?.costPrice || 
+            originalProduct?.purchasePrice || 
+            originalProduct?.cost || 
+            originalProduct?.buyPrice || 
+            0
+          );
+
+          const qty = Number(item.qty || item.quantity || 0);
+          costOfGoodsSold += (buyRate * qty);
         });
       }
     });
 
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    
-    let totalOutstandingFromLedger = 0;
-    customers.forEach(cust => {
-      const openingBal = Number(cust.openingBalance || 0);
-      const customerSales = sales
-        .filter(s => String(s.customer || '').trim().toLowerCase() === String(cust.name || '').trim().toLowerCase())
-        .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
-        
-      const customerPayments = payments
-        .filter(p => String(p.customer || '').trim().toLowerCase() === String(cust.name || '').trim().toLowerCase())
-        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-        
-      totalOutstandingFromLedger += (openingBal + customerSales - customerPayments);
-    });
 
-    let netProfit = totalSale - totalCost - totalExpense;
+    // 1. Net Profit = (Net Sales Amount) - Cost of Sold Products - Expenses
+    const netSales = totalSale - totalReturnAmount;
+    const netProfit = netSales - costOfGoodsSold - totalExpense;
+
+    // 2. Cash In Hand = Counter Cash + Recovery - Expenses - Returns
+    const cashInHandCalc = (directCashSales + totalRecovery) - totalExpense - totalReturnAmount;
+
+    // 3. Outstanding Udhaar Balance Calculation
+    let totalOutstanding = 0;
+    if (customers && customers.length > 0) {
+      customers.forEach(cust => {
+        const opening = Number(cust.openingBalance || cust.balance || 0);
+        const custSales = sales
+          .filter(s => String(s.customer || '').trim().toLowerCase() === String(cust.name || '').trim().toLowerCase())
+          .reduce((sum, s) => sum + Number(s.netTotal || s.total || 0), 0);
+
+        const custPayments = payments
+          .filter(p => String(p.customer || '').trim().toLowerCase() === String(cust.name || '').trim().toLowerCase())
+          .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+        totalOutstanding += (opening + custSales - custPayments);
+      });
+    } else {
+      totalOutstanding = Math.max(0, totalSale - directCashSales - totalRecovery);
+    }
 
     return { 
       totalSale, 
@@ -280,7 +327,8 @@ function App() {
       totalExpense, 
       profit: netProfit, 
       totalRecovery, 
-      outstanding: totalOutstandingFromLedger,
+      cashInHand: Math.max(0, cashInHandCalc),
+      outstanding: Math.max(0, totalOutstanding),
       productReturn: totalReturnAmount 
     };
   }, [sales, expenses, payments, products, customers]);
@@ -341,7 +389,18 @@ function App() {
 
   const renderModule = () => {
     if (!checkPermission(activeTab)) {
-      return <Dashboard stats={stats} recentExpenses={expenses.slice(-5)} recentSales={sales.slice(-5)} getSaleCustomer={(s) => s.customer} getSaleTotal={(s) => s.netTotal} sales={sales} />;
+      return (
+        <Dashboard 
+          stats={stats} 
+          recentExpenses={expenses.slice(-5)} 
+          recentSales={sales.slice(-5)} 
+          getSaleCustomer={(s) => s.customer} 
+          getSaleTotal={(s) => s.netTotal} 
+          sales={sales} 
+          payments={payments}
+          expenses={expenses}
+        />
+      );
     }
 
     switch (activeTab) {
@@ -354,6 +413,8 @@ function App() {
             getSaleCustomer={(s) => s.customer} 
             getSaleTotal={(s) => s.netTotal} 
             sales={sales} 
+            payments={payments}
+            expenses={expenses}
           />
         );
       case 'Products': return <Products title="Stock Items" products={products} setProducts={setProducts} userRole={userRole} />;
@@ -385,7 +446,9 @@ function App() {
         );
 
       case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} userRole={userRole} />;
-      case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} userRole={userRole} />;
+      
+      /* Updated Sales component with currentUser prop */
+      case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} userRole={userRole} currentUser={currentUser} payments={payments} />;
       
       // Updated SearchBill component line with all necessary data props
       case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} setSales={setSales} products={products} customers={customers} userRole={userRole} />;
@@ -447,7 +510,7 @@ function App() {
       case 'Cash/Bank': return <CashBank title="Finance Hub" cashData={cashData} setCashData={setCashData} userRole={userRole} />;
       case 'Reports': return <Reports selectedReport={selectedReport} sales={sales} expenses={expenses} payments={payments} cashData={cashData} purchases={purchases} products={products} customers={customers} userRole={userRole} />;
       case 'Settings': return <Settings title="System Settings" products={products} setProducts={setProducts} userRole={userRole} />;
-      default: return <Dashboard stats={stats} sales={sales} />;
+      default: return <Dashboard stats={stats} sales={sales} payments={payments} expenses={expenses} />;
     }
   };
 

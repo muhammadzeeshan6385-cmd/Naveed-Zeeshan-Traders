@@ -12,7 +12,7 @@ import {
   RotateCcw 
 } from 'lucide-react';
 
-function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSaleTotal, sales = [], returns = [] }) {
+function Dashboard({ stats = {}, recentExpenses = [], recentSales = [], getSaleCustomer, getSaleTotal, sales = [], returns = [], products = [] }) {
   
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-PK', {
@@ -22,78 +22,153 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
     }).format(val || 0).replace('PKR', 'Rs.');
   };
 
-  // 1. DYNAMIC NET PROFIT ENGINE (Formula: Sales Rate - Purchase Rate - Exp - Return Adjustments = Net Profit)
-  const calculatedNetProfit = useMemo(() => {
-    let totalSalesRevenue = 0;
-    let totalPurchaseCostOfGoodsSold = 0;
+  // Helper function to identify direct Cash Sales vs Ledger/Udhaar Sales
+  const isCashSale = (s) => {
+    const custName = String(s.customer || '').trim().toLowerCase();
+    const payment = String(s.paymentType || s.paymentMethod || s.type || '').trim().toLowerCase();
+    
+    return payment === 'cash' || 
+           custName === '' || 
+           custName === 'counter sale' || 
+           custName === 'cash customer' || 
+           custName === 'cash' || 
+           s.isCredit === false;
+  };
 
-    // Loop through all sales data to find individual product margins
+  // 1. DYNAMIC NET PROFIT ENGINE
+  // Directly rely on App.js pre-calculated stats profit if available to avoid mismatches
+  const calculatedNetProfit = useMemo(() => {
+    if (stats.profit !== undefined && stats.profit !== null && !isNaN(stats.profit)) {
+      return Number(stats.profit);
+    }
+
+    let totalGrossMargin = 0;
+
     sales.forEach((sale) => {
       const items = sale.items || [];
       items.forEach((item) => {
         const qty = Number(item.qty || item.quantity || 0);
-        const saleRate = Number(item.price || item.saleRate || item.rate || 0);
-        const purchaseRate = Number(item.purchasePrice || item.purchaseRate || item.costPrice || 0);
+        const saleRate = Number(item.rate || item.price || item.saleRate || 0);
+        
+        // Lookup original product purchase rate if not directly on item
+        const originalProduct = products.find(p => 
+          (p.id && item.productId && String(p.id) === String(item.productId)) || 
+          (p.name && item.name && String(p.name).trim().toLowerCase() === String(item.name).trim().toLowerCase())
+        );
 
-        totalSalesRevenue += (saleRate * qty);
-        totalPurchaseCostOfGoodsSold += (purchaseRate * qty);
+        const purchaseRate = Number(
+          item.purchaseRate || 
+          item.purchasePrice || 
+          item.costPrice || 
+          item.cost || 
+          item.buyPrice || 
+          originalProduct?.purchaseRate || 
+          originalProduct?.costPrice || 
+          originalProduct?.cost || 
+          0
+        );
+
+        const itemGross = saleRate * qty;
+        const discPercent = Number(item.discount || 0);
+        const netItemSale = itemGross - (itemGross * (discPercent / 100));
+
+        const itemCost = purchaseRate * qty;
+        totalGrossMargin += (netItemSale - itemCost);
       });
     });
 
-    // Loop through returns data to remove returned items profit impact
+    sales.forEach((sale) => {
+      const totalBillDiscount = Number(sale.discount || 0);
+      if (totalBillDiscount > 0 && (!sale.items || sale.items.length === 0)) {
+        totalGrossMargin -= totalBillDiscount;
+      }
+    });
+
     let returnedProfitImpact = 0;
     returns.forEach((returnItem) => {
       const items = returnItem.items || [];
       items.forEach((item) => {
         const qty = Number(item.qty || item.quantity || 0);
-        const saleRate = Number(item.price || item.saleRate || item.rate || 0);
-        const purchaseRate = Number(item.purchasePrice || item.purchaseRate || item.costPrice || 0);
+        const saleRate = Number(item.rate || item.price || item.saleRate || 0);
+        const purchaseRate = Number(
+          item.purchaseRate || item.purchasePrice || item.costPrice || item.cost || 0
+        );
         
         returnedProfitImpact += ((saleRate - purchaseRate) * qty);
       });
     });
 
-    if (totalSalesRevenue === 0) {
-      totalSalesRevenue = Number(stats.totalSale || 0);
-      totalPurchaseCostOfGoodsSold = totalSalesRevenue * 0.75; 
-    }
-
     const totalExpense = Number(stats.totalExpense || 0);
 
-    return totalSalesRevenue - totalPurchaseCostOfGoodsSold - totalExpense - returnedProfitImpact;
-  }, [stats, sales, returns]);
+    return totalGrossMargin - totalExpense - returnedProfitImpact;
+  }, [stats, sales, returns, products]);
 
-  // 2. AGGREGATE RETURNS CALCULATION (DYNAMIC LIVE SENSITIVE ENGINE)
-  // Yeh live active calculations karta hai. Jab bill update ho kar short hoga, toh automatic amount update hogi.
+  // 2. AGGREGATE RETURNS CALCULATION
   const totalReturnsVolume = useMemo(() => {
-    // A. Pehle live dynamic state variable array "returns" ko calculate karein
+    if (stats.productReturn !== undefined && stats.productReturn !== null) {
+      return Number(stats.productReturn);
+    }
+
     let activeReturnsAmount = returns.reduce((sum, r) => {
       return sum + Number(r.refundAmount || r.netTotal || r.total || 0);
     }, 0);
 
-    // B. Agar active array empty ho toh seedha parent standard fallback update "stats.productReturn" par shift ho jaye
     if (activeReturnsAmount === 0) {
-      return Number(stats.productReturn || stats.totalReturn || stats.totalReturns || 0);
+      return Number(stats.totalReturn || stats.totalReturns || 0);
     }
 
     return activeReturnsAmount;
-  }, [stats.productReturn, stats.totalReturn, stats.totalReturns, returns]);
+  }, [stats, returns]);
 
   // 3. CASH IN HAND ENGINE
   const cashInHand = useMemo(() => {
+    if (stats.cashInHand !== undefined && stats.cashInHand !== null) {
+      return Number(stats.cashInHand);
+    }
+
     const totalRecovery = Number(stats.totalRecovery || 0);
     
     const totalCashInvoices = sales
-      .filter(s => !s.isCredit && (s.paymentMethod === 'Cash' || s.paymentType === 'Cash' || String(s.status).toLowerCase() === 'paid'))
-      .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+      .reduce((sum, s) => {
+        const net = Number(s.netTotal || s.total || 0);
+        if (isCashSale(s)) {
+          return sum + net;
+        } else {
+          const upfrontPaid = Number(s.paid || s.received || s.paidAmount || 0);
+          return sum + Math.min(upfrontPaid, net);
+        }
+      }, 0);
       
     const totalExpense = Number(stats.totalExpense || 0);
-
-    // Refunded and short amount dynamic impact minus karein
     const totalCashRefunds = totalReturnsVolume;
 
-    return (totalRecovery + totalCashInvoices) - totalExpense - totalCashRefunds;
+    return Math.max(0, (totalRecovery + totalCashInvoices) - totalExpense - totalCashRefunds);
   }, [stats, sales, totalReturnsVolume]);
+
+  // 4. OUTSTANDING UDHAAR BALANCE ENGINE
+  const calculatedOutstandingUdhaar = useMemo(() => {
+    if (stats.outstanding !== undefined && stats.outstanding !== null) {
+      return Number(stats.outstanding);
+    }
+
+    const rawTotalSales = Number(stats.totalSale || 0) || sales.reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+    const totalCashInvoices = sales
+      .reduce((sum, s) => {
+        const net = Number(s.netTotal || s.total || 0);
+        if (isCashSale(s)) {
+          return sum + net;
+        } else {
+          const upfrontPaid = Number(s.paid || s.received || s.paidAmount || 0);
+          return sum + Math.min(upfrontPaid, net);
+        }
+      }, 0);
+      
+    const totalRecovery = Number(stats.totalRecovery || 0);
+
+    const outstanding = rawTotalSales - totalCashInvoices - totalRecovery;
+    
+    return Math.max(0, outstanding);
+  }, [stats, sales]);
 
   const isProfitNegative = calculatedNetProfit < 0;
 
@@ -107,6 +182,7 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
             Operational Overview
           </h1>
           <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
+            Real-time Financial & Stock Ledger Summary
           </p>
         </div>
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-2xl">
@@ -229,7 +305,7 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
             <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 shadow-inner"><DollarSign size={20} /></div>
           </div>
           <div className="mt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-            <h3 className="text-3xl font-black text-amber-500 tracking-tight">{formatCurrency(stats.outstanding)}</h3>
+            <h3 className="text-3xl font-black text-amber-500 tracking-tight">{formatCurrency(calculatedOutstandingUdhaar)}</h3>
             <span className="text-[11px] text-amber-500/80 font-bold bg-amber-500/10 px-3 py-1 rounded-xl uppercase tracking-wider">
               Pending Market Dues
             </span>
@@ -292,10 +368,10 @@ function Dashboard({ stats, recentExpenses, recentSales, getSaleCustomer, getSal
                   recentSales.map((sale, idx) => (
                     <tr key={idx} className="group hover:bg-slate-50 dark:hover:bg-slate-950/40 transition">
                       <td className="text-xs font-bold text-slate-500 dark:text-slate-400 py-3 pl-2">{sale.invoiceNo || `INV-${1000 + idx}`}</td>
-                      <td className="text-xs font-black text-slate-800 dark:text-slate-200 py-3">{getSaleCustomer(sale) || 'Walking Customer'}</td>
+                      <td className="text-xs font-black text-slate-800 dark:text-slate-200 py-3">{getSaleCustomer ? getSaleCustomer(sale) : (sale.customer || 'Walk-in Customer')}</td>
                       <td className="text-xs font-black text-emerald-500 text-right py-3 pr-2">
                         <span className="bg-emerald-500/5 px-2.5 py-1 rounded-xl inline-flex items-center gap-1 group-hover:bg-emerald-500/10">
-                          {formatCurrency(getSaleTotal(sale))}
+                          {formatCurrency(getSaleTotal ? getSaleTotal(sale) : (sale.netTotal || 0))}
                           <ArrowUpRight size={12} className="opacity-60" />
                         </span>
                       </td>

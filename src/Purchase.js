@@ -8,7 +8,6 @@ import { db } from './firebase';
 import { doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setProducts, cashData, setCashData, userRole }) => {
-  // Case-insensitivity aur format patterns ko handle karne ke liye security state
   const isAdmin = userRole && typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
 
   const [form, setForm] = useState({
@@ -21,11 +20,10 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
     account: 'Cash',
   });
 
-  // Search, Edit Popup aur Dynamic Pagination States
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [editingPurchase, setEditingPurchase] = useState(null); // Edit Popup modal state
+  const [editingPurchase, setEditingPurchase] = useState(null); 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = () =>
@@ -67,15 +65,26 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         paymentType: form.paymentType,
       };
 
-      // Firebase Firestore sync path
+      // 1. Firebase Purchases Collection Mein Save
       await setDoc(doc(db, 'purchases', customId), entry);
 
+      // 2. Firebase Firestore Product Record Rate Permanently Update (CRITICAL FIX)
+      const matchedProduct = products.find(p => p.name === form.product);
+      if (matchedProduct && matchedProduct.id) {
+        await updateDoc(doc(db, 'products', matchedProduct.id), {
+          purchaseRate: price,
+          costPrice: price, // Dual safety for key mismatch
+          cost: price
+        });
+      }
+
+      // Local State Sync
       setPurchases([entry, ...purchases]);
 
       if (setProducts) {
         setProducts(prevProducts => 
           prevProducts.map(p => 
-            p.name === form.product ? { ...p, purchaseRate: Number(price) } : p
+            p.name === form.product ? { ...p, purchaseRate: price, costPrice: price } : p
           )
         );
       }
@@ -96,7 +105,7 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
       resetForm();
       setCurrentPage(1); 
-      window.alert('Purchase saved to database and Product rate updated!');
+      window.alert('Purchase saved and Firebase Product Cost Price permanently updated!');
     } catch (error) {
       console.error("Firebase write error:", error);
       window.alert("Database me save karte hue error aya: " + error.message);
@@ -120,7 +129,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
       try {
         await deleteDoc(doc(db, 'purchases', targetId));
         setPurchases(purchases.filter(p => (p.id !== targetId && p._id !== targetId)));
-        console.log("Purchase successfully deleted from Firebase.");
       } catch (error) {
         console.error("Firebase deletion error:", error);
         window.alert("Database se delete karte hue error aya: " + error.message);
@@ -155,9 +163,17 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
       await updateDoc(doc(db, 'purchases', targetId), updatedPayload);
 
+      // Update product cost in Firestore as well
+      const matchedProduct = products.find(p => p.name === editingPurchase.product);
+      if (matchedProduct && matchedProduct.id) {
+        await updateDoc(doc(db, 'products', matchedProduct.id), {
+          purchaseRate: price,
+          costPrice: price
+        });
+      }
+
       setPurchases(purchases.map(p => (p.id === targetId || p._id === targetId) ? updatedPayload : p));
       setEditingPurchase(null);
-      console.log("Purchase updated successfully inside Firestore.");
     } catch (error) {
       console.error("Firebase update path error:", error);
       window.alert("Database record update error: " + error.message);
@@ -166,7 +182,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
     }
   };
 
-  // --- SEARCH AND PAGINATION LOGIC ---
   const filteredPurchases = useMemo(() => {
     const reversed = [...purchases];
     if (!searchQuery.trim()) return reversed;
@@ -187,7 +202,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
   return (
     <PageShell title="Procurement">
-      {/* Form Add Box Layer - Admin Access Controlled */}
       {isAdmin && (
         <Card title="Purchase Entry">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -269,8 +283,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
               render: (row) => (
                 <div className="flex items-center gap-2">
                   <button onClick={() => alert('Viewing Invoice Details: ' + row.product)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded cursor-pointer" title="Preview"><Eye size={18} /></button>
-                  
-                  {/* Dynamic strict checking module layer */}
                   {isAdmin && (
                     <>
                       <button onClick={() => setEditingPurchase(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded cursor-pointer" title="Edit"><Pencil size={18} /></button>
@@ -284,7 +296,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
           rows={paginatedPurchases}
         />
 
-        {/* Pagination UI Control */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4 px-2">
             <div className="text-sm text-slate-400">
@@ -329,7 +340,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         )}
       </Card>
 
-      {/* Edit Purchase Popup Modal Portal - Double Shield Validation */}
       {isAdmin && editingPurchase && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-800">

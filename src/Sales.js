@@ -17,7 +17,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   const [isSaving, setIsSaving] = useState(false);
 
   // Strict Admin Check for Edit/Delete Permissions
-  const activeUsername = String(currentUser?.username || currentUser?.id || '').trim().toLowerCase();
+  const activeUsername = String(currentUser?.username || currentUser?.name || currentUser?.id || '').trim().toLowerCase();
   const activeRole = String(currentUser?.role || '').trim().toLowerCase();
   const isAdmin = activeUsername === 'admin' || activeRole === 'admin';
 
@@ -98,75 +98,117 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
   const removeItem = (id) => setItems(items.filter((item) => item.id !== id));
 
+  // --- UPDATED HANDLE PRINT WITH 2-DECIMAL ROUNDING & CLEAN LAYOUT ---
   const handlePrint = (invoiceData) => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) return;
     
+    // Direct safe active user check
+    const loggedUser = (typeof currentUser === 'string' ? currentUser : currentUser?.username || currentUser?.name) || localStorage.getItem('username') || '';
+
+    // Priority: Invoice Record -> Current Logged-in User -> Fallback
+    const createdByUserName = (invoiceData && invoiceData.createdBy && invoiceData.createdBy !== 'System')
+      ? invoiceData.createdBy
+      : (loggedUser || 'System');
+
+    // Helper function for strict 2-Decimal formatting
+    const fmt = (num) => {
+      const parsed = Number(num) || 0;
+      return parsed.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
     printWindow.document.write(`
       <html>
         <head>
           <style>
-            @page { size: A5; margin: 5mm; }
-            body { font-family: sans-serif; width: 138mm; margin: 0; padding: 0; color: black; }
-            .bill-container { border: 2px solid #000; padding: 10px; min-height: 100mm; }
-            .header-container { display: flex; align-items: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 10px; }
-            .logo { width: 70px; }
+            @page { size: A5; margin: 4mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; width: 138mm; margin: 0 auto; padding: 5px; color: #000; }
+            .bill-container { border: 2px solid #000; padding: 10px; min-height: 165mm; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; }
+            .header-container { display: flex; align-items: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+            .logo { width: 65px; height: auto; }
             .title-section { flex: 1; text-align: center; }
-            .title-section h1 { font-size: 18px; margin: 0; text-transform: uppercase; }
-            .title-section p { font-size: 12px; margin: 0; font-weight: bold; }
-            table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-            th { border: 1px solid #000; padding: 4px; background: #f3f4f6; font-size: 11px; }
-            td { border: 1px solid #000; padding: 3px; text-align: center; font-size: 11px; }
-            td.product-name { text-align: left; padding-left: 10px; }
-            .totals-container { width: 100%; margin-top: 5px; display: flex; justify-content: flex-end; }
-            .totals-table { border-collapse: collapse; width: 250px; }
-            .label-col { text-align: right; padding: 4px; font-size: 12px; font-weight: bold; border: 1px solid #000; }
-            .amount-col { text-align: center; padding: 4px; font-size: 12px; font-weight: bold; border: 1px solid #000; }
+            .title-section h1 { font-size: 17px; margin: 0; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; }
+            .title-section p { font-size: 11px; margin: 2px 0 0 0; font-weight: 700; }
+            
+            .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px; font-size: 11.5px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }
+            .meta-grid div { overflow: hidden; text-overflow: ellipsis; }
+
+            table.items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
+            table.items-table th { border: 1px solid #000; padding: 4px 2px; background: #e5e7eb; font-size: 11px; font-weight: bold; }
+            table.items-table td { border: 1px solid #000; padding: 4px 3px; text-align: center; font-size: 11px; }
+            table.items-table td.product-name { text-align: left; padding-left: 6px; font-weight: 600; }
+            
+            .totals-container { width: 100%; margin-top: 8px; display: flex; justify-content: flex-end; }
+            .totals-table { border-collapse: collapse; width: 240px; }
+            .totals-table td { padding: 3px 6px; font-size: 11.5px; font-weight: bold; border: 1px solid #000; }
+            .label-col { text-align: right; background: #f9fafb; }
+            .amount-col { text-align: right; }
+            
+            .footer-container { margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 5px; }
+            .signature-box { text-align: center; border-top: 1px solid #000; width: 160px; padding-top: 3px; font-size: 11px; font-weight: bold; }
           </style>
         </head>
         <body>
          <div class="bill-container">
-          <div class="header-container">
-            <img src="/logo-dark.png" class="logo" />
-            <div class="title-section">
-              <h1>Naveed & Zeeshan Traders, Mailsi</h1>
-              <p>PH: 0300-3999866, 0307-6385852</p>
+          <div>
+            <div class="header-container">
+              <img src="/logo-dark.png" class="logo" alt="Logo" />
+              <div class="title-section">
+                <h1>Naveed & Zeeshan Traders, Mailsi</h1>
+                <p>PH: 0300-3999866, 0307-6385852</p>
+              </div>
+            </div>
+            
+            <div class="meta-grid">
+              <div><strong>Bill No:</strong> ${invoiceData.invoiceNo}</div>
+              <div><strong>Customer:</strong> ${invoiceData.customer}</div>
+              <div><strong>Date:</strong> ${invoiceData.date}</div>
+              <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
+            </div>
+
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th style="width: 25px;">Ser</th>
+                  <th>Product Name</th>
+                  <th style="width: 40px;">Piece</th>
+                  <th style="width: 65px;">Rate</th>
+                  <th style="width: 65px;">Disc (Rs.)</th>
+                  <th style="width: 75px;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(invoiceData.items || []).map((i, idx) => {
+                  const itemGross = Number(i.qty) * Number(i.rate);
+                  const calcDiscRs = itemGross * ((Number(i.discount) || 0) / 100);
+                  return `
+                  <tr>
+                    <td>${idx + 1}</td>
+                    <td class="product-name">${i.name}</td>
+                    <td>${i.qty}</td>
+                    <td>${fmt(i.rate)}</td>
+                    <td>${calcDiscRs > 0 ? fmt(calcDiscRs) : '—'}</td>
+                    <td>${fmt(i.total)}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+
+            <div class="totals-container">
+              <table class="totals-table">
+                <tr><td class="label-col">Grand Total:</td><td class="amount-col">Rs. ${fmt(invoiceData.grossTotal)}</td></tr>
+                <tr><td class="label-col">Discount:</td><td class="amount-col">Rs. ${fmt(invoiceData.discount)}</td></tr>
+                <tr><td class="label-col">Prev Balance:</td><td class="amount-col">Rs. ${fmt(invoiceData.prevBalance || 0)}</td></tr>
+                <tr><td class="label-col" style="background:#e5e7eb;">Payable Amount:</td><td class="amount-col" style="background:#e5e7eb;">Rs. ${fmt(Number(invoiceData.netTotal) + Number(invoiceData.prevBalance || 0))}</td></tr>
+              </table>
             </div>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; font-size: 12px;">
-            <div><strong>Bill No:</strong> ${invoiceData.invoiceNo}</div>
-            <div><strong>Customer:</strong> ${invoiceData.customer}</div>
-            <div><strong>Date:</strong> ${invoiceData.date}</div>
-            <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
-          </div>
-          <table>
-            <thead><tr><th>Ser</th><th>Product Name</th><th>Piece</th><th>Rate</th><th>Disc (Rs.)</th><th>Total</th></tr></thead>
-            <tbody>
-              ${(invoiceData.items || []).map((i, idx) => {
-                const itemGross = Number(i.qty) * Number(i.rate);
-                const calcDiscRs = itemGross * ((Number(i.discount) || 0) / 100);
-                return `
-                <tr>
-                  <td>${idx + 1}</td>
-                  <td class="product-name">${i.name}</td>
-                  <td>${i.qty}</td>
-                  <td>${formatRs(i.rate || 0)}</td>
-                  <td>${calcDiscRs > 0 ? formatRs(calcDiscRs) : '—'}</td>
-                  <td>${formatRs(i.total)}</td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-          <div class="totals-container">
-            <table class="totals-table">
-              <tr><td class="label-col">Grand Total:</td><td class="amount-col">${formatRs(invoiceData.grossTotal)}</td></tr>
-              <tr><td class="label-col">Discount:</td><td class="amount-col">${formatRs(invoiceData.discount)}</td></tr>
-              <tr><td class="label-col">Prev Balance:</td><td class="amount-col">${formatRs(invoiceData.prevBalance || 0)}</td></tr>
-              <tr><td class="label-col" style="border-top: 2px solid #000;">Payable Amount:</td><td class="amount-col" style="border-top: 2px solid #000;">${formatRs(Number(invoiceData.netTotal) + Number(invoiceData.prevBalance || 0))}</td></tr>
-            </table>
-          </div>
-          <div style="margin-top: 100px; display: flex; justify-content: flex-end;">
-            <div style="text-align: center; border-top: 1px solid #000; width: 200px; padding-top: 5px; font-size: 12px; font-weight: bold;">
+
+          <div class="footer-container">
+            <div style="font-size: 11px; font-weight: bold;">
+              Created By: <span style="text-transform: capitalize;">${createdByUserName}</span>
+            </div>
+            <div class="signature-box">
               Customer Signature
             </div>
           </div>    
@@ -206,6 +248,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
     const prevBalance = totalSales - totalPaid;
 
+    // Detect logged in username dynamically across different possible user keys
+    const loggedInUser = (typeof currentUser === 'string' ? currentUser : currentUser?.username || currentUser?.name || currentUser?.displayName) || localStorage.getItem('username') || 'System';
+
     const invoice = { 
       id: invoiceNo ? String(invoiceNo) : generateId(), 
       invoiceNo, 
@@ -217,7 +262,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
       discount: totalDiscountAmount,
       prevBalance: prevBalance, 
       netTotal, 
-      createdBy: currentUser?.username || 'System',
+      createdBy: loggedInUser,
       createdAt: new Date().toISOString()
     };
     
