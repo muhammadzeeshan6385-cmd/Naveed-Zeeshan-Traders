@@ -8,15 +8,13 @@ import { db } from './firebase';
 import { doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 const Products = ({ products, setProducts, userRole }) => {
-  // Case-insensitivity aur potential string formats ko handle karne ke liye check
   const isAdmin = userRole && typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
 
   const [form, setForm] = useState({ name: '', category: '', sku: '', pRate: '', sRate: '', minStock: '5', unit: 'Piece' });
-  const [editingProduct, setEditingProduct] = useState(null); // Edit Popup state
+  const [editingProduct, setEditingProduct] = useState(null);
   const [search, setSearch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- PAGINATION STATES ---
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -42,7 +40,9 @@ const Products = ({ products, setProducts, userRole }) => {
         sku: form.sku.trim(),
         unit: form.unit,
         pRate: Number(form.pRate) || 0,
+        purchaseRate: Number(form.pRate) || 0, // Fallback for Profit calculation
         sRate: Number(form.sRate) || 0,
+        saleRate: Number(form.sRate) || 0,
         minStock: Number(form.minStock) || 5
       };
 
@@ -51,7 +51,6 @@ const Products = ({ products, setProducts, userRole }) => {
       setProducts([...products, productPayload]);
       resetForm();
       setCurrentPage(1); 
-      console.log("Product successfully added to Firebase Firestore.");
     } catch (error) {
       console.error("Firebase write error:", error);
       window.alert("Database me save karte hue error aya: " + error.message);
@@ -86,8 +85,6 @@ const Products = ({ products, setProducts, userRole }) => {
         if (currentPage > totalPagesAfterDelete && totalPagesAfterDelete > 0) {
           setCurrentPage(totalPagesAfterDelete);
         }
-
-        console.log("Product successfully deleted from Firebase Firestore.");
       } catch (error) {
         console.error("Firebase deletion error:", error);
         window.alert("Database se delete karte hue error aya: " + error.message);
@@ -114,14 +111,15 @@ const Products = ({ products, setProducts, userRole }) => {
       const updatedPayload = {
         ...editingProduct,
         pRate: Number(editingProduct.pRate) || 0,
-        sRate: Number(editingProduct.sRate) || 0
+        purchaseRate: Number(editingProduct.pRate) || 0, // Sync with Net profit key
+        sRate: Number(editingProduct.sRate) || 0,
+        saleRate: Number(editingProduct.sRate) || 0
       };
 
       await updateDoc(productDocRef, updatedPayload);
 
       setProducts(products.map(p => (p.id === targetId || p._id === targetId) ? updatedPayload : p));
       setEditingProduct(null); 
-      console.log("Product fields updated successfully inside Firestore.");
     } catch (error) {
       console.error("Firebase update path error:", error);
       window.alert("Database record update error: " + error.message);
@@ -130,12 +128,10 @@ const Products = ({ products, setProducts, userRole }) => {
     }
   };
 
-  // 1. Filter products base
   const filteredProducts = products.filter((p) =>
     [p.name, p.category, p.sku].join(' ').toLowerCase().includes(search.toLowerCase())
   );
 
-  // 2. Pagination Math calculations
   const totalItems = filteredProducts.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const activePage = currentPage > totalPages ? Math.max(1, totalPages) : currentPage;
@@ -158,7 +154,6 @@ const Products = ({ products, setProducts, userRole }) => {
 
   return (
     <PageShell title="Stock Items">
-      {/* Form Add Box Layer */}
       {isAdmin && (
         <Card title="Add Product">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -219,8 +214,6 @@ const Products = ({ products, setProducts, userRole }) => {
               render: (row) => (
                 <div className="flex items-center gap-2">
                   <button onClick={() => alert('Previewing ' + row.name)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded cursor-pointer" title="Preview"><Eye size={18} /></button>
-                  
-                  {/* Strict variable evaluation logic */}
                   {isAdmin && (
                     <>
                       <button onClick={() => setEditingProduct(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded cursor-pointer" title="Edit"><Pencil size={18} /></button>
@@ -234,7 +227,6 @@ const Products = ({ products, setProducts, userRole }) => {
           rows={paginatedProducts}
         />
 
-        {/* --- DYNAMIC PAGINATION CONTROLS BAR --- */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-800/60 pt-4 mt-4 flex-wrap gap-3">
             <span className="text-xs text-slate-400 font-medium">
@@ -286,7 +278,6 @@ const Products = ({ products, setProducts, userRole }) => {
         )}
       </Card>
 
-      {/* Edit Popup Modal Terminal Portal */}
       {isAdmin && editingProduct && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-800">
