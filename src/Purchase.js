@@ -53,6 +53,10 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
       const price = Number(form.price);
       const total = qty * price;
       const customId = generateId();
+
+      const matchedProduct = products.find(
+        p => p.name && p.name.trim().toLowerCase() === form.product.trim().toLowerCase()
+      );
       
       const entry = {
         id: customId,
@@ -63,17 +67,27 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         price,
         total,
         paymentType: form.paymentType,
+        // CRITICAL FIX: Report aur Dashboard calculation k liye items array add kia hai
+        items: [
+          {
+            productId: matchedProduct?.id || '',
+            productName: form.product,
+            qty,
+            price,
+            rate: price,
+            total,
+          }
+        ]
       };
 
       // 1. Firebase Purchases Collection Mein Save
       await setDoc(doc(db, 'purchases', customId), entry);
 
-      // 2. Firebase Firestore Product Record Rate Permanently Update (CRITICAL FIX)
-      const matchedProduct = products.find(p => p.name === form.product);
+      // 2. Firebase Firestore Product Record Rate Permanently Update
       if (matchedProduct && matchedProduct.id) {
         await updateDoc(doc(db, 'products', matchedProduct.id), {
           purchaseRate: price,
-          costPrice: price, // Dual safety for key mismatch
+          costPrice: price, 
           cost: price
         });
       }
@@ -84,7 +98,9 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
       if (setProducts) {
         setProducts(prevProducts => 
           prevProducts.map(p => 
-            p.name === form.product ? { ...p, purchaseRate: price, costPrice: price } : p
+            (p.name && p.name.trim().toLowerCase() === form.product.trim().toLowerCase()) 
+              ? { ...p, purchaseRate: price, costPrice: price, cost: price } 
+              : p
           )
         );
       }
@@ -154,21 +170,36 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
       const price = Number(editingPurchase.price) || 0;
       const total = qty * price;
 
+      const matchedProduct = products.find(
+        p => p.name && p.name.trim().toLowerCase() === String(editingPurchase.product).trim().toLowerCase()
+      );
+
       const updatedPayload = {
         ...editingPurchase,
         qty,
         price,
-        total
+        total,
+        // CRITICAL FIX: Report aur Dashboard alignment on edit
+        items: [
+          {
+            productId: matchedProduct?.id || '',
+            productName: editingPurchase.product,
+            qty,
+            price,
+            rate: price,
+            total,
+          }
+        ]
       };
 
       await updateDoc(doc(db, 'purchases', targetId), updatedPayload);
 
       // Update product cost in Firestore as well
-      const matchedProduct = products.find(p => p.name === editingPurchase.product);
       if (matchedProduct && matchedProduct.id) {
         await updateDoc(doc(db, 'products', matchedProduct.id), {
           purchaseRate: price,
-          costPrice: price
+          costPrice: price,
+          cost: price
         });
       }
 

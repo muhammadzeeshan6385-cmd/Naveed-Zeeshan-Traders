@@ -74,6 +74,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
       }));
     } else {
       const rate = getProductSaleRate(product);
+      // FIX: Added purchaseRate explicitly when adding a new item
       setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, purchaseRate, qty: 1, ctnSize, discount: 0, total: rate }]);
     }
   };

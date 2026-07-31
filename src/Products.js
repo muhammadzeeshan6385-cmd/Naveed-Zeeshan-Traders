@@ -33,16 +33,22 @@ const Products = ({ products, setProducts, userRole }) => {
     try {
       setIsSubmitting(true);
       const customId = generateId();
+      const pRateNum = Number(form.pRate) || 0;
+      const sRateNum = Number(form.sRate) || 0;
+
       const productPayload = {
         id: customId,
         name: form.name.trim(),
         category: form.category.trim(),
         sku: form.sku.trim(),
         unit: form.unit,
-        pRate: Number(form.pRate) || 0,
-        purchaseRate: Number(form.pRate) || 0, // Fallback for Profit calculation
-        sRate: Number(form.sRate) || 0,
-        saleRate: Number(form.sRate) || 0,
+        // CRITICAL FIX: Direct sync for all possible purchase/cost rate keys across Dashboard & Sales
+        pRate: pRateNum,
+        purchaseRate: pRateNum, 
+        costPrice: pRateNum,
+        cost: pRateNum,
+        sRate: sRateNum,
+        saleRate: sRateNum,
         minStock: Number(form.minStock) || 5
       };
 
@@ -107,13 +113,17 @@ const Products = ({ products, setProducts, userRole }) => {
     try {
       setIsSubmitting(true);
       const productDocRef = doc(db, 'products', targetId);
+      const pRateNum = Number(editingProduct.pRate) || 0;
+      const sRateNum = Number(editingProduct.sRate) || 0;
       
       const updatedPayload = {
         ...editingProduct,
-        pRate: Number(editingProduct.pRate) || 0,
-        purchaseRate: Number(editingProduct.pRate) || 0, // Sync with Net profit key
-        sRate: Number(editingProduct.sRate) || 0,
-        saleRate: Number(editingProduct.sRate) || 0
+        pRate: pRateNum,
+        purchaseRate: pRateNum,
+        costPrice: pRateNum,
+        cost: pRateNum,
+        sRate: sRateNum,
+        saleRate: sRateNum
       };
 
       await updateDoc(productDocRef, updatedPayload);
@@ -206,8 +216,16 @@ const Products = ({ products, setProducts, userRole }) => {
             { key: 'sku', label: 'SKU' },
             { key: 'category', label: 'Category' },
             { key: 'unit', label: 'Unit' },
-            { key: 'pRate', label: 'P.Rate', render: (row) => getProductPurchaseRate(row) },
-            { key: 'sRate', label: 'S.Rate', render: (row) => getProductSaleRate(row) },
+            { 
+              key: 'pRate', 
+              label: 'P.Rate', 
+              render: (row) => getProductPurchaseRate(row) || row.pRate || row.purchaseRate || row.costPrice || 0 
+            },
+            { 
+              key: 'sRate', 
+              label: 'S.Rate', 
+              render: (row) => getProductSaleRate(row) || row.sRate || row.saleRate || 0 
+            },
             {
               key: 'action',
               label: 'Action',

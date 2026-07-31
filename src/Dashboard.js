@@ -35,48 +35,69 @@ function Dashboard({ stats = {}, recentExpenses = [], recentSales = [], getSaleC
            s.isCredit === false;
   };
 
-  // 1. DYNAMIC NET PROFIT ENGINE
-  // Directly rely on App.js pre-calculated stats profit if available to avoid mismatches
-  const calculatedNetProfit = useMemo(() => {
-    if (stats.profit !== undefined && stats.profit !== null && !isNaN(stats.profit)) {
-      return Number(stats.profit);
+  // HELPER: Safely extract purchase rate from item OR stock products list fallback
+  const getProductPurchaseCost = (item, productsList = []) => {
+    // 1. Check direct item rates on bill item
+    const directRate = Number(
+      item.pRate || 
+      item.purchaseRate || 
+      item.costPrice || 
+      item.cost || 
+      item.purchasePrice || 
+      item.buyPrice || 
+      item.pPrice || 
+      0
+    );
+
+    if (directRate > 0) return directRate;
+
+    // 2. Fallback to main stock products list if bill item rate is 0/missing
+    const matchedProduct = productsList.find(p => 
+      (p.id && item.productId && String(p.id) === String(item.productId)) || 
+      (p.id && item.id && String(p.id) === String(item.id)) ||
+      (p.sku && item.sku && String(p.sku).trim().toLowerCase() === String(item.sku).trim().toLowerCase()) ||
+      (p.productCode && item.productCode && String(p.productCode) === String(item.productCode)) ||
+      (p.name && item.name && String(p.name).trim().toLowerCase() === String(item.name).trim().toLowerCase())
+    );
+
+    if (matchedProduct) {
+      return Number(
+        matchedProduct.pRate || 
+        matchedProduct.purchaseRate || 
+        matchedProduct.costPrice || 
+        matchedProduct.cost || 
+        matchedProduct.purchasePrice || 
+        matchedProduct.buyPrice || 
+        0
+      );
     }
 
+    return 0;
+  };
+
+  // 1. DYNAMIC NET PROFIT ENGINE (STRICT & FALLBACK PURCHASE RATE LOOKUP)
+  const calculatedNetProfit = useMemo(() => {
     let totalGrossMargin = 0;
 
     sales.forEach((sale) => {
       const items = sale.items || [];
       items.forEach((item) => {
         const qty = Number(item.qty || item.quantity || 0);
-        const saleRate = Number(item.rate || item.price || item.saleRate || 0);
+        const saleRate = Number(item.rate || item.price || item.sRate || item.saleRate || 0);
         
-        // Lookup original product purchase rate if not directly on item
-        const originalProduct = products.find(p => 
-          (p.id && item.productId && String(p.id) === String(item.productId)) || 
-          (p.name && item.name && String(p.name).trim().toLowerCase() === String(item.name).trim().toLowerCase())
-        );
+        // Fetch purchase rate with fallback to live products array
+        const purchaseRate = getProductPurchaseCost(item, products);
 
-        const purchaseRate = Number(
-          item.purchaseRate || 
-          item.purchasePrice || 
-          item.costPrice || 
-          item.cost || 
-          item.buyPrice || 
-          originalProduct?.purchaseRate || 
-          originalProduct?.costPrice || 
-          originalProduct?.cost || 
-          0
-        );
-
-        const itemGross = saleRate * qty;
+        const itemGrossSale = saleRate * qty;
         const discPercent = Number(item.discount || 0);
-        const netItemSale = itemGross - (itemGross * (discPercent / 100));
+        const netItemSale = itemGrossSale - (itemGrossSale * (discPercent / 100));
 
-        const itemCost = purchaseRate * qty;
-        totalGrossMargin += (netItemSale - itemCost);
+        const itemTotalCost = purchaseRate * qty;
+        totalGrossMargin += (netItemSale - itemTotalCost);
       });
     });
 
+    // Deduct overall bill discount if any
     sales.forEach((sale) => {
       const totalBillDiscount = Number(sale.discount || 0);
       if (totalBillDiscount > 0 && (!sale.items || sale.items.length === 0)) {
@@ -84,15 +105,14 @@ function Dashboard({ stats = {}, recentExpenses = [], recentSales = [], getSaleC
       }
     });
 
+    // Deduct returned items impact safely
     let returnedProfitImpact = 0;
     returns.forEach((returnItem) => {
       const items = returnItem.items || [];
       items.forEach((item) => {
         const qty = Number(item.qty || item.quantity || 0);
-        const saleRate = Number(item.rate || item.price || item.saleRate || 0);
-        const purchaseRate = Number(
-          item.purchaseRate || item.purchasePrice || item.costPrice || item.cost || 0
-        );
+        const saleRate = Number(item.rate || item.price || item.sRate || item.saleRate || 0);
+        const purchaseRate = getProductPurchaseCost(item, products);
         
         returnedProfitImpact += ((saleRate - purchaseRate) * qty);
       });
@@ -101,7 +121,7 @@ function Dashboard({ stats = {}, recentExpenses = [], recentSales = [], getSaleC
     const totalExpense = Number(stats.totalExpense || 0);
 
     return totalGrossMargin - totalExpense - returnedProfitImpact;
-  }, [stats, sales, returns, products]);
+  }, [stats.totalExpense, sales, returns, products]);
 
   // 2. AGGREGATE RETURNS CALCULATION
   const totalReturnsVolume = useMemo(() => {
@@ -120,30 +140,13 @@ function Dashboard({ stats = {}, recentExpenses = [], recentSales = [], getSaleC
     return activeReturnsAmount;
   }, [stats, returns]);
 
-  // 3. CASH IN HAND ENGINE
+  // 3. CASH IN HAND ENGINE 
   const cashInHand = useMemo(() => {
-    if (stats.cashInHand !== undefined && stats.cashInHand !== null) {
-      return Number(stats.cashInHand);
-    }
-
     const totalRecovery = Number(stats.totalRecovery || 0);
-    
-    const totalCashInvoices = sales
-      .reduce((sum, s) => {
-        const net = Number(s.netTotal || s.total || 0);
-        if (isCashSale(s)) {
-          return sum + net;
-        } else {
-          const upfrontPaid = Number(s.paid || s.received || s.paidAmount || 0);
-          return sum + Math.min(upfrontPaid, net);
-        }
-      }, 0);
-      
     const totalExpense = Number(stats.totalExpense || 0);
-    const totalCashRefunds = totalReturnsVolume;
 
-    return Math.max(0, (totalRecovery + totalCashInvoices) - totalExpense - totalCashRefunds);
-  }, [stats, sales, totalReturnsVolume]);
+    return totalRecovery - totalExpense;
+  }, [stats.totalRecovery, stats.totalExpense]);
 
   // 4. OUTSTANDING UDHAAR BALANCE ENGINE
   const calculatedOutstandingUdhaar = useMemo(() => {
@@ -229,7 +232,7 @@ function Dashboard({ stats = {}, recentExpenses = [], recentSales = [], getSaleC
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-black text-cyan-400 tracking-tight">{formatCurrency(cashInHand)}</h3>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-2">Recovery + Cash Bill - Expenses - Cash Refunds</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-2">Recovery Amount - Total Expense</p>
           </div>
         </div>
 
@@ -299,7 +302,7 @@ function Dashboard({ stats = {}, recentExpenses = [], recentSales = [], getSaleC
 
         {/* Outstanding Udhaar Balance Card */}
         <div className="relative overflow-hidden bg-white dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition duration-300 group sm:col-span-2">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-115" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-bl-full pointer-events-none transition-all group-hover:scale-110" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Outstanding Udhaar Balance</span>
             <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 shadow-inner"><DollarSign size={20} /></div>
