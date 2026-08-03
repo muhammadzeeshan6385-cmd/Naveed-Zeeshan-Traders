@@ -1,7 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, todayISO } from './utils/helpers';
 import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+
+// Firebase Firestore Imports
+import { db } from './firebase';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 
 const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, currentRole = '' }) => {
   const [form, setForm] = useState({
@@ -32,6 +36,26 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     return String(currentRole || '').trim().toLowerCase() === 'admin';
   }, [currentRole]);
 
+  // --- FIREBASE LIVE FETCH ON MOUNT ---
+  useEffect(() => {
+    const fetchExpensesFromFirebase = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "expenses"));
+        const firebaseExpenses = [];
+        querySnapshot.forEach((docSnap) => {
+          firebaseExpenses.push({ docId: docSnap.id, ...docSnap.data() });
+        });
+        if (firebaseExpenses.length > 0) {
+          setExpenses(firebaseExpenses);
+        }
+      } catch (error) {
+        console.error("Firebase Expense Fetch Error:", error);
+      }
+    };
+
+    fetchExpensesFromFirebase();
+  }, [setExpenses]);
+
   const resetForm = () => {
     setForm({
       category: '',
@@ -43,8 +67,8 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     setEditingItem(null);
   };
 
-  // Submit New Expense directly from form
-  const handleSubmit = (event) => {
+  // Submit New Expense directly from form (Saved to Firebase)
+  const handleSubmit = async (event) => {
     event.preventDefault();
     if (!form.category || !form.amount) {
       showToast('Category and amount are required.', 'warning');
@@ -53,34 +77,47 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
     const amount = Number(form.amount);
 
-    const entry = {
+    const newExpense = {
       id: generateId(),
       category: form.category,
       amount,
       date: form.date,
       description: form.description,
       account: form.account,
+      createdAt: new Date().toISOString()
     };
 
-    setExpenses([...expenses, entry]);
-    setCashData([
-      ...cashData,
-      {
+    try {
+      // 1. Save to Firebase "expenses" collection
+      const docRef = await addDoc(collection(db, "expenses"), newExpense);
+      const entry = { docId: docRef.id, ...newExpense };
+
+      // 2. Local State Sync
+      setExpenses([...expenses, entry]);
+
+      // 3. Save Cash Register entry to Firebase "cashData"
+      const cashEntry = {
         id: generateId(),
         date: form.date,
         account: form.account,
         amount: -amount,
         description: `Expense: ${form.category}`,
         type: 'payment',
-      },
-    ]);
+        expenseDocId: docRef.id
+      };
+      await addDoc(collection(db, "cashData"), cashEntry);
+      setCashData([...cashData, cashEntry]);
 
-    showToast('New expense entry added successfully!', 'success');
-    resetForm();
+      showToast('New expense entry added successfully!', 'success');
+      resetForm();
+    } catch (err) {
+      console.error("Firebase Add Error: ", err);
+      showToast('Firebase Error: Expense save nahi ho saka.', 'error');
+    }
   };
 
-  // Handle Update Confirmation from Modal
-  const handleConfirmUpdate = (e) => {
+  // Handle Update Confirmation from Modal (Updated in Firebase)
+  const handleConfirmUpdate = async (e) => {
     e.preventDefault();
     if (!isAdmin) {
       showToast('Only admin can modify or update expenses.', 'warning');
@@ -95,37 +132,55 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     const amount = Number(form.amount);
     const oldExpense = expenses.find((exp) => exp.id === editingItem.id);
 
-    setExpenses(
-      expenses.map((exp) =>
-        exp.id === editingItem.id
-          ? { ...exp, category: form.category, amount, date: form.date, description: form.description, account: form.account }
-          : exp
-      )
-    );
-
-    // Cash register update balance reversal
-    const updatedCashData = cashData.filter(
-      (c) => !(c.description === `Expense: ${oldExpense?.category}` && c.date === oldExpense?.date)
-    );
-
-    setCashData([
-      ...updatedCashData,
-      {
-        id: generateId(),
+    try {
+      const updatedData = {
+        category: form.category,
+        amount,
         date: form.date,
+        description: form.description,
         account: form.account,
-        amount: -amount,
-        description: `Expense: ${form.category}`,
-        type: 'payment',
-      },
-    ]);
+      };
 
-    showToast('Expense Entry has been updated', 'success');
-    resetForm();
+      // 1. Update in Firebase Firestore
+      if (editingItem.docId) {
+        const expDocRef = doc(db, "expenses", editingItem.docId);
+        await updateDoc(expDocRef, updatedData);
+      }
+
+      // 2. Update Local State
+      setExpenses(
+        expenses.map((exp) =>
+          exp.id === editingItem.id ? { ...exp, ...updatedData } : exp
+        )
+      );
+
+      // 3. Cash register update balance reversal
+      const updatedCashData = cashData.filter(
+        (c) => !(c.description === `Expense: ${oldExpense?.category}` && c.date === oldExpense?.date)
+      );
+
+      setCashData([
+        ...updatedCashData,
+        {
+          id: generateId(),
+          date: form.date,
+          account: form.account,
+          amount: -amount,
+          description: `Expense: ${form.category}`,
+          type: 'payment',
+        },
+      ]);
+
+      showToast('Expense Entry has been updated', 'success');
+      resetForm();
+    } catch (err) {
+      console.error("Firebase Update Error: ", err);
+      showToast('Firebase Error: Update fail ho gya.', 'error');
+    }
   };
 
-  // Handle Delete Confirmation from Modal
-  const handleConfirmDelete = () => {
+  // Handle Delete Confirmation from Modal (Deleted from Firebase)
+  const handleConfirmDelete = async () => {
     if (!isAdmin) {
       showToast('Only admin can delete expenses from record.', 'warning');
       return;
@@ -135,18 +190,35 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
     const targetExpense = deletingItem;
 
-    // Filter out deleted expense
-    setExpenses(expenses.filter((exp) => exp.id !== targetExpense.id));
+    try {
+      // 1. Delete Document from Firebase Firestore
+      if (targetExpense.docId) {
+        await deleteDoc(doc(db, "expenses", targetExpense.docId));
+      } else {
+        // Fallback Query Search if docId was not present locally
+        const q = query(collection(db, "expenses"), where("id", "==", targetExpense.id));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach(async (docSnap) => {
+          await deleteDoc(doc(db, "expenses", docSnap.id));
+        });
+      }
 
-    // Remove corresponding cash entry
-    setCashData(
-      cashData.filter(
-        (c) => !(c.description === `Expense: ${targetExpense.category}` && c.date === targetExpense.date)
-      )
-    );
+      // 2. Filter out deleted expense locally
+      setExpenses(expenses.filter((exp) => exp.id !== targetExpense.id));
 
-    showToast('Expense Entry has been deleted from your record', 'success');
-    setDeletingItem(null);
+      // 3. Remove corresponding cash entry
+      setCashData(
+        cashData.filter(
+          (c) => !(c.description === `Expense: ${targetExpense.category}` && c.date === targetExpense.date)
+        )
+      );
+
+      showToast('Expense Entry has been deleted from your record', 'success');
+      setDeletingItem(null);
+    } catch (err) {
+      console.error("Firebase Delete Error: ", err);
+      showToast('Firebase Error: Delete fail ho gya.', 'error');
+    }
   };
 
   const handleEditClick = (row) => {
@@ -191,7 +263,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         <body>
           <div class="ticket">
             <div class="title">EXPENSE VOUCHER</div>
-            <div class="sub-title">Naveed & Zeeshan Traders Mailsi</div>
+            <div class="sub-title">Naveed & Zeeshan Traders Address A Rakha Colony, Mailsi</div>
             <div class="line"></div>
             <div class="row"><span>Voucher ID:</span> <span>${row.id}</span></div>
             <div class="row"><span>Date:</span> <span>${row.date}</span></div>
@@ -344,9 +416,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
           <DataTable columns={columns} rows={recentExpenses} />
         </Card>
 
-        {/* ========================================== */}
-        {/* EDIT EXPENSE POPUP MODAL                  */}
-        {/* ========================================== */}
+        {/* EDIT EXPENSE POPUP MODAL */}
         {editingItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-4">
@@ -417,9 +487,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
           </div>
         )}
 
-        {/* ========================================== */}
-        {/* DELETE CONFIRMATION POPUP MODAL            */}
-        {/* ========================================== */}
+        {/* DELETE CONFIRMATION POPUP MODAL */}
         {deletingItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-slate-900 border border-rose-500/30 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
