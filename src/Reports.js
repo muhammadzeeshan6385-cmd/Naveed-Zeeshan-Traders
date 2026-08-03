@@ -12,14 +12,18 @@ import {
   Wallet
 } from 'lucide-react';
 
+// Firebase Firestore Imports
+import { db } from '../firebase'; // Apne project structure ke hisab se path set kar lein
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+
 function Reports({ 
-  sales = [], 
-  expenses = [], 
-  inventory = [], 
-  suppliers = [], 
-  payments = [], 
-  purchases = [],
-  products = [],
+  sales: initialSales = [], 
+  expenses: initialExpenses = [], 
+  inventory: initialInventory = [], 
+  suppliers: initialSuppliers = [], 
+  payments: initialPayments = [], 
+  purchases: initialPurchases = [],
+  products: initialProducts = [],
   selectedReport = null 
 }) {
   const [activeReport, setActiveReport] = useState(null);
@@ -28,7 +32,57 @@ function Reports({
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [showReportView, setShowReportView] = useState(false);
 
+  // Firebase Live States
+  const [dbSales, setDbSales] = useState([]);
+  const [dbExpenses, setDbExpenses] = useState([]);
+  const [dbPayments, setDbPayments] = useState([]);
+  const [dbPurchases, setDbPurchases] = useState([]);
+  const [dbProducts, setDbProducts] = useState([]);
+
   const fallbackTodayDate = new Date().toISOString().split('T')[0];
+
+  // --- FIREBASE DIRECT DATABASE LISTENERS ---
+  useEffect(() => {
+    // 1. Sales Collection
+    const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
+      setDbSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.log('Sales fetch error:', err));
+
+    // 2. Expenses Collection
+    const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+      setDbExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.log('Expenses fetch error:', err));
+
+    // 3. Payments/Recoveries Collection
+    const unsubPayments = onSnapshot(collection(db, 'payments'), (snapshot) => {
+      setDbPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.log('Payments fetch error:', err));
+
+    // 4. Purchases Collection
+    const unsubPurchases = onSnapshot(collection(db, 'purchases'), (snapshot) => {
+      setDbPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.log('Purchases fetch error:', err));
+
+    // 5. Products Collection
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      setDbProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.log('Products fetch error:', err));
+
+    return () => {
+      unsubSales();
+      unsubExpenses();
+      unsubPayments();
+      unsubPurchases();
+      unsubProducts();
+    };
+  }, []);
+
+  // Merge Firebase state with Fallback Props
+  const sales = dbSales.length > 0 ? dbSales : initialSales;
+  const expenses = dbExpenses.length > 0 ? dbExpenses : initialExpenses;
+  const payments = dbPayments.length > 0 ? dbPayments : initialPayments;
+  const purchases = dbPurchases.length > 0 ? dbPurchases : initialPurchases;
+  const products = dbProducts.length > 0 ? dbProducts : initialProducts;
 
   useEffect(() => {
     if (selectedReport) {
@@ -153,8 +207,8 @@ function Reports({
 
   const activeInventory = useMemo(() => {
     if (products && products.length > 0) return products;
-    return inventory;
-  }, [products, inventory]);
+    return initialInventory;
+  }, [products, initialInventory]);
 
   const profitAndLoss = useMemo(() => {
     let revenue = 0, cogs = 0;
@@ -606,47 +660,27 @@ function Reports({
                           <td className="py-2.5 px-2 font-bold text-slate-900">
                             {item.name} <span className="text-[9px] text-slate-400 font-normal block">{item.code || item.id}</span>
                           </td>
-                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(item.purchasePrice || item.purchaseRate || item.costPrice)}</td>
-                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(item.price || item.saleRate || item.rate)}</td>
-                          <td className={`py-2.5 px-2 font-bold ${isOut ? 'text-rose-600' : 'text-slate-900'}`}>{qty} {item.unit || 'pcs'}</td>
+                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(item.purchaseRate || item.costPrice || item.price)}</td>
+                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(item.saleRate || item.price || item.rate)}</td>
+                          <td className="py-2.5 px-2 font-semibold text-slate-800">{qty} {item.unit || 'Pcs'}</td>
                           <td className="py-2.5 px-2 text-right">
-                            {isOut ? (
-                              <span className="text-[9px] font-black text-rose-600 bg-rose-100 px-2 py-0.5 rounded uppercase">KHATAM</span>
-                            ) : (
-                              <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded uppercase">AVAILABLE</span>
-                            )}
+                            <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase ${isOut ? 'bg-rose-100 text-rose-700' : qty < 10 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                              {isOut ? 'Out of Stock' : qty < 10 ? 'Low Stock' : 'In Stock'}
+                            </span>
                           </td>
                         </tr>
                       );
                     })
                   )}
                 </tbody>
-                {activeInventory.length > 0 && (
-                  <tfoot>
-                    <tr className="border-t-2 border-slate-900 bg-slate-50">
-                      <td colSpan="3" className="py-3 px-2 font-extrabold text-slate-900 uppercase text-right text-xs">
-                        Total Items SKUs:
-                      </td>
-                      <td colSpan="2" className="py-3 px-2 font-black text-slate-900 text-sm">
-                        {activeInventory.length} Items Total
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
               </table>
             </div>
           )}
 
-          {/* --- FOOTER --- */}
-          <div className="footer-container border-t border-dashed border-slate-300 mt-12 pt-4 flex justify-between items-end text-[10px] text-slate-400 uppercase font-semibold">
-            <div>
-              <p className="m-0">Computer Generated Document</p>
-              <p className="m-0 text-slate-500 font-medium mt-0.5">Verified & Processed by System</p>
-            </div>
-            <div className="text-right">
-              <div className="border-b border-slate-400 w-36 mb-1"></div>
-              <p className="signature-line text-slate-700 font-bold m-0">Authorized Signature</p>
-            </div>
+          {/* Footer Block */}
+          <div className="footer-container border-t border-dashed border-slate-300 mt-12 pt-4 flex justify-between text-[10px] font-semibold text-slate-400 uppercase">
+            <div>System Generated Report</div>
+            <div className="signature-line text-slate-600 font-bold">Authorized Signature: __________________</div>
           </div>
 
         </div>
