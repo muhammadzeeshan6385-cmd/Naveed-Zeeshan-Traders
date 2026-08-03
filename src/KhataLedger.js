@@ -4,7 +4,7 @@ import { formatRs, getCreditSalesTotal } from './utils/helpers';
 
 // Firebase Firestore setup
 import { db } from './firebase'; 
-import { doc, updateDoc, collection, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, collection, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
 
 import { 
   Eye, 
@@ -17,9 +17,13 @@ import {
   AlertCircle, 
   FileText,
   Edit2,
+  Trash2,
   Users,
   Truck,
-  Wallet
+  Wallet,
+  CheckCircle2,
+  CreditCard,
+  Check
 } from 'lucide-react';
 
 const KhataLedger = ({ 
@@ -94,10 +98,12 @@ const KhataLedger = ({
   const [filterType, setFilterType] = useState('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Database Update States
+  // Database Update & Delete States
   const [editingItem, setEditingItem] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(null);
   const [newPrevBalance, setNewPrevBalance] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Vendor Payment States
   const [payingVendor, setPayingVendor] = useState(null);
@@ -105,6 +111,16 @@ const KhataLedger = ({
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Custom Dark Toast / Alert State
+  const [toast, setToast] = useState(null); // { type: 'success' | 'error' | 'warning', message: '' }
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 3500);
+  };
 
   const isAdmin = useMemo(() => {
     return String(currentRole || '').trim().toLowerCase() === 'admin';
@@ -318,7 +334,7 @@ const KhataLedger = ({
   // Database Previous Balance Save
   const handleSavePreviousBalance = async () => {
     if (!isAdmin) {
-      alert('Aapke paas is record ko change karne ki authority nahi hai!');
+      showToast('Aapke paas is record ko change karne ki authority nahi hai!', 'warning');
       return;
     }
     if (!editingItem) return;
@@ -331,13 +347,37 @@ const KhataLedger = ({
         previousBalance: Math.round(Number(newPrevBalance || 0))
       });
       
-      alert(`Previous Balance successfully updated!`);
+      showToast('Previous Balance successfully updated!', 'success');
       setEditingItem(null);
     } catch (error) {
       console.error("Firebase Error: ", error);
-      alert('Firebase database update failed!');
+      showToast('Firebase database update failed!', 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Database Delete Record Handler (Admin Only)
+  const handleDeleteRecord = async () => {
+    if (!isAdmin) {
+      showToast('Aapke paas is record ko remove/delete karne ki authority nahi hai!', 'warning');
+      return;
+    }
+    if (!deletingItem) return;
+    setIsDeleting(true);
+    try {
+      const collectionName = activeTab === 'customers' ? 'customers' : 'suppliers';
+      const docRef = doc(db, collectionName, deletingItem.id);
+      
+      await deleteDoc(docRef);
+      
+      showToast(`${activeTab === 'customers' ? 'Customer' : 'Vendor'} record successfully deleted!`, 'success');
+      setDeletingItem(null);
+    } catch (error) {
+      console.error("Firebase Delete Error: ", error);
+      showToast('Record delete karte waqt error aaya! Internet check karein.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -347,7 +387,7 @@ const KhataLedger = ({
     const payAmt = Math.round(Number(paymentAmount));
     
     if (!payingVendor || payAmt <= 0) {
-      alert('Meharbani karke valid payment amount dakhil karein!');
+      showToast('Meharbani karke valid payment amount dakhil karein!', 'warning');
       return;
     }
 
@@ -377,7 +417,7 @@ const KhataLedger = ({
         createdAt: serverTimestamp()
       });
 
-      alert(`Rs. ${payAmt} Supplier (${payingVendor.name}) ko pay kar diye gaye hain aur Cash in Hand se deduct ho chuke hain!`);
+      showToast(`Rs. ${payAmt} Supplier (${payingVendor.name}) ko pay kar diye gaye hain!`, 'success');
       
       if (onPaymentSuccess) onPaymentSuccess();
       setPayingVendor(null);
@@ -385,7 +425,7 @@ const KhataLedger = ({
       setPaymentNotes('');
     } catch (err) {
       console.error("Payment Submission Error: ", err);
-      alert('Payment save karte waqt error aaya. Internet & Firebase Rules check karein!');
+      showToast('Payment save karte waqt error aaya!', 'error');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -710,8 +750,32 @@ const KhataLedger = ({
 
   return (
     <PageShell title="Accounts Khata Ledger">
-      <div className="space-y-6 pb-12">
+      <div className="space-y-6 pb-12 relative">
         
+        {/* CUSTOM DARK THEME TOAST NOTIFICATION */}
+        {toast && (
+          <div className="fixed top-5 right-5 z-50 transition-all duration-300 animate-slide-in">
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold ${
+              toast.type === 'success' 
+                ? 'bg-slate-900/95 border-emerald-500/40 text-emerald-400 shadow-emerald-900/20' 
+                : toast.type === 'warning'
+                ? 'bg-slate-900/95 border-amber-500/40 text-amber-400 shadow-amber-900/20'
+                : 'bg-slate-900/95 border-rose-500/40 text-rose-400 shadow-rose-900/20'
+            }`}>
+              {toast.type === 'success' && <CheckCircle2 size={18} className="text-emerald-400" />}
+              {toast.type === 'warning' && <AlertCircle size={18} className="text-amber-400" />}
+              {toast.type === 'error' && <AlertCircle size={18} className="text-rose-400" />}
+              <span>{toast.message}</span>
+              <button 
+                onClick={() => setToast(null)}
+                className="ml-2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* TAB NAVIGATION */}
         <div className="flex border-b border-slate-800 gap-4 text-xs font-bold">
           <button
@@ -746,460 +810,528 @@ const KhataLedger = ({
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Market Receivables</p>
                 <h3 className="text-xl font-black text-rose-400 mt-1">{formatRs(Math.round(ledgerMetrics.totalOutstanding))}</h3>
               </div>
-              <div className="p-3 bg-rose-500/10 rounded-xl text-rose-400"><AlertCircle size={20} /></div>
+              <div className="bg-rose-500/10 p-3 rounded-xl border border-rose-500/20 text-rose-400">
+                <AlertCircle size={22} />
+              </div>
             </div>
+
             <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Recovery This Month</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Recovered This Month</p>
                 <h3 className="text-xl font-black text-emerald-400 mt-1">{formatRs(Math.round(ledgerMetrics.totalRecoveredThisMonth))}</h3>
               </div>
-              <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-400"><UserCheck size={20} /></div>
+              <div className="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 text-emerald-400">
+                <UserCheck size={22} />
+              </div>
             </div>
+
             <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Debtors Retailers</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Debtors</p>
                 <h3 className="text-xl font-black text-amber-400 mt-1">{ledgerMetrics.activeDebtorsCount} Accounts</h3>
               </div>
-              <div className="p-3 bg-amber-500/10 rounded-xl text-amber-400"><FileText size={20} /></div>
+              <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 text-amber-400">
+                <Users size={22} />
+              </div>
             </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Supplier Payables</p>
-                <h3 className="text-xl font-black text-rose-400 mt-1">{formatRs(Math.round(vendorMetrics.totalPayable))}</h3>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Vendor Payables</p>
+                <h3 className="text-xl font-black text-amber-400 mt-1">{formatRs(Math.round(vendorMetrics.totalPayable))}</h3>
               </div>
-              <div className="p-3 bg-rose-500/10 rounded-xl text-rose-400"><AlertCircle size={20} /></div>
+              <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 text-amber-400">
+                <Wallet size={22} />
+              </div>
             </div>
+
             <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Paid To Vendors This Month</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Paid to Vendors This Month</p>
                 <h3 className="text-xl font-black text-emerald-400 mt-1">{formatRs(Math.round(vendorMetrics.totalPaidThisMonth))}</h3>
               </div>
-              <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-400"><UserCheck size={20} /></div>
+              <div className="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 text-emerald-400">
+                <UserCheck size={22} />
+              </div>
             </div>
+
             <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Supplier Vendors</p>
-                <h3 className="text-xl font-black text-amber-400 mt-1">{vendorMetrics.activeCreditorsCount} Accounts</h3>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Suppliers/Vendors</p>
+                <h3 className="text-xl font-black text-blue-400 mt-1">{vendorMetrics.activeCreditorsCount} Creditors</h3>
               </div>
-              <div className="p-3 bg-amber-500/10 rounded-xl text-amber-400"><Truck size={20} /></div>
+              <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 text-blue-400">
+                <Truck size={22} />
+              </div>
             </div>
           </div>
         )}
 
-        {/* SEARCH & FILTER TOOLBAR */}
-        <div className="bg-slate-900/40 border border-slate-800/80 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="relative w-full md:w-96">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500"><Search size={16} /></span>
+        {/* CONTROLS HEADER */}
+        <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
             <input
               type="text"
+              placeholder={activeTab === 'customers' ? "Search Customer, Shop, Phone..." : "Search Vendor, Company, Phone..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={activeTab === 'customers' ? "Search customer, shop or mobile..." : "Search vendor, company or phone..."}
-              className="w-full pl-10 pr-4 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-slate-700 text-slate-200 placeholder-slate-500"
+              className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
             />
           </div>
-          <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-slate-400 text-xs font-semibold">
-              <button onClick={() => setFilterType('all')} className={`px-3 py-1.5 rounded-lg transition ${filterType === 'all' ? 'bg-slate-800 text-white font-bold' : 'hover:text-slate-200'}`}>All</button>
-              <button onClick={() => setFilterType('debtors')} className={`px-3 py-1.5 rounded-lg transition ${filterType === 'debtors' ? 'bg-slate-800 text-white font-bold' : 'hover:text-slate-200'}`}>With Balance</button>
-              <button onClick={() => setFilterType('clear')} className={`px-3 py-1.5 rounded-lg transition ${filterType === 'clear' ? 'bg-slate-800 text-white font-bold' : 'hover:text-slate-200'}`}>Clear</button>
-            </div>
-            <button onClick={exportToCSV} className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-xl transition"><Download size={15} /></button>
-            <button onClick={handleRefreshData} className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-xl transition"><RefreshCw size={15} className={isRefreshing ? 'animate-spin' : ''} /></button>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-amber-500/50 cursor-pointer"
+            >
+              <option value="all">All Accounts</option>
+              <option value="debtors">{activeTab === 'customers' ? 'Has Outstanding Balance' : 'Has Payable Balance'}</option>
+              <option value="clear">Zero Balance (Clear)</option>
+            </select>
+
+            <button
+              onClick={handleRefreshData}
+              className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-amber-400 rounded-xl transition cursor-pointer"
+              title="Refresh Ledger"
+            >
+              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-amber-400' : ''} />
+            </button>
+
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-3 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white rounded-xl text-xs transition cursor-pointer font-medium"
+            >
+              <Download size={15} />
+              Export CSV
+            </button>
           </div>
         </div>
 
-        {/* DATA TABLES */}
-        <Card>
-          {activeTab === 'customers' ? (
-            <DataTable
-              columns={[
-                { key: 'name', label: 'Customer Name', render: (row) => <span className="font-bold text-slate-200">{row.name}</span> },
-                { key: 'shopName', label: 'Shop Identity' },
-                { key: 'area', label: 'Market Location', render: (row) => <span className="text-xs text-slate-400">{row.area}</span> },
-                { key: 'previousBalance', label: 'Prev Balance', render: (row) => <span className="text-blue-300 font-medium">{formatRs(Math.round(row.previousBalance))}</span> },
-                { key: 'totalSales', label: 'Total Credit (Dr)', render: (row) => <span className="text-rose-300 font-medium">{formatRs(Math.round(row.totalSales))}</span> },
-                { key: 'totalPaid', label: 'Recovered (Cr)', render: (row) => <span className="text-emerald-300 font-medium">{formatRs(Math.round(row.totalPaid))}</span> },
-                {
-                  key: 'balance',
-                  label: 'Net Balance',
-                  render: (row) => (
-                    <span className={`font-black ${row.balance > 50000 ? 'text-red-400' : row.balance > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                      {formatRs(Math.round(row.balance))}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'actions',
-                  label: 'Actions',
-                  render: (row) => (
-                    <div className="flex items-center gap-1.5 justify-start">
-                      <button
-                        onClick={() => setSelectedCustomer(row)}
-                        className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white transition cursor-pointer"
-                        title="View Ledger"
-                      >
-                        <Eye size={14} />
-                      </button>
-                      <button
-                        onClick={() => handlePrintLedger(row, 'customer')}
-                        className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-600 text-amber-400 hover:text-white transition cursor-pointer"
-                        title="Print Statement"
-                      >
-                        <Printer size={14} />
-                      </button>
-                      {isAdmin && (
-                        <button
-                          onClick={() => {
-                            setEditingItem(row);
-                            setNewPrevBalance(row.previousBalance);
-                          }}
-                          className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-white transition cursor-pointer"
-                          title="Edit Previous Balance"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ),
-                },
-              ]}
-              rows={customerRows}
-            />
-          ) : (
-            <DataTable
-              columns={[
-                { key: 'name', label: 'Vendor / Supplier', render: (row) => <span className="font-bold text-slate-200">{row.name}</span> },
-                { key: 'companyName', label: 'Company / Brand' },
-                { key: 'city', label: 'City / Location', render: (row) => <span className="text-xs text-slate-400">{row.city}</span> },
-                { key: 'previousBalance', label: 'Prev Balance', render: (row) => <span className="text-blue-300 font-medium">{formatRs(Math.round(row.previousBalance))}</span> },
-                { key: 'totalPurchases', label: 'Purchases (Dr)', render: (row) => <span className="text-rose-300 font-medium">{formatRs(Math.round(row.totalPurchases))}</span> },
-                { key: 'totalPaid', label: 'Paid Out (Cr)', render: (row) => <span className="text-emerald-300 font-medium">{formatRs(Math.round(row.totalPaid))}</span> },
-                {
-                  key: 'balance',
-                  label: 'Payable Balance',
-                  render: (row) => (
-                    <span className={`font-black ${row.balance > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                      {formatRs(Math.round(row.balance))}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'actions',
-                  label: 'Actions',
-                  render: (row) => (
-                    <div className="flex items-center gap-1.5 justify-start">
-                      <button
-                        onClick={() => setPayingVendor(row)}
-                        className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white transition cursor-pointer"
-                        title="Pay Cash to Supplier"
-                      >
-                        <Wallet size={14} />
-                      </button>
-                      <button
-                        onClick={() => setSelectedVendor(row)}
-                        className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white transition cursor-pointer"
-                        title="View Vendor Ledger"
-                      >
-                        <Eye size={14} />
-                      </button>
-                      <button
-                        onClick={() => handlePrintLedger(row, 'vendor')}
-                        className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-600 text-amber-400 hover:text-white transition cursor-pointer"
-                        title="Print Vendor Statement"
-                      >
-                        <Printer size={14} />
-                      </button>
-                      {isAdmin && (
-                        <button
-                          onClick={() => {
-                            setEditingItem(row);
-                            setNewPrevBalance(row.previousBalance);
-                          }}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-                          title="Edit Vendor Balance"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ),
-                },
-              ]}
-              rows={vendorRows}
-            />
-          )}
+        {/* LEDGER DATA TABLE */}
+        <Card className="overflow-hidden border-slate-800 bg-slate-900/40">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-300 border-collapse">
+              <thead>
+                <tr className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800">
+                  <th className="p-3.5">#</th>
+                  <th className="p-3.5">{activeTab === 'customers' ? 'Customer Name' : 'Vendor Name'}</th>
+                  <th className="p-3.5">{activeTab === 'customers' ? 'Shop Name' : 'Company Name'}</th>
+                  <th className="p-3.5">Contact</th>
+                  <th className="p-3.5 text-right">Prev Balance</th>
+                  <th className="p-3.5 text-right">{activeTab === 'customers' ? 'Total Sales' : 'Total Purchases'}</th>
+                  <th className="p-3.5 text-right">Total Paid</th>
+                  <th className="p-3.5 text-right">Total Returned</th>
+                  <th className="p-3.5 text-right">Net Balance</th>
+                  <th className="p-3.5 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {(activeTab === 'customers' ? customerRows : vendorRows).length === 0 ? (
+                  <tr>
+                    <td colSpan="10" className="p-8 text-center text-slate-500 font-medium">
+                      No matching {activeTab === 'customers' ? 'customer' : 'vendor'} records found.
+                    </td>
+                  </tr>
+                ) : (
+                  (activeTab === 'customers' ? customerRows : vendorRows).map((row, idx) => (
+                    <tr key={row.id || idx} className="hover:bg-slate-800/30 transition">
+                      <td className="p-3.5 text-slate-500">{idx + 1}</td>
+                      <td className="p-3.5 font-semibold text-slate-100">{row.name}</td>
+                      <td className="p-3.5 text-slate-400">{row.shopName || row.companyName}</td>
+                      <td className="p-3.5 text-slate-400">{row.phone}</td>
+                      
+                      <td className="p-3.5 text-right text-slate-400 font-mono">
+                        {formatRs(row.previousBalance)}
+                      </td>
+                      
+                      <td className="p-3.5 text-right text-slate-300 font-mono">
+                        {formatRs(row.totalSales || row.totalPurchases)}
+                      </td>
+
+                      <td className="p-3.5 text-right text-emerald-400 font-mono">
+                        {formatRs(row.totalPaid)}
+                      </td>
+
+                      <td className="p-3.5 text-right text-sky-400 font-mono">
+                        {formatRs(row.totalReturned)}
+                      </td>
+
+                      <td className="p-3.5 text-right font-mono font-bold">
+                        <span className={row.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}>
+                          {formatRs(row.balance)}
+                        </span>
+                      </td>
+
+                      <td className="p-3.5">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* VIEW STATEMENT POPUP BUTTON */}
+                          <button
+                            onClick={() => activeTab === 'customers' ? setSelectedCustomer(row) : setSelectedVendor(row)}
+                            className="p-1.5 text-slate-400 hover:text-amber-400 bg-slate-950 border border-slate-800 hover:border-amber-500/40 rounded-lg transition cursor-pointer"
+                            title="View Statement History"
+                          >
+                            <Eye size={14} />
+                          </button>
+
+                          {/* PRINT STATEMENT BUTTON */}
+                          <button
+                            onClick={() => handlePrintLedger(row, activeTab === 'customers' ? 'customer' : 'vendor')}
+                            className="p-1.5 text-slate-400 hover:text-blue-400 bg-slate-950 border border-slate-800 hover:border-blue-500/40 rounded-lg transition cursor-pointer"
+                            title="Print Ledger"
+                          >
+                            <Printer size={14} />
+                          </button>
+
+                          {/* VENDOR QUICK PAYMENT BUTTON */}
+                          {activeTab === 'vendors' && (
+                            <button
+                              onClick={() => { setPayingVendor(row); setPaymentAmount(row.balance > 0 ? row.balance : ''); }}
+                              className="p-1.5 text-slate-400 hover:text-emerald-400 bg-slate-950 border border-slate-800 hover:border-emerald-500/40 rounded-lg transition cursor-pointer"
+                              title="Pay Vendor"
+                            >
+                              <Wallet size={14} />
+                            </button>
+                          )}
+
+                          {/* EDIT PREVIOUS BALANCE BUTTON */}
+                          <button
+                            onClick={() => {
+                              if (!isAdmin) {
+                                showToast("Aapke paas Admin Rights nahi hain!", "warning");
+                                return;
+                              }
+                              setEditingItem(row);
+                              setNewPrevBalance(row.previousBalance);
+                            }}
+                            className={`p-1.5 bg-slate-950 border rounded-lg transition ${
+                              isAdmin 
+                                ? 'text-slate-400 hover:text-amber-300 border-slate-800 hover:border-amber-500/40 cursor-pointer' 
+                                : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
+                            }`}
+                            title={isAdmin ? "Edit Opening/Prev Balance" : "Admin Login Required"}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+
+                          {/* DELETE RECORD BUTTON */}
+                          <button
+                            onClick={() => {
+                              if (!isAdmin) {
+                                showToast("Aapke paas Admin Rights nahi hain!", "warning");
+                                return;
+                              }
+                              setDeletingItem(row);
+                            }}
+                            className={`p-1.5 bg-slate-950 border rounded-lg transition ${
+                              isAdmin 
+                                ? 'text-slate-400 hover:text-rose-400 border-slate-800 hover:border-rose-500/40 cursor-pointer' 
+                                : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
+                            }`}
+                            title={isAdmin ? "Delete Account Record" : "Admin Login Required"}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </Card>
 
-        {/* PAY SUPPLIER MODAL */}
-        {payingVendor && (
-          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center z-50 animate-[fadeIn_0.15s_ease-out]">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
-              <button
-                onClick={() => setPayingVendor(null)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X size={18} />
-              </button>
+        {/* ========================================== */}
+        {/* MODAL 1: VIEW STATEMENT / HISTORY POPUP    */}
+        {/* ========================================== */}
+        {(selectedCustomer || selectedVendor) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl max-h-[90vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden">
               
-              <div className="flex items-center gap-2 mb-2">
-                <Wallet className="text-emerald-400" size={18} />
-                <h3 className="text-xs font-black uppercase text-slate-200 tracking-wider">
-                  Make Payment To Supplier
-                </h3>
-              </div>
-              <p className="text-[11px] text-slate-400 mb-5">
-                Vendor: <strong className="text-amber-400 font-bold">{payingVendor.name}</strong> ({payingVendor.companyName})<br />
-                Current Payable Arrears: <strong className="text-rose-400">{formatRs(Math.round(payingVendor.balance))}</strong>
-              </p>
-              
-              <form onSubmit={handleSubmitVendorPayment} className="space-y-4">
+              {/* Header */}
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <FileText size={18} className="text-amber-400" />
+                    {selectedCustomer ? `Customer Ledger Statement: ${selectedCustomer.name}` : `Vendor Ledger Statement: ${selectedVendor.name}`}
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {selectedCustomer ? `Shop: ${selectedCustomer.shopName} | Mobile: ${selectedCustomer.phone}` : `Company: ${selectedVendor.companyName} | Contact: ${selectedVendor.phone}`}
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePrintLedger(selectedCustomer || selectedVendor, selectedCustomer ? 'customer' : 'vendor')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer"
+                  >
+                    <Printer size={14} /> Print Statement
+                  </button>
+                  <button
+                    onClick={() => { setSelectedCustomer(null); setSelectedVendor(null); }}
+                    className="p-1.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-xl cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* History Table */}
+              <div className="p-4 overflow-y-auto flex-1">
+                <table className="w-full text-left text-xs text-slate-300 border-collapse">
+                  <thead>
+                    <tr className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                      <th className="p-3">Date</th>
+                      <th className="p-3">Type</th>
+                      <th className="p-3">Reference / Ref No</th>
+                      <th className="p-3">Description</th>
+                      <th className="p-3 text-right">Debit</th>
+                      <th className="p-3 text-right">Credit</th>
+                      <th className="p-3 text-right">Running Net Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {(() => {
+                      const hist = selectedCustomer ? customerHistory : vendorHistory;
+                      if (hist.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan="7" className="p-6 text-center text-slate-500">No transaction records logged yet.</td>
+                          </tr>
+                        );
+                      }
+                      let runningBal = 0;
+                      return hist.map((item, idx) => {
+                        runningBal += (item.debit - item.credit);
+                        return (
+                          <tr key={idx} className="hover:bg-slate-800/20">
+                            <td className="p-3 text-slate-400 font-mono">{item.date}</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                item.type === 'Invoice' || item.type === 'Stock Purchase' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                item.type === 'Recovery' || item.type === 'Vendor Payment' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                'bg-slate-800 text-slate-300'
+                              }`}>
+                                {item.type}
+                              </span>
+                            </td>
+                            <td className="p-3 font-mono text-slate-300">{item.reference}</td>
+                            <td className="p-3 text-slate-400">{item.description}</td>
+                            <td className="p-3 text-right text-rose-400 font-mono">{item.debit > 0 ? formatRs(item.debit) : '-'}</td>
+                            <td className="p-3 text-right text-emerald-400 font-mono">{item.credit > 0 ? formatRs(item.credit) : '-'}</td>
+                            <td className="p-3 text-right font-bold font-mono text-amber-400">{formatRs(Math.round(runningBal))}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Footer Summary */}
+              <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs">
+                <div className="text-slate-400">
+                  Total History Entries: <span className="font-bold text-white">{(selectedCustomer ? customerHistory : vendorHistory).length}</span>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="text-slate-400">
+                    Current Outstanding Arrears:
+                  </div>
+                  <div className="text-base font-black text-amber-400 font-mono">
+                    {formatRs((selectedCustomer || selectedVendor)?.balance || 0)}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ========================================== */}
+        {/* MODAL 2: EDIT PREVIOUS BALANCE POPUP      */}
+        {/* ========================================== */}
+        {editingItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Edit2 size={16} className="text-amber-400" />
+                  Edit Opening / Prev Balance
+                </h3>
+                <button
+                  onClick={() => setEditingItem(null)}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-400 mb-1">
+                  Account: <strong className="text-slate-200">{editingItem.name}</strong> ({activeTab === 'customers' ? 'Customer' : 'Vendor'})
+                </p>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1 mt-3">
+                  Previous Balance (Rs.)
+                </label>
+                <input
+                  type="number"
+                  value={newPrevBalance}
+                  onChange={(e) => setNewPrevBalance(e.target.value)}
+                  placeholder="Enter previous opening balance"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-amber-400 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  onClick={() => setEditingItem(null)}
+                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePreviousBalance}
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSaving ? 'Updating...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================== */}
+        {/* MODAL 3: DELETE RECORD POPUP (CUSTOM UI)  */}
+        {/* ========================================== */}
+        {deletingItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-rose-500/30 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+                <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
+                  <AlertCircle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Delete Account Record</h3>
+                  <p className="text-xs text-slate-400">Admin Confirmation Required</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Kiya aap waqai <strong className="text-white font-bold">{deletingItem.name}</strong> ka record database se permanently remove/delete karna chahte hain? Is action ko undo nahi kiya ja sakta.
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  onClick={() => setDeletingItem(null)}
+                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteRecord}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete Record'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================== */}
+        {/* MODAL 4: VENDOR PAYMENT POPUP             */}
+        {/* ========================================== */}
+        {payingVendor && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <form onSubmit={handleSubmitVendorPayment} className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Wallet size={16} className="text-emerald-400" />
+                  Supplier / Vendor Payment
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setPayingVendor(null)}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1">
+                <p className="text-xs text-slate-400">Supplier: <span className="font-bold text-slate-200">{payingVendor.name}</span></p>
+                <p className="text-xs text-slate-400">Current Payable Balance: <span className="font-bold font-mono text-amber-400">{formatRs(payingVendor.balance)}</span></p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
                     Payment Amount (Rs.)
                   </label>
                   <input
                     type="number"
+                    required
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
-                    placeholder="Enter payment amount"
-                    className="w-full px-4 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-emerald-500 text-slate-100 placeholder-slate-600 font-bold"
-                    autoFocus
-                    required
+                    placeholder="Enter amount paid"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-emerald-400 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
                     Payment Method
                   </label>
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full px-4 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-emerald-500 text-slate-100 font-bold"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="Cash">Cash (Deduct from Cash in Hand)</option>
+                    <option value="Cash">Cash in Hand</option>
                     <option value="Bank Transfer">Bank Transfer</option>
                     <option value="Cheque">Cheque</option>
+                    <option value="Online / JazzCash / EasyPaisa">Online / JazzCash / EasyPaisa</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
-                    Notes / Slip Ref (Optional)
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Notes / Description
                   </label>
                   <input
                     type="text"
                     value={paymentNotes}
                     onChange={(e) => setPaymentNotes(e.target.value)}
-                    placeholder="e.g. Paid against invoice #492"
-                    className="w-full px-4 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-slate-700 text-slate-200"
+                    placeholder="Optional notes or receipt reference..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
-                
-                <div className="flex gap-2 justify-end pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setPayingVendor(null)}
-                    className="px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl transition cursor-pointer"
-                    disabled={isProcessingPayment}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                    disabled={isProcessingPayment}
-                  >
-                    {isProcessingPayment ? 'Processing...' : 'Confirm & Less Cash'}
-                  </button>
-                </div>
-              </form>
-            </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setPayingVendor(null)}
+                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessingPayment}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                >
+                  {isProcessingPayment ? 'Processing...' : 'Submit Payment'}
+                </button>
+              </div>
+            </form>
           </div>
-        )}
-
-        {/* EDIT PREVIOUS BALANCE POPUP */}
-        {editingItem && isAdmin && (
-          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center z-50 animate-[fadeIn_0.15s_ease-out]">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
-              <button
-                onClick={() => setEditingItem(null)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-              
-              <h3 className="text-xs font-black uppercase text-slate-200 tracking-wider mb-2">
-                Update Previous / Opening Balance
-              </h3>
-              <p className="text-[11px] text-slate-400 mb-5">
-                Target Account: <strong className="text-amber-400 font-bold">{editingItem.name}</strong> ({editingItem.shopName || editingItem.companyName})
-              </p>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
-                    Opening Balance Amount (Rs.)
-                  </label>
-                  <input
-                    type="number"
-                    value={newPrevBalance}
-                    onChange={(e) => setNewPrevBalance(e.target.value)}
-                    placeholder="Enter previous balance"
-                    className="w-full px-4 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-slate-700 text-slate-100 font-bold"
-                    autoFocus
-                  />
-                </div>
-                
-                <div className="flex gap-2 justify-end pt-2">
-                  <button
-                    onClick={() => setEditingItem(null)}
-                    className="px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl transition cursor-pointer"
-                    disabled={isSaving}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSavePreviousBalance}
-                    className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                    disabled={isSaving}
-                  >
-                    {isSaving ? 'Saving to Database...' : 'Save Balance'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* CUSTOMER STATEMENT BOARD */}
-        {selectedCustomer && (
-          <Card className="border border-slate-800 bg-slate-950/40 p-6 rounded-3xl animate-[fadeIn_0.25s_ease-out]">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-300">
-                  Customer Statement: <span className="text-amber-400 font-black">{selectedCustomer.name}</span>
-                </h3>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Bazaar Shop: {selectedCustomer.shopName} | Phone: {selectedCustomer.phone}</p>
-              </div>
-              <button
-                onClick={() => setSelectedCustomer(null)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 uppercase font-bold tracking-wider text-[10px]">
-                    <th className="py-3 pl-2">Date</th>
-                    <th className="py-3">Type</th>
-                    <th className="py-3">Ref Doc No</th>
-                    <th className="py-3">Narration Description</th>
-                    <th className="py-3 text-right">Debit (Maal)</th>
-                    <th className="py-3 text-right">Credit (Vasooli/Return)</th>
-                    <th className="py-3 text-right pr-2">Cumulative Bal</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-900">
-                  {customerHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="text-center py-6 text-slate-500 italic font-medium">
-                        No credit accounts or cash recovery records found.
-                      </td>
-                    </tr>
-                  ) : (
-                    (() => {
-                      let runningSum = 0;
-                      return customerHistory.map((item, idx) => {
-                        runningSum += (item.debit - item.credit);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-900/30 transition">
-                            <td className="py-3 pl-2 text-slate-400">{item.date}</td>
-                            <td className="py-3 font-bold text-rose-400">{item.type}</td>
-                            <td className="py-3 font-semibold text-slate-300">{item.reference}</td>
-                            <td className="py-3 text-slate-500 font-medium">{item.description}</td>
-                            <td className="py-3 text-right text-rose-300 font-semibold">{item.debit > 0 ? formatRs(Math.round(item.debit)) : '-'}</td>
-                            <td className="py-3 text-right text-emerald-300 font-semibold">{item.credit > 0 ? formatRs(Math.round(item.credit)) : '-'}</td>
-                            <td className="py-3 text-right font-black text-amber-300 pr-2">{formatRs(Math.round(runningSum))}</td>
-                          </tr>
-                        );
-                      });
-                    })()
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-
-        {/* VENDOR STATEMENT BOARD */}
-        {selectedVendor && (
-          <Card className="border border-slate-800 bg-slate-950/40 p-6 rounded-3xl animate-[fadeIn_0.25s_ease-out]">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-300">
-                  Vendor Supplier Statement: <span className="text-amber-400 font-black">{selectedVendor.name}</span>
-                </h3>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Company: {selectedVendor.companyName} | Phone: {selectedVendor.phone}</p>
-              </div>
-              <button
-                onClick={() => setSelectedVendor(null)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 uppercase font-bold tracking-wider text-[10px]">
-                    <th className="py-3 pl-2">Date</th>
-                    <th className="py-3">Type</th>
-                    <th className="py-3">Ref Doc No</th>
-                    <th className="py-3">Narration Description</th>
-                    <th className="py-3 text-right">Debit (Purchases Total)</th>
-                    <th className="py-3 text-right">Credit (Paid/Returns)</th>
-                    <th className="py-3 text-right pr-2">Cumulative Bal</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-900">
-                  {vendorHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="text-center py-6 text-slate-500 italic font-medium">
-                        No purchase or payment records found for this vendor.
-                      </td>
-                    </tr>
-                  ) : (
-                    (() => {
-                      let runningSum = 0;
-                      return vendorHistory.map((item, idx) => {
-                        runningSum += (item.debit - item.credit);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-900/30 transition">
-                            <td className="py-3 pl-2 text-slate-400 font-medium">{item.date}</td>
-                            <td className="py-3 font-bold text-amber-400">{item.type}</td>
-                            <td className="py-3 font-semibold text-slate-300">{item.reference}</td>
-                            <td className="py-3 text-slate-400 font-medium">{item.description}</td>
-                            <td className="py-3 text-right text-rose-300 font-bold">{item.debit > 0 ? formatRs(Math.round(item.debit)) : '-'}</td>
-                            <td className="py-3 text-right text-emerald-300 font-semibold">{item.credit > 0 ? formatRs(Math.round(item.credit)) : '-'}</td>
-                            <td className="py-3 text-right font-black text-amber-300 pr-2">{formatRs(Math.round(runningSum))}</td>
-                          </tr>
-                        );
-                      });
-                    })()
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
         )}
 
       </div>

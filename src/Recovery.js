@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Pencil, Trash2, X } from 'lucide-react';
+import { Eye, Pencil, Trash2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { formatRs, generateId, getCreditSalesTotal, todayISO } from './utils/helpers';
 
@@ -7,9 +7,11 @@ import { formatRs, generateId, getCreditSalesTotal, todayISO } from './utils/hel
 import { db } from './firebase'; 
 import { doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
-const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sales, userRole }) => {
+const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sales, userRole, currentUser }) => {
   // Case-insensitivity handle karne ke liye secure admin check
-  const isAdmin = userRole && typeof userRole === 'string' && userRole.toLowerCase().trim() === 'admin';
+  const activeUsername = String(currentUser?.username || currentUser?.id || '').trim().toLowerCase();
+  const activeRole = String(userRole || currentUser?.role || '').trim().toLowerCase();
+  const isAdmin = activeUsername === 'admin' || activeRole === 'admin';
 
   const [form, setForm] = useState({
     date: todayISO(),
@@ -23,15 +25,25 @@ const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sal
   const [editingRecovery, setEditingRecovery] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Success Popup State
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Confirmation Delete Modal State
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState(null);
+
   const outstanding = form.customer ? getCreditSalesTotal(sales, form.customer) - payments.filter((p) => p.customer === form.customer).reduce((sum, p) => sum + Number(p.amount || 0), 0) : 0;
 
   const addRecovery = async () => {
     if (!isAdmin) {
-      window.alert('Unauthorized access. Only admins can process payments.');
+      setSuccessMessage('Unauthorized access. Only admins can process payments.');
+      setShowSuccessModal(true);
       return;
     }
     if (!form.customer || !form.amount) {
-      window.alert('Customer and amount are required.');
+      setSuccessMessage('Customer and amount are required.');
+      setShowSuccessModal(true);
       return;
     }
 
@@ -69,47 +81,68 @@ const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sal
       }
 
       setForm({ date: todayISO(), customer: '', amount: '', account: 'Cash', note: '' });
-      window.alert('Payment recovery saved successfully!');
+      setSuccessMessage('Payment recovery saved successfully!');
+      setShowSuccessModal(true);
     } catch (error) {
       console.error("Firebase write error:", error);
-      window.alert("Database me save karte hue error aya: " + error.message);
+      setSuccessMessage("Database me save karte hue error aya: " + error.message);
+      setShowSuccessModal(true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const deleteRecovery = async (row) => {
+  // --- DELETE HANDLERS ---
+  const handleRequestDelete = (row) => {
     if (!isAdmin) {
-      window.alert('Unauthorized action. Only admins can delete records.');
+      setSuccessMessage('Unauthorized action. Only admins can delete records.');
+      setShowSuccessModal(true);
       return;
     }
-    if (window.confirm('Are you sure you want to delete this recovery entry?')) {
-      const targetId = row.id || row._id;
-      if (!targetId) {
-        window.alert("Recovery entry ID missing.");
-        return;
-      }
+    setEntryToDelete(row);
+    setShowConfirmDelete(true);
+  };
 
-      try {
-        await deleteDoc(doc(db, 'payments', targetId));
-        setPayments(payments.filter(p => p.id !== targetId && p._id !== targetId));
-        console.log("Recovery successfully deleted from Firebase.");
-      } catch (error) {
-        console.error("Firebase deletion error:", error);
-        window.alert("Database se delete karte hue error aya: " + error.message);
-      }
+  const confirmAndExecuteDelete = async () => {
+    if (!entryToDelete) return;
+
+    const targetId = entryToDelete.id || entryToDelete._id;
+    if (!targetId) {
+      setSuccessMessage("Recovery entry ID missing.");
+      setShowSuccessModal(true);
+      setShowConfirmDelete(false);
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'payments', targetId));
+      setPayments(payments.filter(p => p.id !== targetId && p._id !== targetId));
+      
+      setShowConfirmDelete(false);
+      setSuccessMessage("The Payment Entry has been deleted from your record");
+      setShowSuccessModal(true);
+    } catch (error) {
+      console.error("Firebase deletion error:", error);
+      setShowConfirmDelete(false);
+      setSuccessMessage("Database se delete karte hue error aya: " + error.message);
+      setShowSuccessModal(true);
+    } finally {
+      setEntryToDelete(null);
     }
   };
 
+  // --- UPDATE HANDLER ---
   const updateRecovery = async () => {
     if (!isAdmin) {
-      window.alert('Unauthorized data modification attempt.');
+      setSuccessMessage('Unauthorized data modification attempt.');
+      setShowSuccessModal(true);
       return;
     }
 
     const targetId = editingRecovery.id || editingRecovery._id;
     if (!targetId) {
-      window.alert("Recovery entry ID missing for execution.");
+      setSuccessMessage("Recovery entry ID missing for execution.");
+      setShowSuccessModal(true);
       return;
     }
 
@@ -126,10 +159,13 @@ const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sal
 
       setPayments(payments.map(p => (p.id === targetId || p._id === targetId) ? updatedPayload : p));
       setEditingRecovery(null);
-      console.log("Recovery updated successfully inside Firestore.");
+      
+      setSuccessMessage("Updated Amount");
+      setShowSuccessModal(true);
     } catch (error) {
       console.error("Firebase update path error:", error);
-      window.alert("Database record update error: " + error.message);
+      setSuccessMessage("Database record update error: " + error.message);
+      setShowSuccessModal(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -182,13 +218,16 @@ const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sal
               label: 'Action',
               render: (row) => (
                 <div className="flex items-center gap-2">
-                  <button onClick={() => alert('Viewing Recovery Details for: ' + row.customer)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded cursor-pointer" title="Preview"><Eye size={18} /></button>
+                  <button onClick={() => {
+                    setSuccessMessage(`Viewing Recovery Details for: ${row.customer}`);
+                    setShowSuccessModal(true);
+                  }} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded cursor-pointer" title="Preview"><Eye size={18} /></button>
                   
                   {/* Admin Protected Operations */}
                   {isAdmin && (
                     <>
                       <button onClick={() => setEditingRecovery(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded cursor-pointer" title="Edit"><Pencil size={18} /></button>
-                      <button onClick={() => deleteRecovery(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded cursor-pointer" title="Delete"><Trash2 size={18} /></button>
+                      <button onClick={() => handleRequestDelete(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded cursor-pointer" title="Delete"><Trash2 size={18} /></button>
                     </>
                   )}
                 </div>
@@ -214,6 +253,69 @@ const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sal
             <Button className="w-full mt-6" onClick={updateRecovery} disabled={isSubmitting}>
               {isSubmitting ? 'Updating...' : 'Save Changes'}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* --- CONFIRM DELETE MODAL --- */}
+      {showConfirmDelete && entryToDelete && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-center">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-950/50 rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
+                <AlertTriangle size={36} className="stroke-[2.5]" />
+              </div>
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                Are you sure you want to delete this recovery entry?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Customer: <span className="font-semibold text-slate-700 dark:text-slate-200">{entryToDelete.customer}</span>
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                onClick={() => setShowConfirmDelete(false)}
+                className="w-1/2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-medium py-2 rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmAndExecuteDelete}
+                className="w-1/2 bg-red-600 hover:bg-red-700 text-white font-medium py-2 rounded-xl"
+              >
+                OK
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- SUCCESS POPUP MODAL --- */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-center">
+              <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-950/50 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 size={40} className="stroke-[2.5]" />
+              </div>
+            </div>
+            
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+              {successMessage}
+            </h3>
+
+            <div className="pt-2">
+              <Button
+                onClick={() => setShowSuccessModal(false)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 rounded-xl"
+              >
+                OK
+              </Button>
+            </div>
           </div>
         </div>
       )}

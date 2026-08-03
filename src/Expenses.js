@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, todayISO } from './utils/helpers';
+import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 
-// currentRole prop add kiya hai (Aap isme page render karte waqt currentRole="admin" ya currentRole={user?.role} pass karein)
 const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, currentRole = '' }) => {
   const [form, setForm] = useState({
     category: '',
@@ -12,8 +12,25 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     account: 'Cash',
   });
 
-  // Edit state track karne ke liye
-  const [editingId, setEditingId] = useState(null);
+  // Edit Modal State
+  const [editingItem, setEditingItem] = useState(null);
+  
+  // Delete Confirmation State
+  const [deletingItem, setDeletingItem] = useState(null);
+
+  // Custom Dark Toast Notification State
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 3500);
+  };
+
+  const isAdmin = useMemo(() => {
+    return String(currentRole || '').trim().toLowerCase() === 'admin';
+  }, [currentRole]);
 
   const resetForm = () => {
     setForm({
@@ -23,87 +40,136 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       description: '',
       account: 'Cash',
     });
-    setEditingId(null);
+    setEditingItem(null);
   };
 
+  // Submit New Expense directly from form
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!form.category || !form.amount) {
-      window.alert('Category and amount are required.');
+      showToast('Category and amount are required.', 'warning');
       return;
     }
 
     const amount = Number(form.amount);
-    const isAdmin = String(currentRole).toLowerCase() === 'admin';
 
-    if (editingId) {
-      // --- EDIT MODE SECURITY GUARD ---
-      if (!isAdmin) {
-        window.alert('Only admin can modify or update expenses.');
-        return;
-      }
+    const entry = {
+      id: generateId(),
+      category: form.category,
+      amount,
+      date: form.date,
+      description: form.description,
+      account: form.account,
+    };
 
-      const oldExpense = expenses.find((e) => e.id === editingId);
-
-      setExpenses(
-        expenses.map((exp) =>
-          exp.id === editingId
-            ? { ...exp, category: form.category, amount, date: form.date, description: form.description, account: form.account }
-            : exp
-        )
-      );
-
-      // Cash register update balance reversal
-      const updatedCashData = cashData.filter((c) => !(c.description === `Expense: ${oldExpense?.category}` && c.date === oldExpense?.date));
-      
-      setCashData([
-        ...updatedCashData,
-        {
-          id: generateId(),
-          date: form.date,
-          account: form.account,
-          amount: -amount,
-          description: `Expense: ${form.category}`,
-          type: 'payment',
-        },
-      ]);
-
-    } else {
-      // --- NEW ENTRY MODE ---
-      const entry = {
+    setExpenses([...expenses, entry]);
+    setCashData([
+      ...cashData,
+      {
         id: generateId(),
-        category: form.category,
-        amount,
         date: form.date,
-        description: form.description,
         account: form.account,
-      };
+        amount: -amount,
+        description: `Expense: ${form.category}`,
+        type: 'payment',
+      },
+    ]);
 
-      setExpenses([...expenses, entry]);
-      setCashData([
-        ...cashData,
-        {
-          id: generateId(),
-          date: form.date,
-          account: form.account,
-          amount: -amount,
-          description: `Expense: ${form.category}`,
-          type: 'payment',
-        },
-      ]);
-    }
+    showToast('New expense entry added successfully!', 'success');
     resetForm();
   };
 
+  // Handle Update Confirmation from Modal
+  const handleConfirmUpdate = (e) => {
+    e.preventDefault();
+    if (!isAdmin) {
+      showToast('Only admin can modify or update expenses.', 'warning');
+      return;
+    }
+
+    if (!form.category || !form.amount) {
+      showToast('Category and amount are required.', 'warning');
+      return;
+    }
+
+    const amount = Number(form.amount);
+    const oldExpense = expenses.find((exp) => exp.id === editingItem.id);
+
+    setExpenses(
+      expenses.map((exp) =>
+        exp.id === editingItem.id
+          ? { ...exp, category: form.category, amount, date: form.date, description: form.description, account: form.account }
+          : exp
+      )
+    );
+
+    // Cash register update balance reversal
+    const updatedCashData = cashData.filter(
+      (c) => !(c.description === `Expense: ${oldExpense?.category}` && c.date === oldExpense?.date)
+    );
+
+    setCashData([
+      ...updatedCashData,
+      {
+        id: generateId(),
+        date: form.date,
+        account: form.account,
+        amount: -amount,
+        description: `Expense: ${form.category}`,
+        type: 'payment',
+      },
+    ]);
+
+    showToast('Expense Entry has been updated', 'success');
+    resetForm();
+  };
+
+  // Handle Delete Confirmation from Modal
+  const handleConfirmDelete = () => {
+    if (!isAdmin) {
+      showToast('Only admin can delete expenses from record.', 'warning');
+      return;
+    }
+
+    if (!deletingItem) return;
+
+    const targetExpense = deletingItem;
+
+    // Filter out deleted expense
+    setExpenses(expenses.filter((exp) => exp.id !== targetExpense.id));
+
+    // Remove corresponding cash entry
+    setCashData(
+      cashData.filter(
+        (c) => !(c.description === `Expense: ${targetExpense.category}` && c.date === targetExpense.date)
+      )
+    );
+
+    showToast('Expense Entry has been deleted from your record', 'success');
+    setDeletingItem(null);
+  };
+
   const handleEditClick = (row) => {
-    setEditingId(row.id);
+    if (!isAdmin) {
+      showToast('Only admin login has access to edit expenses.', 'warning');
+      return;
+    }
+    setEditingItem(row);
     setForm({
       category: row.category,
       amount: row.amount,
       date: row.date,
-      description: row.description,
-      account: row.account,
+      description: row.description || '',
+      account: row.account || 'Cash',
     });
+  };
+
+  const handleDeleteClick = (row) => {
+    if (!isAdmin) {
+      showToast('Only admin login has access to delete expenses.', 'warning');
+      return;
+    }
+    setDeletingItem(row);
   };
 
   const handlePrint = (row) => {
@@ -153,73 +219,245 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     return [...expenses].slice(-20).reverse();
   }, [expenses]);
 
-  // UseMemo ke zariye columns strict array structure bnaya hai
   const columns = useMemo(() => {
-    const isAdmin = String(currentRole).toLowerCase() === 'admin';
-    
-    const baseCols = [
+    return [
       { key: 'date', label: 'Date' },
       { key: 'category', label: 'Category' },
       { key: 'amount', label: 'Amount', render: (row) => `Rs. ${Number(row.amount).toLocaleString()}` },
       { key: 'account', label: 'Account' },
       { key: 'description', label: 'Description' },
-    ];
-
-    // Agar admin login hai to Actions header empty list par b solid push hoga
-    if (isAdmin) {
-      baseCols.push({
+      {
         key: 'actions',
         label: 'Actions',
         render: (row) => (
-          <div className="flex gap-2 justify-start">
-            <button 
+          <div className="flex items-center gap-1.5 justify-start">
+            {/* EDIT ICON BUTTON */}
+            <button
               type="button"
               onClick={() => handleEditClick(row)}
-              className="px-2.5 py-1 text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition cursor-pointer"
+              className={`p-1.5 bg-slate-950 border rounded-lg transition ${
+                isAdmin
+                  ? 'text-slate-400 hover:text-blue-400 border-slate-800 hover:border-blue-500/40 cursor-pointer'
+                  : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
+              }`}
+              title={isAdmin ? "Edit Expense" : "Admin Login Required"}
             >
-              Edit
+              <Edit2 size={14} />
             </button>
-            <button 
+
+            {/* PRINT ICON BUTTON */}
+            <button
               type="button"
               onClick={() => handlePrint(row)}
-              className="px-2.5 py-1 text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-amber-400 bg-slate-950 border border-slate-800 hover:border-amber-500/40 rounded-lg transition cursor-pointer"
+              title="Print Expense Voucher"
             >
-              Print
+              <Printer size={14} />
+            </button>
+
+            {/* DELETE ICON BUTTON */}
+            <button
+              type="button"
+              onClick={() => handleDeleteClick(row)}
+              className={`p-1.5 bg-slate-950 border rounded-lg transition ${
+                isAdmin
+                  ? 'text-slate-400 hover:text-rose-400 border-slate-800 hover:border-rose-500/40 cursor-pointer'
+                  : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
+              }`}
+              title={isAdmin ? "Delete Expense Record" : "Admin Login Required"}
+            >
+              <Trash2 size={14} />
             </button>
           </div>
         ),
-      });
-    }
-
-    return baseCols;
-  }, [currentRole]);
+      },
+    ];
+  }, [currentRole, isAdmin]);
 
   return (
     <PageShell title="Business Expenses">
-      <Card title={editingId ? "Update Expense (Admin Mode)" : "Expense Entry"}>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Input label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Rent, Fuel, Salary..." />
-          <Input label="Amount" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-          <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-          <Select label="Paid From" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
-            <option value="Cash">Cash</option>
-            <option value="Bank">Bank</option>
-          </Select>
-          <Input label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <div className="flex items-end gap-2">
-            <Button type="submit">{editingId ? 'Update Expense' : 'Save Expense'}</Button>
-            {editingId && (
-              <Button type="button" variant="secondary" onClick={resetForm}>
-                Cancel
-              </Button>
-            )}
+      <div className="space-y-6 relative">
+        
+        {/* CUSTOM TOAST NOTIFICATION */}
+        {toast && (
+          <div className="fixed top-5 right-5 z-50 transition-all duration-300">
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold ${
+              toast.type === 'success'
+                ? 'bg-slate-900/95 border-emerald-500/40 text-emerald-400 shadow-emerald-900/20'
+                : toast.type === 'warning'
+                ? 'bg-slate-900/95 border-amber-500/40 text-amber-400 shadow-amber-900/20'
+                : 'bg-slate-900/95 border-rose-500/40 text-rose-400 shadow-rose-900/20'
+            }`}>
+              {toast.type === 'success' && <CheckCircle2 size={18} className="text-emerald-400" />}
+              {toast.type === 'warning' && <AlertCircle size={18} className="text-amber-400" />}
+              {toast.type === 'error' && <AlertCircle size={18} className="text-rose-400" />}
+              <span>{toast.message}</span>
+              <button onClick={() => setToast(null)} className="ml-2 text-slate-400 hover:text-white cursor-pointer">
+                <X size={14} />
+              </button>
+            </div>
           </div>
-        </form>
-      </Card>
+        )}
 
-      <Card title="Recent Expenses">
-        <DataTable columns={columns} rows={recentExpenses} />
-      </Card>
+        {/* EXPENSE CREATION FORM */}
+        <Card title="Expense Entry">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Input
+              label="Category"
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              placeholder="Rent, Fuel, Salary..."
+            />
+            <Input
+              label="Amount"
+              type="number"
+              value={form.amount}
+              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            />
+            <Input
+              label="Date"
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+            />
+            <Select
+              label="Paid From"
+              value={form.account}
+              onChange={(e) => setForm({ ...form, account: e.target.value })}
+            >
+              <option value="Cash">Cash</option>
+              <option value="Bank">Bank</option>
+            </Select>
+            <Input
+              label="Description"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+            <div className="flex items-end gap-2">
+              <Button type="submit">Save Expense</Button>
+            </div>
+          </form>
+        </Card>
+
+        {/* RECENT EXPENSES TABLE */}
+        <Card title="Recent Expenses">
+          <DataTable columns={columns} rows={recentExpenses} />
+        </Card>
+
+        {/* ========================================== */}
+        {/* EDIT EXPENSE POPUP MODAL                  */}
+        {/* ========================================== */}
+        {editingItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Edit2 size={16} className="text-blue-400" />
+                  Edit Expense Entry
+                </h3>
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmUpdate} className="space-y-3">
+                <Input
+                  label="Category"
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  placeholder="Rent, Fuel, Salary..."
+                />
+                <Input
+                  label="Amount (Rs.)"
+                  type="number"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                />
+                <Input
+                  label="Date"
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+                <Select
+                  label="Paid From"
+                  value={form.account}
+                  onChange={(e) => setForm({ ...form, account: e.target.value })}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="Bank">Bank</option>
+                </Select>
+                <Input
+                  label="Description"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                />
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                  >
+                    Update
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================== */}
+        {/* DELETE CONFIRMATION POPUP MODAL            */}
+        {/* ========================================== */}
+        {deletingItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-rose-500/30 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+                <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
+                  <AlertCircle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Delete Expense Record</h3>
+                  <p className="text-xs text-slate-400">Admin Confirmation Required</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Are you sure you want to delete the <strong className="text-white font-bold">{deletingItem.category} (Rs. {deletingItem.amount})</strong> record?
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setDeletingItem(null)}
+                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  Ok
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
     </PageShell>
   );
 };

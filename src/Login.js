@@ -1,40 +1,93 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 // Firebase Database imports
 import { db } from './firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { verifyPassword } from './utils/helpers';
 
-const Login = ({ onLogin }) => {
+const Login = ({ onLogin, onLogout }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  // --- STRICT 10-MINUTE REFRESH / MOUNT SESSION CHECK LAYER ---
+  const timerRef = useRef(null);
+  const TEN_MINUTES_IN_MS = 10 * 60 * 1000; // 10 Minutes (600,000 ms)
+
+  // System Logout Handler
+  const handleAutoLogout = useCallback(() => {
+    localStorage.removeItem('login_session_expiry');
+    localStorage.removeItem('user_session_active');
+    if (typeof onLogout === 'function') {
+      onLogout();
+    } else {
+      window.location.reload(); // Fallback reset
+    }
+  }, [onLogout]);
+
+  // Reset Timer Function (Active Use par time extended)
+  const resetInactivityTimer = useCallback(() => {
+    const isSessionActive = localStorage.getItem('user_session_active');
+    if (!isSessionActive) return;
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    // Dynamic session expiry extend in LocalStorage
+    const newExpiry = Date.now() + TEN_MINUTES_IN_MS;
+    localStorage.setItem('login_session_expiry', newExpiry.toString());
+
+    // Auto-logout triggers after 10 minutes of complete inactivity
+    timerRef.current = setTimeout(() => {
+      handleAutoLogout();
+    }, TEN_MINUTES_IN_MS);
+  }, [TEN_MINUTES_IN_MS, handleAutoLogout]);
+
+  // --- AUTO-INACTIVITY TRACKER LAYER ---
   useEffect(() => {
     const sessionExpiry = localStorage.getItem('login_session_expiry');
-    if (sessionExpiry) {
+    const isSessionActive = localStorage.getItem('user_session_active');
+
+    if (isSessionActive && sessionExpiry) {
       if (Date.now() > Number(sessionExpiry)) {
-        // Timeout exceeded -> Clear out auth states securely
-        localStorage.removeItem('login_session_expiry');
-        localStorage.removeItem('user_session_active');
+        handleAutoLogout();
+        return;
       }
+
+      // Initial active timer start
+      resetInactivityTimer();
+
+      // Activity Event Listeners
+      const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+      
+      const handleUserActivity = () => {
+        resetInactivityTimer();
+      };
+
+      events.forEach((event) => {
+        window.addEventListener(event, handleUserActivity);
+      });
+
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        events.forEach((event) => {
+          window.removeEventListener(event, handleUserActivity);
+        });
+      };
     }
-  }, []);
+  }, [handleAutoLogout, resetInactivityTimer]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
     setError('');
 
     try {
-      // Firebase Firestore se live users fetch karne ka naya layer
+      // Firebase Firestore se live users fetch
       const querySnapshot = await getDocs(collection(db, "users"));
       const dbUsers = [];
       querySnapshot.forEach((doc) => {
         dbUsers.push({ id: doc.id, ...doc.data() });
       });
 
-      // User check matching (Case-insensitive check taake space ya capital letter ka masla na aaye)
+      // User check matching
       const user = dbUsers.find(
         (entry) => 
           entry.username.trim().toLowerCase() === username.trim().toLowerCase() && 
@@ -42,15 +95,12 @@ const Login = ({ onLogin }) => {
       );
 
       if (user) {
-        // 10 minutes session validation (10 * 60 * 1000 milliseconds)
-        const tenMinutesInMs = 600000;
-        const expiryTimestamp = Date.now() + tenMinutesInMs;
+        const expiryTimestamp = Date.now() + TEN_MINUTES_IN_MS;
 
-        // Device-agnostic persistent state validation set up
         localStorage.setItem('login_session_expiry', expiryTimestamp.toString());
         localStorage.setItem('user_session_active', 'true');
 
-        // System notification tracking for active role mapping aur permissions load karne ke liye complete user object pass kiya
+        // Pass login state up
         onLogin({ username: user.username, role: user.role, modules: user.modules || [] });
         return;
       }

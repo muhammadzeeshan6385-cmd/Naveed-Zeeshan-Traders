@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Trash2, Printer } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, getCreditSalesTotal } from './utils/helpers';
 
 // Firebase Firestore Imports
 import { db } from './firebase';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCashData, currentUser, payments }) => {
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -16,23 +16,18 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Strict Admin Check for Edit/Delete Permissions
-  const activeUsername = String(currentUser?.username || currentUser?.name || currentUser?.id || '').trim().toLowerCase();
-  const activeRole = String(currentUser?.role || '').trim().toLowerCase();
-  const isAdmin = activeUsername === 'admin' || activeRole === 'admin';
-
   useEffect(() => { setInvoiceNo(nextInvoiceNo(sales)); }, [sales]);
 
-  // --- CALCULATIONS BASED ON ITEM-WISE % DISCOUNT ---
-  const gross = useMemo(() => items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0), [items]);
+  // --- CALCULATIONS BASED ON ITEM-WISE % DISCOUNT (ROUNDED TO NEAREST RUPEE) ---
+  const gross = useMemo(() => Math.round(items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0)), [items]);
   
-  const totalDiscountAmount = useMemo(() => items.reduce((sum, item) => {
+  const totalDiscountAmount = useMemo(() => Math.round(items.reduce((sum, item) => {
     const itemGross = Number(item.qty) * Number(item.rate);
     const itemDiscAmount = itemGross * ((Number(item.discount) || 0) / 100);
     return sum + itemDiscAmount;
-  }, 0), [items]);
+  }, 0)), [items]);
   
-  const netTotal = gross - totalDiscountAmount;
+  const netTotal = Math.round(gross - totalDiscountAmount);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -67,15 +62,14 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
             ...i, 
             purchaseRate: i.purchaseRate || purchaseRate, 
             qty: newQty, 
-            total: itemGross - itemDiscAmount 
+            total: Math.round(itemGross - itemDiscAmount) 
           };
         }
         return i;
       }));
     } else {
       const rate = getProductSaleRate(product);
-      // FIX: Added purchaseRate explicitly when adding a new item
-      setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, purchaseRate, qty: 1, ctnSize, discount: 0, total: rate }]);
+      setItems([...items, { id: generateId(), productId: product.id, name: product.name, rate, purchaseRate, qty: 1, ctnSize, discount: 0, total: Math.round(rate) }]);
     }
   };
 
@@ -90,7 +84,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
           ...item, 
           qty, 
           discount,
-          total: itemGross - itemDiscAmount 
+          total: Math.round(itemGross - itemDiscAmount) 
         };
       }
       return item;
@@ -99,23 +93,21 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
   const removeItem = (id) => setItems(items.filter((item) => item.id !== id));
 
-  // --- UPDATED HANDLE PRINT WITH 2-DECIMAL ROUNDING & CLEAN LAYOUT ---
+  // --- HANDLE PRINT WITH ROUNDED RUPEE FORMATTING ---
   const handlePrint = (invoiceData) => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) return;
     
-    // Direct safe active user check
     const loggedUser = (typeof currentUser === 'string' ? currentUser : currentUser?.username || currentUser?.name) || localStorage.getItem('username') || '';
 
-    // Priority: Invoice Record -> Current Logged-in User -> Fallback
     const createdByUserName = (invoiceData && invoiceData.createdBy && invoiceData.createdBy !== 'System')
       ? invoiceData.createdBy
       : (loggedUser || 'System');
 
-    // Helper function for strict 2-Decimal formatting
     const fmt = (num) => {
       const parsed = Number(num) || 0;
-      return parsed.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const rounded = Math.round(parsed);
+      return rounded.toLocaleString('en-PK');
     };
 
     printWindow.document.write(`
@@ -220,7 +212,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     `);
   };
 
-  // --- SAFE FIREBASE DIRECT SAVE INVOICE FUNCTION ---
+  // --- SAVE INVOICE FUNCTION ---
   const saveInvoice = async () => {
     const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
     if (!finalCustomer || items.length === 0) { 
@@ -230,7 +222,6 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
     const currentDate = new Date().toISOString().split('T')[0];
 
-    // Stock verification
     for (let item of items) {
       const product = products.find(p => p.id === item.productId || p.name === item.name);
       if (product) {
@@ -247,9 +238,8 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
       .filter((p) => p.customer === finalCustomer)
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-    const prevBalance = totalSales - totalPaid;
+    const prevBalance = Math.round(totalSales - totalPaid);
 
-    // Detect logged in username dynamically across different possible user keys
     const loggedInUser = (typeof currentUser === 'string' ? currentUser : currentUser?.username || currentUser?.name || currentUser?.displayName) || localStorage.getItem('username') || 'System';
 
     const invoice = { 
@@ -270,11 +260,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
     setIsSaving(true);
 
     try {
-      // 1. Direct Cloud Database Save (Firebase Firestore)
       const saleDocRef = doc(db, "sales", String(invoice.id));
       await setDoc(saleDocRef, invoice);
 
-      // 2. Local State Sync
       setSales(prevSales => [...prevSales, invoice]);
       
       if (paymentType === 'Cash') {
@@ -288,7 +276,6 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
         };
         setCashData(prevCash => [...prevCash, cashObj]);
         
-        // Save Cash Entry to Firestore
         try {
           await setDoc(doc(db, "cashData", String(cashObj.id)), cashObj);
         } catch (err) {
@@ -296,7 +283,6 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
         }
       }
 
-      // 3. Print & Clear Form
       handlePrint(invoice);
       setItems([]); 
       setCustomer(''); 
@@ -308,30 +294,6 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
       window.alert(`ALERT: Bill Cloud Database me save NAHI ho saka!\nError: ${error.message}\n\nMeharbani kar ke Internet Connection check karein aur dobara try karein.`);
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  // Delete Invoice Function (Strict Admin Only)
-  const handleDeleteInvoice = async (invoiceToDelete) => {
-    if (!isAdmin) {
-      window.alert("Apko Bill Delete krne ki Permission nahi hai!");
-      return;
-    }
-
-    if (!window.confirm(`Kya aap Bill No: ${invoiceToDelete.invoiceNo} delete karna chahte hain?`)) {
-      return;
-    }
-
-    try {
-      // Delete from Firebase
-      await deleteDoc(doc(db, "sales", String(invoiceToDelete.id)));
-      
-      // Update local state
-      setSales(prev => prev.filter(s => s.id !== invoiceToDelete.id));
-      window.alert("Bill success fully delete ho gaya hai.");
-    } catch (err) {
-      console.error("Delete Error:", err);
-      window.alert("Bill delete karne me error aya hai: " + err.message);
     }
   };
 
@@ -381,66 +343,44 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
         </div>
         
         {/* Right Summary Section */}
-        <div className="xl:col-span-1">
-          <Card title="Summary">
-            <div className="text-base font-semibold text-slate-400">Gross: {formatRs(gross)}</div>
-            <div className="text-base font-semibold text-red-400 mt-1">Total Disc: {formatRs(totalDiscountAmount)}</div>
-            <hr className="border-slate-800 my-2" />
-            <div className="text-xl font-bold py-1 text-emerald-400">Payable: {formatRs(netTotal)}</div>
+        <div className="xl:col-span-1 flex flex-col h-full">
+          <Card title="Summary" className="h-full flex flex-col justify-between p-5">
+    
+            {/* Upper Content - Financial Totals */}
+            <div className="space-y-3">
+              <div className="text-lg font-semibold text-slate-300 flex justify-between items-center">
+                <span>Gross:</span> 
+                <span className="text-white">{formatRs(gross)}</span>
+            </div>  
+      
+            <div className="text-lg font-semibold text-rose-400 flex justify-between items-center">
+              <span>Total Disc:</span> 
+              <span>{formatRs(totalDiscountAmount)}</span>
+            </div>
+      
+            <hr className="border-slate-800 my-4" />
+      
+            <div className="text-2xl font-bold text-emerald-400 flex justify-between items-center py-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
+              <span>Payable:</span> 
+              <span>{formatRs(netTotal)}</span>
+            </div>
+          </div>
+
+          {/* Bottom Content - Action Button */}
+          <div className="mt-8 pt-4 border-t border-slate-800/50">
             <Button 
               onClick={saveInvoice} 
               disabled={isSaving}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-4 py-2 text-sm font-bold transition-all"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 text-base font-bold transition-all shadow-lg shadow-emerald-950/40 rounded-xl"
             >
               {isSaving ? 'Saving to Cloud...' : 'Save & Print'}
             </Button>
-          </Card>
-        </div>
-      </div>
+          </div>
 
-      {/* --- RECENT INVOICES LIST (WITH ADMIN-ONLY DELETE ACCESS) --- */}
-      <div className="mt-6">
-        <Card title="Recent Sales Bills">
-          <DataTable 
-            columns={[
-              { key: 'invoiceNo', label: 'Invoice No' },
-              { key: 'date', label: 'Date' },
-              { key: 'customer', label: 'Customer' },
-              { key: 'paymentType', label: 'Payment' },
-              { key: 'netTotal', label: 'Net Amount', render: (row) => formatRs(row.netTotal) },
-              { key: 'createdBy', label: 'Created By' },
-              { 
-                key: 'actions', 
-                label: 'Actions', 
-                render: (row) => (
-                  <div className="flex gap-2 items-center">
-                    <button 
-                      onClick={() => handlePrint(row)} 
-                      title="Reprint Bill" 
-                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300"
-                    >
-                      <Printer className="w-4 h-4" />
-                    </button>
-                    
-                    {/* Strictly visible only for Admin Accounts */}
-                    {isAdmin && (
-                      <button 
-                        onClick={() => handleDeleteInvoice(row)} 
-                        title="Delete Bill (Admin Only)" 
-                        className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-red-500"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ) 
-              }
-            ]}
-            rows={[...sales].reverse().slice(0, 15)} 
-          />
         </Card>
       </div>
 
+      </div>
     </PageShell>
   );
 };

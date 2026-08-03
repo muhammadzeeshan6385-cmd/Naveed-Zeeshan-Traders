@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Printer, Edit, Trash2, Eye, X, CheckCircle2 } from 'lucide-react';
+import { Search, Printer, Edit, Trash2, Eye, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { formatRs, getProductSaleRate } from './utils/helpers';
 
@@ -15,6 +15,11 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
 
   // Success Popup State
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Confirmation Delete Modal State
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState(null);
 
   // Edit Form States
   const [editCustomer, setEditCustomer] = useState('');
@@ -49,20 +54,17 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
   }, 0), [editItems]);
   const editNetTotal = editGross - editDiscountAmount;
 
-  // --- UPDATED PRINT FUNCTIONALITY (MATCHING SALES.JS EXACTLY) ---
+  // --- PRINT FUNCTIONALITY ---
   const handlePrint = (invoiceData) => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) return;
 
-    // Direct safe active user check
     const loggedUser = (typeof currentUser === 'string' ? currentUser : currentUser?.username || currentUser?.name) || localStorage.getItem('username') || '';
 
-    // Priority: Invoice Record -> Current Logged-in User -> Fallback
     const createdByUserName = (invoiceData && invoiceData.createdBy && invoiceData.createdBy !== 'System')
       ? invoiceData.createdBy
       : (invoiceData?.username || invoiceData?.user || invoiceData?.salesman || loggedUser || 'System');
 
-    // Helper function for strict 2-Decimal formatting
     const fmt = (num) => {
       const parsed = Number(num) || 0;
       return parsed.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -240,7 +242,7 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
     setEditItems(editItems.filter((item) => item.id !== id));
   };
 
-  // Save Updated Invoice to Firebase
+  // Save Updated Invoice
   const handleSaveUpdatedBill = async () => {
     if (!editCustomer || editItems.length === 0) {
       window.alert("Customer select karein aur kam se kam aik item add karein.");
@@ -262,15 +264,12 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
     };
 
     try {
-      // Firebase Cloud Save
       await setDoc(doc(db, "sales", String(selectedInvoice.id)), updatedInvoice, { merge: true });
-
-      // Local State Update
       setSales(sales.map(s => s.id === selectedInvoice.id ? updatedInvoice : s));
 
-      // Close Edit Modal and Show Custom Success Popup
       setIsEditing(false);
       setSelectedInvoice(null);
+      setSuccessMessage("The bill has been updated successfully");
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Update Error:", err);
@@ -280,27 +279,36 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
     }
   };
 
-  // Delete Invoice Logic (Admin Only)
-  const handleDeleteInvoice = async (invoiceToDelete) => {
+  // --- DELETE CONFIRMATION HANDLERS ---
+  const handleRequestDelete = (invoice) => {
     if (!isAdmin) {
       window.alert("Apko Bill Delete krne ki Permission nahi hai! Sirf Admin Delete kar sakta hai.");
       return;
     }
+    // Open Confirmation Modal
+    setInvoiceToDelete(invoice);
+    setShowConfirmDelete(true);
+  };
 
-    if (!window.confirm(`Kya aap Bill No: ${invoiceToDelete.invoiceNo || invoiceToDelete.id} Delete karna chahte hain?`)) {
-      return;
-    }
+  const confirmAndExecuteDelete = async () => {
+    if (!invoiceToDelete) return;
 
     try {
-      // Delete from Firebase
+      // 1. Delete from Firebase DB
       await deleteDoc(doc(db, "sales", String(invoiceToDelete.id)));
 
-      // Local State Update
+      // 2. Remove from Local State
       setSales(sales.filter((s) => s.id !== invoiceToDelete.id));
-      window.alert("Bill successfully Delete ho gaya hai.");
+
+      // 3. Close confirmation modal & show success message
+      setShowConfirmDelete(false);
+      setSuccessMessage("The Bill has been deleted from your record");
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Delete Error:", err);
       window.alert("Bill Delete karne mein error aya: " + err.message);
+    } finally {
+      setInvoiceToDelete(null);
     }
   };
 
@@ -336,7 +344,6 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
               label: 'Actions',
               render: (row) => (
                 <div className="flex gap-1.5 items-center">
-                  {/* View Details */}
                   <button
                     onClick={() => { setSelectedInvoice(row); setIsViewing(true); }}
                     title="View Details"
@@ -345,7 +352,6 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
                     <Eye className="w-4 h-4" />
                   </button>
 
-                  {/* Print Bill */}
                   <button
                     onClick={() => handlePrint(row)}
                     title="Reprint Bill"
@@ -354,7 +360,6 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
                     <Printer className="w-4 h-4" />
                   </button>
 
-                  {/* Edit Bill (ADMIN ONLY) */}
                   {isAdmin && (
                     <button
                       onClick={() => handleStartEdit(row)}
@@ -365,10 +370,9 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
                     </button>
                   )}
 
-                  {/* Delete Bill (ADMIN ONLY) */}
                   {isAdmin && (
                     <button
-                      onClick={() => handleDeleteInvoice(row)}
+                      onClick={() => handleRequestDelete(row)}
                       title="Delete Bill (Admin Only)"
                       className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-red-500"
                     >
@@ -432,7 +436,7 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
         </div>
       )}
 
-      {/* --- EDIT BILL MODAL (ADMIN ONLY) --- */}
+      {/* --- EDIT BILL MODAL --- */}
       {isEditing && selectedInvoice && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
@@ -443,7 +447,6 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
               <button onClick={() => setIsEditing(false)} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={20} /></button>
             </div>
 
-            {/* Inputs Header */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Select label="Customer" value={editCustomer} onChange={(e) => setEditCustomer(e.target.value)}>
                 <option value="">Select Customer</option>
@@ -456,7 +459,6 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
               </Select>
             </div>
 
-            {/* Item Addition Selector */}
             <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-2">
               <label className="text-xs font-semibold">Add New Item to Bill:</label>
               <Select onChange={(e) => { handleAddEditProduct(e.target.value); e.target.value = ''; }}>
@@ -465,7 +467,6 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
               </Select>
             </div>
 
-            {/* Editable Items Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left border">
                 <thead className="bg-slate-100 dark:bg-slate-800">
@@ -503,7 +504,6 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
               </table>
             </div>
 
-            {/* Totals Summary */}
             <div className="flex justify-between items-center pt-2 border-t">
               <div className="text-sm">
                 <div>Gross: <strong>{formatRs(editGross)}</strong></div>
@@ -524,7 +524,44 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
         </div>
       )}
 
-      {/* --- SUCCESS POPUP MODAL WITH TICK ICON --- */}
+      {/* --- CONFIRM DELETE MODAL --- */}
+      {showConfirmDelete && invoiceToDelete && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-center">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-950/50 rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
+                <AlertTriangle size={36} className="stroke-[2.5]" />
+              </div>
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                Are you sure you want to delete this bill?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Bill No: <span className="font-semibold text-slate-700 dark:text-slate-200">{invoiceToDelete.invoiceNo || invoiceToDelete.id}</span>
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                onClick={() => setShowConfirmDelete(false)}
+                className="w-1/2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-medium py-2 rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmAndExecuteDelete}
+                className="w-1/2 bg-red-600 hover:bg-red-700 text-white font-medium py-2 rounded-xl"
+              >
+                OK
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- SUCCESS POPUP MODAL --- */}
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
@@ -535,7 +572,7 @@ const SearchBill = ({ sales = [], setSales, products = [], customers = [], userR
             </div>
             
             <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-              The bill has been updated successfully
+              {successMessage}
             </h3>
 
             <div className="pt-2">
