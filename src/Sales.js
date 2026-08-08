@@ -29,35 +29,51 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   
   const netTotal = Math.round(gross - totalDiscountAmount);
 
-  // --- DYNAMIC PREVIOUS BALANCE CALCULATION FOR SELECTED CUSTOMER ---
+  // --- DYNAMIC PREVIOUS BALANCE CALCULATION MATCHING KHATA LEDGER ---
   const activeCustomerName = useMemo(() => {
     return customer === 'Walk-in Customer' ? walkInName : customer;
   }, [customer, walkInName]);
 
   const livePrevBalance = useMemo(() => {
-    if (!activeCustomerName) return 0;
+    if (!activeCustomerName || activeCustomerName === 'Walk-in Customer') return 0;
+
+    const normActiveName = activeCustomerName.trim().toLowerCase();
 
     // 1. Find Customer Object from Customers list
     const custObj = customers.find(
-      (c) => c.name?.trim().toLowerCase() === activeCustomerName?.trim().toLowerCase() || c.id === customer
+      (c) => c.name?.trim().toLowerCase() === normActiveName || String(c.id) === String(customer)
     );
 
-    // Get Customer Opening Balance if set
-    const openingBal = Number(custObj?.openingBalance || custObj?.balance || custObj?.prevBalance || 0);
+    // 2. Check if Customer object already has calculated balance from KhataLedger
+    if (custObj && (custObj.currentBalance !== undefined || custObj.balance !== undefined)) {
+      const directBal = Number(custObj.currentBalance ?? custObj.balance);
+      if (!isNaN(directBal) && directBal !== 0) {
+        return Math.round(directBal);
+      }
+    }
 
-    // 2. Calculate Total Credit Sales for this customer
+    // 3. Opening Balance
+    const openingBal = Number(
+      custObj?.openingBalance || custObj?.initialBalance || custObj?.prevBalance || custObj?.balance || 0
+    );
+
+    // 4. Calculate Total Sales (Debit) for this customer from Sales history
     const totalSales = (sales || [])
       .filter((s) => {
-        const isSameCustomer = s.customer?.trim().toLowerCase() === activeCustomerName?.trim().toLowerCase() || (custObj?.id && s.customerId === custObj.id);
-        const isCredit = s.paymentType === 'Credit' || !s.paymentType;
-        return isSameCustomer && isCredit;
+        const sCust = (s.customer || s.customerName || '').trim().toLowerCase();
+        const matchName = sCust === normActiveName;
+        const matchId = custObj?.id && String(s.customerId) === String(custObj.id);
+        return matchName || matchId;
       })
-      .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+      .reduce((sum, s) => sum + Number(s.netTotal || s.total || s.amount || 0), 0);
 
-    // 3. Calculate Total Payments received
+    // 5. Calculate Total Payments (Credit) received from Payments history
     const totalPaid = (payments || [])
       .filter((p) => {
-        return p.customer?.trim().toLowerCase() === activeCustomerName?.trim().toLowerCase() || (custObj?.id && p.customerId === custObj.id);
+        const pCust = (p.customer || p.customerName || '').trim().toLowerCase();
+        const matchName = pCust === normActiveName;
+        const matchId = custObj?.id && String(p.customerId) === String(custObj.id);
+        return matchName || matchId;
       })
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
