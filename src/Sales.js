@@ -18,6 +18,13 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
   useEffect(() => { setInvoiceNo(nextInvoiceNo(sales)); }, [sales]);
 
+  // Safe Number Parsing Helper (Commas aur Strings ko handle karne ke liye)
+  const cleanNum = (val) => {
+    if (val === undefined || val === null || val === '') return 0;
+    const parsed = Number(String(val).replace(/,/g, '').trim());
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   // --- CALCULATIONS BASED ON ITEM-WISE % DISCOUNT (ROUNDED TO NEAREST RUPEE) ---
   const gross = useMemo(() => Math.round(items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.rate)), 0)), [items]);
   
@@ -39,25 +46,23 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
     const normActiveName = activeCustomerName.trim().toLowerCase();
 
-    // 1. Find Customer Object from Customers list
+    // 1. Find Customer Object
     const custObj = customers.find(
       (c) => c.name?.trim().toLowerCase() === normActiveName || String(c.id) === String(customer)
     );
 
-    // 2. Check if Customer object already has calculated balance from KhataLedger
-    if (custObj && (custObj.currentBalance !== undefined || custObj.balance !== undefined)) {
-      const directBal = Number(custObj.currentBalance ?? custObj.balance);
-      if (!isNaN(directBal) && directBal !== 0) {
-        return Math.round(directBal);
-      }
-    }
+    // 2. Extract Opening Balance safely across all possible field names
+    const openingBal = custObj ? cleanNum(
+      custObj.openingBalance ?? 
+      custObj.openBalance ?? 
+      custObj.opening_balance ?? 
+      custObj.initialBalance ?? 
+      custObj.prevBalance ?? 
+      custObj.opening ?? 
+      custObj.balance
+    ) : 0;
 
-    // 3. Opening Balance
-    const openingBal = Number(
-      custObj?.openingBalance || custObj?.initialBalance || custObj?.prevBalance || custObj?.balance || 0
-    );
-
-    // 4. Calculate Total Sales (Debit) for this customer from Sales history
+    // 3. Calculate Total Sales (Debit) for this customer from Sales history
     const totalSales = (sales || [])
       .filter((s) => {
         const sCust = (s.customer || s.customerName || '').trim().toLowerCase();
@@ -65,9 +70,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
         const matchId = custObj?.id && String(s.customerId) === String(custObj.id);
         return matchName || matchId;
       })
-      .reduce((sum, s) => sum + Number(s.netTotal || s.total || s.amount || 0), 0);
+      .reduce((sum, s) => sum + cleanNum(s.netTotal || s.total || s.amount), 0);
 
-    // 5. Calculate Total Payments (Credit) received from Payments history
+    // 4. Calculate Total Payments (Credit) received from Payments history
     const totalPaid = (payments || [])
       .filter((p) => {
         const pCust = (p.customer || p.customerName || '').trim().toLowerCase();
@@ -75,8 +80,9 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
         const matchId = custObj?.id && String(p.customerId) === String(custObj.id);
         return matchName || matchId;
       })
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      .reduce((sum, p) => sum + cleanNum(p.amount), 0);
 
+    // Total Previous Balance = Opening Balance + All Previous Sales - All Payments
     return Math.round(openingBal + totalSales - totalPaid);
   }, [sales, payments, customers, activeCustomerName, customer]);
 
