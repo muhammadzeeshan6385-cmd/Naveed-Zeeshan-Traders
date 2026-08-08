@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
-import { formatRs, generateId, getProductSaleRate, nextInvoiceNo, getCreditSalesTotal } from './utils/helpers';
+import { formatRs, generateId, getProductSaleRate, nextInvoiceNo } from './utils/helpers';
 
 // Firebase Firestore Imports
 import { db } from './firebase';
@@ -28,6 +28,43 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
   }, 0)), [items]);
   
   const netTotal = Math.round(gross - totalDiscountAmount);
+
+  // --- DYNAMIC PREVIOUS BALANCE CALCULATION FOR SELECTED CUSTOMER ---
+  const activeCustomerName = useMemo(() => {
+    return customer === 'Walk-in Customer' ? walkInName : customer;
+  }, [customer, walkInName]);
+
+  const livePrevBalance = useMemo(() => {
+    if (!activeCustomerName) return 0;
+
+    // 1. Find Customer Object from Customers list
+    const custObj = customers.find(
+      (c) => c.name?.trim().toLowerCase() === activeCustomerName?.trim().toLowerCase() || c.id === customer
+    );
+
+    // Get Customer Opening Balance if set
+    const openingBal = Number(custObj?.openingBalance || custObj?.balance || custObj?.prevBalance || 0);
+
+    // 2. Calculate Total Credit Sales for this customer
+    const totalSales = (sales || [])
+      .filter((s) => {
+        const isSameCustomer = s.customer?.trim().toLowerCase() === activeCustomerName?.trim().toLowerCase() || (custObj?.id && s.customerId === custObj.id);
+        const isCredit = s.paymentType === 'Credit' || !s.paymentType;
+        return isSameCustomer && isCredit;
+      })
+      .reduce((sum, s) => sum + Number(s.netTotal || 0), 0);
+
+    // 3. Calculate Total Payments received
+    const totalPaid = (payments || [])
+      .filter((p) => {
+        return p.customer?.trim().toLowerCase() === activeCustomerName?.trim().toLowerCase() || (custObj?.id && p.customerId === custObj.id);
+      })
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    return Math.round(openingBal + totalSales - totalPaid);
+  }, [sales, payments, customers, activeCustomerName, customer]);
+
+  const grandTotalPayable = Math.round(netTotal + livePrevBalance);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -214,8 +251,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
 
   // --- SAVE INVOICE FUNCTION ---
   const saveInvoice = async () => {
-    const finalCustomer = customer === 'Walk-in Customer' ? walkInName : customer;
-    if (!finalCustomer || items.length === 0) { 
+    if (!activeCustomerName || items.length === 0) { 
       window.alert('Please fill details and add items.'); 
       return; 
     }
@@ -233,25 +269,18 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
       }
     }
 
-    const totalSales = getCreditSalesTotal(sales, finalCustomer);
-    const totalPaid = (payments || [])
-      .filter((p) => p.customer === finalCustomer)
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
-    const prevBalance = Math.round(totalSales - totalPaid);
-
     const loggedInUser = (typeof currentUser === 'string' ? currentUser : currentUser?.username || currentUser?.name || currentUser?.displayName) || localStorage.getItem('username') || 'System';
 
     const invoice = { 
       id: invoiceNo ? String(invoiceNo) : generateId(), 
       invoiceNo, 
       date: currentDate, 
-      customer: finalCustomer, 
+      customer: activeCustomerName, 
       paymentType, 
       items, 
       grossTotal: gross, 
       discount: totalDiscountAmount,
-      prevBalance: prevBalance, 
+      prevBalance: livePrevBalance, 
       netTotal, 
       createdBy: loggedInUser,
       createdAt: new Date().toISOString()
@@ -271,7 +300,7 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
           date: currentDate, 
           account: 'Cash', 
           amount: netTotal, 
-          description: `Sale ${invoiceNo} - ${finalCustomer}`, 
+          description: `Sale ${invoiceNo} - ${activeCustomerName}`, 
           type: 'receipt' 
         };
         setCashData(prevCash => [...prevCash, cashObj]);
@@ -351,34 +380,44 @@ const Sales = ({ sales, setSales, products, customers, getStock, cashData, setCa
               <div className="text-lg font-semibold text-slate-300 flex justify-between items-center">
                 <span>Gross:</span> 
                 <span className="text-white">{formatRs(gross)}</span>
-            </div>  
+              </div>  
       
-            <div className="text-lg font-semibold text-rose-400 flex justify-between items-center">
-              <span>Total Disc:</span> 
-              <span>{formatRs(totalDiscountAmount)}</span>
-            </div>
-      
-            <hr className="border-slate-800 my-4" />
-      
-            <div className="text-2xl font-bold text-emerald-400 flex justify-between items-center py-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
-              <span>Payable:</span> 
-              <span>{formatRs(netTotal)}</span>
-            </div>
-          </div>
+              <div className="text-lg font-semibold text-rose-400 flex justify-between items-center">
+                <span>Total Disc:</span> 
+                <span>{formatRs(totalDiscountAmount)}</span>
+              </div>
 
-          {/* Bottom Content - Action Button */}
-          <div className="mt-8 pt-4 border-t border-slate-800/50">
-            <Button 
-              onClick={saveInvoice} 
-              disabled={isSaving}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 text-base font-bold transition-all shadow-lg shadow-emerald-950/40 rounded-xl"
-            >
-              {isSaving ? 'Saving to Cloud...' : 'Save & Print'}
-            </Button>
-          </div>
+              <div className="text-lg font-semibold text-amber-400 flex justify-between items-center">
+                <span>Bill Net:</span> 
+                <span>{formatRs(netTotal)}</span>
+              </div>
 
-        </Card>
-      </div>
+              <div className="text-lg font-semibold text-blue-400 flex justify-between items-center border-t border-slate-800 pt-2">
+                <span>Prev Balance:</span> 
+                <span>{formatRs(livePrevBalance)}</span>
+              </div>
+      
+              <hr className="border-slate-800 my-4" />
+      
+              <div className="text-2xl font-bold text-emerald-400 flex justify-between items-center py-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
+                <span>Total Payable:</span> 
+                <span>{formatRs(grandTotalPayable)}</span>
+              </div>
+            </div>
+
+            {/* Bottom Content - Action Button */}
+            <div className="mt-8 pt-4 border-t border-slate-800/50">
+              <Button 
+                onClick={saveInvoice} 
+                disabled={isSaving}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 text-base font-bold transition-all shadow-lg shadow-emerald-950/40 rounded-xl"
+              >
+                {isSaving ? 'Saving to Cloud...' : 'Save & Print'}
+              </Button>
+            </div>
+
+          </Card>
+        </div>
 
       </div>
     </PageShell>
