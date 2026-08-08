@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Eye, Pencil, Trash2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
-import { formatRs, generateId, getCreditSalesTotal, todayISO } from './utils/helpers';
+import { formatRs, generateId, todayISO } from './utils/helpers';
 
 // Firebase Firestore imports
 import { db } from './firebase'; 
 import { doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
-const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sales, userRole, currentUser }) => {
+const Recovery = ({ payments = [], setPayments, customers = [], cashData = [], setCashData, sales = [], returns = [], userRole, currentUser }) => {
   // Case-insensitivity handle karne ke liye secure admin check
   const activeUsername = String(currentUser?.username || currentUser?.id || '').trim().toLowerCase();
   const activeRole = String(userRole || currentUser?.role || '').trim().toLowerCase();
@@ -33,7 +33,72 @@ const Recovery = ({ payments, setPayments, customers, cashData, setCashData, sal
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState(null);
 
-  const outstanding = form.customer ? getCreditSalesTotal(sales, form.customer) - payments.filter((p) => p.customer === form.customer).reduce((sum, p) => sum + Number(p.amount || 0), 0) : 0;
+  // Safe Number Parsing Helper
+  const cleanNum = (val) => {
+    if (val === undefined || val === null || val === '') return 0;
+    const parsed = Number(String(val).replace(/,/g, '').trim());
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // --- DYNAMIC OUTSTANDING LEDGER BALANCE (Opening Balance + Sales - Payments - Returns) ---
+  const outstanding = useMemo(() => {
+    if (!form.customer) return 0;
+
+    const normCustomerName = form.customer.trim().toLowerCase();
+
+    // 1. Customer Details & Opening Balance Search
+    const custObj = customers.find(
+      (c) => c.name?.trim().toLowerCase() === normCustomerName || String(c.id) === String(form.customer)
+    );
+
+    const openingBal = custObj ? cleanNum(
+      custObj.previousBalance ??
+      custObj.openingBalance ?? 
+      custObj.openBalance ?? 
+      custObj.opening_balance ?? 
+      custObj.initialBalance ?? 
+      custObj.prevBalance ?? 
+      custObj.opening ?? 
+      custObj.balance
+    ) : 0;
+
+    // 2. Calculate Total Credit Sales for Customer
+    const totalSales = (sales || [])
+      .filter((s) => {
+        const sCust = (s.customer || s.customerName || '').trim().toLowerCase();
+        const matchName = sCust === normCustomerName;
+        const matchId = custObj?.id && String(s.customerId) === String(custObj.id);
+        const isCredit = 
+          s.isCredit === true || 
+          String(s.paymentMethod || s.paymentType).toLowerCase() === 'credit' || 
+          String(s.status).toLowerCase() === 'credit' ||
+          s.type === 'Credit';
+        return (matchName || matchId) && (isCredit || !s.paymentType);
+      })
+      .reduce((sum, s) => sum + cleanNum(s.netTotal || s.total || s.amount || s.grandTotal || s.billNet), 0);
+
+    // 3. Calculate Total Payments Received
+    const totalPaid = (payments || [])
+      .filter((p) => {
+        const pCust = (p.customer || p.customerName || '').trim().toLowerCase();
+        const matchName = pCust === normCustomerName;
+        const matchId = custObj?.id && String(p.customerId) === String(custObj.id);
+        return matchName || matchId;
+      })
+      .reduce((sum, p) => sum + cleanNum(p.amount), 0);
+
+    // 4. Calculate Total Returns
+    const totalReturned = (returns || [])
+      .filter((r) => {
+        const rCust = (r.customer || r.customerName || '').trim().toLowerCase();
+        const matchName = rCust === normCustomerName;
+        const matchId = custObj?.id && String(r.customerId) === String(custObj.id);
+        return matchName || matchId;
+      })
+      .reduce((sum, r) => sum + cleanNum(r.refundAmount || r.netTotal || r.amount), 0);
+
+    return Math.round(openingBal + totalSales - totalPaid - totalReturned);
+  }, [form.customer, customers, sales, payments, returns]);
 
   const addRecovery = async () => {
     if (!isAdmin) {
