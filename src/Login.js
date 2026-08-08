@@ -1,79 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState } from 'react';
 
 // Firebase Database imports
 import { db } from './firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { verifyPassword } from './utils/helpers';
 
-const Login = ({ onLogin, onLogout }) => {
+const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const timerRef = useRef(null);
-  const TEN_MINUTES_IN_MS = 10 * 60 * 1000; // 10 Minutes (600,000 ms)
-
-  // System Logout Handler
-  const handleAutoLogout = useCallback(() => {
-    localStorage.removeItem('login_session_expiry');
-    localStorage.removeItem('user_session_active');
-    if (typeof onLogout === 'function') {
-      onLogout();
-    } else {
-      window.location.reload(); // Fallback reset
-    }
-  }, [onLogout]);
-
-  // Reset Timer Function (Active Use par time extended)
-  const resetInactivityTimer = useCallback(() => {
-    const isSessionActive = localStorage.getItem('user_session_active');
-    if (!isSessionActive) return;
-
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    // Dynamic session expiry extend in LocalStorage
-    const newExpiry = Date.now() + TEN_MINUTES_IN_MS;
-    localStorage.setItem('login_session_expiry', newExpiry.toString());
-
-    // Auto-logout triggers after 10 minutes of complete inactivity
-    timerRef.current = setTimeout(() => {
-      handleAutoLogout();
-    }, TEN_MINUTES_IN_MS);
-  }, [TEN_MINUTES_IN_MS, handleAutoLogout]);
-
-  // --- AUTO-INACTIVITY TRACKER LAYER ---
-  useEffect(() => {
-    const sessionExpiry = localStorage.getItem('login_session_expiry');
-    const isSessionActive = localStorage.getItem('user_session_active');
-
-    if (isSessionActive && sessionExpiry) {
-      if (Date.now() > Number(sessionExpiry)) {
-        handleAutoLogout();
-        return;
-      }
-
-      // Initial active timer start
-      resetInactivityTimer();
-
-      // Activity Event Listeners
-      const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-      
-      const handleUserActivity = () => {
-        resetInactivityTimer();
-      };
-
-      events.forEach((event) => {
-        window.addEventListener(event, handleUserActivity);
-      });
-
-      return () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-        events.forEach((event) => {
-          window.removeEventListener(event, handleUserActivity);
-        });
-      };
-    }
-  }, [handleAutoLogout, resetInactivityTimer]);
+  const TEN_MINUTES_IN_MS = 10 * 60 * 1000; // 10 Minutes
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -97,10 +34,11 @@ const Login = ({ onLogin, onLogout }) => {
       if (user) {
         const expiryTimestamp = Date.now() + TEN_MINUTES_IN_MS;
 
+        // Set initial session expiry for App.js to track
         localStorage.setItem('login_session_expiry', expiryTimestamp.toString());
         localStorage.setItem('user_session_active', 'true');
 
-        // Pass login state up
+        // Pass login state up to App.js
         onLogin({ username: user.username, role: user.role, modules: user.modules || [] });
         return;
       }
