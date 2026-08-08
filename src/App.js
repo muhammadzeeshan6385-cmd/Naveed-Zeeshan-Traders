@@ -29,7 +29,7 @@ import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 function App() {
   const [currentUser, setCurrentUser] = useLocalStorage(STORAGE_KEYS.currentUser, null);
 
-  // --- Auto Logout & Hard Expiry Layer Start ---
+  // --- Auto Logout & Activity Tracking Fix ---
   const logoutTimer = useRef();
   const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 minutes
 
@@ -37,53 +37,66 @@ function App() {
     setCurrentUser(null);
     removeFromStorage(STORAGE_KEYS.currentUser);
     
-    // Clear custom login session keys safely aur active tab ko clear krein
-    localStorage.removeItem('nzt_activeTab'); // <-- Login screen par hamesha dashboard aaye
+    // Safe storage cleanup
+    localStorage.removeItem('nzt_activeTab');
     localStorage.removeItem('login_session_expiry');
     localStorage.removeItem('user_session_active');
     
     window.location.reload();
   }, [setCurrentUser]);
 
-  // 1. Hard absolute timestamp verification on app load/refresh
-  useEffect(() => {
-    if (!currentUser) return;
-    
-    const sessionExpiry = localStorage.getItem('login_session_expiry');
-    if (sessionExpiry && Date.now() > Number(sessionExpiry)) {
-      handleLogout();
-    }
-  }, [currentUser, handleLogout]);
-
-  // 2. Inactivity tracking engine
+  // Activity milne par timer reset aur expiry extend karne ka fixed logic
   const resetTimer = useCallback(() => {
     clearTimeout(logoutTimer.current);
-    
-    // Secondary safety check during active intervals
-    const sessionExpiry = localStorage.getItem('login_session_expiry');
-    if (sessionExpiry && Date.now() > Number(sessionExpiry)) {
-      handleLogout();
-      return;
+
+    if (currentUser) {
+      // User active hai, isliye session expiry time ko aage extend karein
+      const newExpiry = Date.now() + INACTIVITY_LIMIT;
+      localStorage.setItem('login_session_expiry', String(newExpiry));
+      localStorage.setItem('user_session_active', 'true');
     }
 
     logoutTimer.current = setTimeout(() => {
       handleLogout();
     }, INACTIVITY_LIMIT);
-  }, [handleLogout, INACTIVITY_LIMIT]);
+  }, [currentUser, handleLogout, INACTIVITY_LIMIT]);
 
+  // 1. Initial Load / Refresh Verification
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const sessionExpiry = localStorage.getItem('login_session_expiry');
+    if (sessionExpiry && Date.now() > Number(sessionExpiry)) {
+      handleLogout();
+    } else {
+      resetTimer();
+    }
+  }, [currentUser, handleLogout, resetTimer]);
+
+  // 2. Active Event Listeners (Mouse, Keyboard, Touch, Scroll)
   useEffect(() => {
     if (!currentUser) return;
 
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    events.forEach(event => window.addEventListener(event, resetTimer));
-    resetTimer();
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    
+    // Throttle event calls to prevent high CPU usage on mousemove
+    let lastCall = 0;
+    const handleUserActivity = () => {
+      const now = Date.now();
+      if (now - lastCall > 2000) { // Har 2 sec me ziada se ziada 1 dafa expiry extend hogi
+        lastCall = now;
+        resetTimer();
+      }
+    };
+
+    events.forEach(event => window.addEventListener(event, handleUserActivity));
     
     return () => {
       clearTimeout(logoutTimer.current);
-      events.forEach(event => window.removeEventListener(event, resetTimer));
+      events.forEach(event => window.removeEventListener(event, handleUserActivity));
     };
   }, [currentUser, resetTimer]);
-  // --- Auto Logout & Hard Expiry Layer End ---
+  // --- Auto Logout & Activity Tracking Fix End ---
 
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
@@ -94,7 +107,7 @@ function App() {
   // Responsive Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // States ko LocalStorage se normal React state mein convert kiya taake Firebase handle kare
+  // Firebase state syncs
   const [products, setProductsState] = useState([]);
   const [customers, setCustomersState] = useState([]);
   const [suppliers, setSuppliersState] = useState([]);
@@ -138,7 +151,7 @@ function App() {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [currentUser]);
 
-  // Cloud Database mein real-time entry aur edit save karne ke wrappers
+  // Cloud Database Firestore Wrappers
   const setProducts = async (updatedData) => {
     if (Array.isArray(updatedData)) {
       for (const item of updatedData) {
@@ -219,9 +232,7 @@ function App() {
     }
   };
 
-  // =========================================================================
-  // PERFECTED STATS CALCULATIONS (COGS & CASH BALANCED)
-  // =========================================================================
+  // Stats Calculations
   const stats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
 
@@ -235,25 +246,22 @@ function App() {
       const net = Number(s.netTotal || s.total || s.grandTotal || 0);
       totalSale += net;
 
-      // Product Return Calculation
       const refund = Number(s.refundAmount || s.returnAmount || 0);
       totalReturnAmount += refund;
 
-      // Today Sales Calculation
       if (s.date && String(s.date).includes(today)) {
         todaySales += net;
       }
 
-      // Check Counter Cash vs Credit Sale
       const custName = String(s.customer || s.customerName || '').trim().toLowerCase();
       const pMethod = String(s.paymentMethod || s.paymentType || s.type || '').trim().toLowerCase();
 
       const isCounterCash = pMethod === 'cash' || 
-                             custName === '' || 
-                             custName === 'counter sale' || 
-                             custName === 'cash customer' || 
-                             custName === 'cash' || 
-                             s.isCredit === false;
+                            custName === '' || 
+                            custName === 'counter sale' || 
+                            custName === 'cash customer' || 
+                            custName === 'cash' || 
+                            s.isCredit === false;
 
       if (isCounterCash) {
         directCashSales += net;
@@ -264,7 +272,6 @@ function App() {
         }
       }
 
-      // Cost of Goods Sold (COGS) Calculation for Accurate Profit
       if (s.items && Array.isArray(s.items)) {
         s.items.forEach(item => {
           const originalProduct = products.find(p => 
@@ -295,14 +302,11 @@ function App() {
     const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const totalRecovery = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-    // 1. Net Profit = (Net Sales Amount) - Cost of Sold Products - Expenses
     const netSales = totalSale - totalReturnAmount;
     const netProfit = netSales - costOfGoodsSold - totalExpense;
 
-    // 2. Cash In Hand = Counter Cash + Recovery - Expenses - Returns
     const cashInHandCalc = (directCashSales + totalRecovery) - totalExpense - totalReturnAmount;
 
-    // 3. Outstanding Udhaar Balance Calculation
     let totalOutstanding = 0;
     if (customers && customers.length > 0) {
       customers.forEach(cust => {
@@ -350,7 +354,6 @@ function App() {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // Mobile check ke liye automatic side bar closed ho jaye initial load par
   useEffect(() => {
     if (window.innerWidth < 768) {
       setIsSidebarOpen(false);
@@ -446,11 +449,7 @@ function App() {
         );
 
       case 'Purchases': return <Purchase title="Procurement" purchases={purchases} setPurchases={setPurchases} suppliers={suppliers} products={products} userRole={userRole} />;
-      
-      /* Updated Sales component with currentUser prop */
       case 'Sales': return <Sales title="Sales Terminal" sales={sales || []} setSales={setSales} products={products} customers={customers} cashData={cashData} setCashData={setCashData} getStock={getStock} userRole={userRole} currentUser={currentUser} payments={payments} />;
-      
-      // Updated SearchBill component line with all necessary data props
       case 'SearchBill': return <SearchBill title="Search Bills" sales={sales || []} setSales={setSales} products={products} customers={customers} userRole={userRole} />;
       
       case 'ProductReturn': 
