@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, Pencil, Trash2, X } from 'lucide-react';
+import { Eye, Pencil, Trash2, X, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, todayISO } from './utils/helpers';
 
@@ -26,6 +26,42 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
   const [editingPurchase, setEditingPurchase] = useState(null); 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Custom Modal & Notification States
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'confirm', // 'confirm', 'alert', 'success'
+    onConfirm: null,
+  });
+
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const showAlert = (message, title = 'Notification', type = 'alert') => {
+    setModalConfig({
+      isOpen: true,
+      title,
+      message,
+      type,
+      onConfirm: null,
+    });
+  };
+
+  const showConfirm = (title, message, onConfirm) => {
+    setModalConfig({
+      isOpen: true,
+      title,
+      message,
+      type: 'confirm',
+      onConfirm,
+    });
+  };
+
   const resetForm = () =>
     setForm({
       date: todayISO(),
@@ -39,11 +75,11 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
   const addPurchase = async () => {
     if (!isAdmin) {
-      window.alert('Unauthorized access. Only admins can create purchase entries.');
+      showAlert('Unauthorized access. Only admins can create purchase entries.', 'Access Denied', 'alert');
       return;
     }
     if (!form.supplier || !form.product || !form.qty || !form.price) {
-      window.alert('Supplier, product, quantity, and price are required.');
+      showAlert('Supplier, product, quantity, and price are required.', 'Missing Information', 'alert');
       return;
     }
 
@@ -67,7 +103,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         price,
         total,
         paymentType: form.paymentType,
-        // CRITICAL FIX: Report aur Dashboard calculation k liye items array add kia hai
         items: [
           {
             productId: matchedProduct?.id || '',
@@ -80,10 +115,8 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         ]
       };
 
-      // 1. Firebase Purchases Collection Mein Save
       await setDoc(doc(db, 'purchases', customId), entry);
 
-      // 2. Firebase Firestore Product Record Rate Permanently Update
       if (matchedProduct && matchedProduct.id) {
         await updateDoc(doc(db, 'products', matchedProduct.id), {
           purchaseRate: price,
@@ -92,7 +125,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         });
       }
 
-      // Local State Sync
       setPurchases([entry, ...purchases]);
 
       if (setProducts) {
@@ -121,46 +153,52 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
       resetForm();
       setCurrentPage(1); 
-      window.alert('Purchase saved and Firebase Product Cost Price permanently updated!');
+      showToast('Purchase saved successfully!', 'success');
     } catch (error) {
       console.error("Firebase write error:", error);
-      window.alert("Database me save karte hue error aya: " + error.message);
+      showAlert("Database me save karte hue error aya: " + error.message, "Error", "alert");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const deletePurchase = async (row) => {
+  const deletePurchase = (row) => {
     if (!isAdmin) {
-      window.alert('Unauthorized action. Only admins can delete records.');
+      showAlert('Unauthorized action. Only admins can delete records.', 'Access Denied', 'alert');
       return;
     }
-    if (window.confirm('Are you sure you want to delete this purchase entry?')) {
-      const targetId = row.id || row._id;
-      if (!targetId) {
-        window.alert("Purchase entry ID missing.");
-        return;
-      }
 
-      try {
-        await deleteDoc(doc(db, 'purchases', targetId));
-        setPurchases(purchases.filter(p => (p.id !== targetId && p._id !== targetId)));
-      } catch (error) {
-        console.error("Firebase deletion error:", error);
-        window.alert("Database se delete karte hue error aya: " + error.message);
-      }
+    const targetId = row.id || row._id;
+    if (!targetId) {
+      showAlert("Purchase entry ID missing.", "Error", "alert");
+      return;
     }
+
+    showConfirm(
+      'Delete Purchase Entry',
+      `Are you sure you want to delete purchase for "${row.product}"? This action cannot be undone.`,
+      async () => {
+        try {
+          await deleteDoc(doc(db, 'purchases', targetId));
+          setPurchases(purchases.filter(p => (p.id !== targetId && p._id !== targetId)));
+          showToast('Purchase entry deleted successfully', 'success');
+        } catch (error) {
+          console.error("Firebase deletion error:", error);
+          showAlert("Database se delete karte hue error aya: " + error.message, "Error", "alert");
+        }
+      }
+    );
   };
 
   const updatePurchase = async () => {
     if (!isAdmin) {
-      window.alert('Unauthorized data modification attempt.');
+      showAlert('Unauthorized data modification attempt.', 'Access Denied', 'alert');
       return;
     }
 
     const targetId = editingPurchase.id || editingPurchase._id;
     if (!targetId) {
-      window.alert("Purchase entry ID missing for execution.");
+      showAlert("Purchase entry ID missing for execution.", "Error", "alert");
       return;
     }
 
@@ -179,7 +217,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         qty,
         price,
         total,
-        // CRITICAL FIX: Report aur Dashboard alignment on edit
         items: [
           {
             productId: matchedProduct?.id || '',
@@ -194,7 +231,6 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
       await updateDoc(doc(db, 'purchases', targetId), updatedPayload);
 
-      // Update product cost in Firestore as well
       if (matchedProduct && matchedProduct.id) {
         await updateDoc(doc(db, 'products', matchedProduct.id), {
           purchaseRate: price,
@@ -205,9 +241,10 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
       setPurchases(purchases.map(p => (p.id === targetId || p._id === targetId) ? updatedPayload : p));
       setEditingPurchase(null);
+      showToast('Purchase entry updated successfully', 'success');
     } catch (error) {
       console.error("Firebase update path error:", error);
-      window.alert("Database record update error: " + error.message);
+      showAlert("Database record update error: " + error.message, "Error", "alert");
     } finally {
       setIsSubmitting(false);
     }
@@ -233,6 +270,14 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
 
   return (
     <PageShell title="Procurement">
+      {/* Toast Notification Banner */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-[100] flex items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl border border-slate-700 transition-all animate-bounce">
+          <CheckCircle className="text-emerald-500" size={20} />
+          <span className="text-sm font-medium">{toast.message}</span>
+        </div>
+      )}
+
       {isAdmin && (
         <Card title="Purchase Entry">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -313,7 +358,7 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
               label: 'Action',
               render: (row) => (
                 <div className="flex items-center gap-2">
-                  <button onClick={() => alert('Viewing Invoice Details: ' + row.product)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded cursor-pointer" title="Preview"><Eye size={18} /></button>
+                  <button onClick={() => showAlert(`Supplier: ${row.supplier}\nProduct: ${row.product}\nQty: ${row.qty}\nTotal: Rs. ${row.total}`, 'Purchase Preview', 'alert')} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded cursor-pointer" title="Preview"><Eye size={18} /></button>
                   {isAdmin && (
                     <>
                       <button onClick={() => setEditingPurchase(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded cursor-pointer" title="Edit"><Pencil size={18} /></button>
@@ -371,20 +416,68 @@ const Purchase = ({ purchases, setPurchases, suppliers = [], products = [], setP
         )}
       </Card>
 
+      {/* Edit Purchase Modal */}
       {isAdmin && editingPurchase && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 p-6 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-800 text-white">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold dark:text-white">Edit Purchase Entry</h2>
-              <button onClick={() => setEditingPurchase(null)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500"><X size={20} /></button>
+              <h2 className="text-xl font-bold">Edit Purchase Entry</h2>
+              <button onClick={() => setEditingPurchase(null)} className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white"><X size={20} /></button>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Input label="Quantity" type="number" value={editingPurchase.qty} onChange={(e) => setEditingPurchase({...editingPurchase, qty: e.target.value})} />
               <Input label="Purchase Rate" type="number" value={editingPurchase.price} onChange={(e) => setEditingPurchase({...editingPurchase, price: e.target.value})} />
             </div>
-            <Button className="w-full mt-6" onClick={updatePurchase} disabled={isSubmitting}>
+            <Button className="w-full mt-6 bg-emerald-600 hover:bg-emerald-500" onClick={updatePurchase} disabled={isSubmitting}>
               {isSubmitting ? 'Updating...' : 'Save Changes'}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation / Alert Modal */}
+      {modalConfig.isOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl text-white transform transition-all">
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`p-3 rounded-full ${modalConfig.type === 'confirm' ? 'bg-rose-500/10 text-rose-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                {modalConfig.type === 'confirm' ? <AlertTriangle size={24} /> : <Info size={24} />}
+              </div>
+              <h3 className="text-lg font-bold">{modalConfig.title}</h3>
+            </div>
+            
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed whitespace-pre-line">
+              {modalConfig.message}
+            </p>
+
+            <div className="flex justify-end gap-3">
+              {modalConfig.type === 'confirm' ? (
+                <>
+                  <button
+                    onClick={() => setModalConfig({ ...modalConfig, isOpen: false })}
+                    className="px-4 py-2 rounded-xl text-sm font-medium text-slate-400 bg-slate-800 hover:bg-slate-700 hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (modalConfig.onConfirm) modalConfig.onConfirm();
+                      setModalConfig({ ...modalConfig, isOpen: false });
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-medium bg-rose-600 hover:bg-rose-500 text-white transition-colors shadow-lg shadow-rose-600/20"
+                  >
+                    Delete Entry
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setModalConfig({ ...modalConfig, isOpen: false })}
+                  className="px-5 py-2 rounded-xl text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                >
+                  OK
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

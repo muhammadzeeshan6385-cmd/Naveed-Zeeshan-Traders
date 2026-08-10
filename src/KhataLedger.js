@@ -808,7 +808,7 @@ const KhataLedger = ({
               }`}
             >
               <Users className="w-4 h-4" />
-              <span>Customer Debtors</span>
+              <span>Customer</span>
               <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-950/50 text-indigo-300 border border-indigo-500/20">
                 {customers.length}
               </span>
@@ -865,7 +865,7 @@ const KhataLedger = ({
               <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Debtors</p>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Customer</p>
                     <h3 className="text-2xl font-black text-indigo-400 mt-1">{ledgerMetrics.activeDebtorsCount} Accounts</h3>
                   </div>
                   <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
