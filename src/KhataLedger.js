@@ -142,6 +142,16 @@ const KhataLedger = ({
     return target === v || target.includes(v) || v.includes(target);
   };
 
+  // Customer Matching helper (Fixes Client/Customer Data mismatch)
+  const isCustomerMatch = (record, customerName) => {
+    if (!record || !customerName) return false;
+    const c = String(customerName).trim().toLowerCase();
+    const target = String(
+      record.customerName || record.customer || record.customer_name || record.clientName || record.client || record.name || ''
+    ).trim().toLowerCase();
+    return target === c || target.includes(c) || c.includes(target);
+  };
+
   // ==========================================
   // 1. CUSTOMER ANALYTICS & ROWS
   // ==========================================
@@ -151,16 +161,21 @@ const KhataLedger = ({
     let activeDebtorsCount = 0;
 
     customers.forEach((customer) => {
-      const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || 0));
-      const totalSales = Math.round(getCreditSalesTotal(sales, customer.name));
+      const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || customer.balance || 0));
+      
+      const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer.name));
+      const totalSales = Math.round(
+        customerSalesList.reduce((sum, s) => sum + Number(s.netTotal || s.netAmount || s.grandTotal || s.totalAmount || 0), 0)
+      );
+
       const totalPaid = Math.round(
         payments
-          .filter((p) => p.customer === customer.name)
+          .filter((p) => isCustomerMatch(p, customer.name))
           .reduce((sum, p) => sum + Number(p.amount || 0), 0)
       );
       const totalReturned = Math.round(
         returns
-          .filter((r) => (r.customer || r.customerName) === customer.name)
+          .filter((r) => isCustomerMatch(r, customer.name))
           .reduce((sum, r) => sum + Number(r.refundAmount || r.netTotal || 0), 0)
       );
       
@@ -188,16 +203,21 @@ const KhataLedger = ({
     () =>
       customers
         .map((customer) => {
-          const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || 0));
-          const totalSales = Math.round(getCreditSalesTotal(sales, customer.name));
+          const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || customer.balance || 0));
+          
+          const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer.name));
+          const totalSales = Math.round(
+            customerSalesList.reduce((sum, s) => sum + Number(s.netTotal || s.netAmount || s.grandTotal || s.totalAmount || 0), 0)
+          );
+
           const totalPaid = Math.round(
             payments
-              .filter((payment) => (payment.customer || payment.customerName) === customer.name)
+              .filter((payment) => isCustomerMatch(payment, customer.name))
               .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
           );
           const totalReturned = Math.round(
             returns
-              .filter((returnItem) => (returnItem.customer || returnItem.customerName) === customer.name)
+              .filter((returnItem) => isCustomerMatch(returnItem, customer.name))
               .reduce((sum, returnItem) => sum + Number(returnItem.refundAmount || returnItem.netTotal || 0), 0)
           );
           
@@ -206,9 +226,9 @@ const KhataLedger = ({
           return {
             id: customer.id,
             name: customer.name,
-            shopName: customer.shopName || '-',
-            phone: customer.phone || '-',
-            area: customer.area || 'Mailsi',
+            shopName: customer.shopName || customer.companyName || '-',
+            phone: customer.phone || customer.mobile || customer.contact || '-',
+            area: customer.area || customer.city || 'Mailsi',
             previousBalance: prevBal,
             totalSales,
             totalPaid,
@@ -448,27 +468,18 @@ const KhataLedger = ({
     }
 
     const customerSales = sales
-      .filter((sale) => {
-        const cName = sale.customerName || sale.customer || sale.customer_name;
-        const isMatch = cName === selectedCustomer.name;
-        const isCreditSale = 
-          sale.isCredit === true || 
-          String(sale.paymentMethod).toLowerCase() === 'credit' || 
-          String(sale.status).toLowerCase() === 'credit' ||
-          sale.type === 'Credit';
-        return isMatch && (isCreditSale || !sale.paymentMethod);
-      })
+      .filter((sale) => isCustomerMatch(sale, selectedCustomer.name))
       .map((sale) => ({
         date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
         type: 'Invoice',
         reference: sale.invoiceNo || sale.billNo || '-',
         description: 'Goods Supplied on Credit Khata',
-        debit: Math.round(Number(sale.netTotal || sale.netAmount || sale.grandTotal || 0)),
+        debit: Math.round(Number(sale.netTotal || sale.netAmount || sale.grandTotal || sale.totalAmount || 0)),
         credit: 0,
       }));
 
     const customerPayments = payments
-      .filter((payment) => (payment.customer || payment.customerName) === selectedCustomer.name)
+      .filter((payment) => isCustomerMatch(payment, selectedCustomer.name))
       .map((payment) => ({
         date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
         type: 'Recovery',
@@ -479,7 +490,7 @@ const KhataLedger = ({
       }));
 
     const customerReturns = returns
-      .filter((returnItem) => (returnItem.customer || returnItem.customerName) === selectedCustomer.name)
+      .filter((returnItem) => isCustomerMatch(returnItem, selectedCustomer.name))
       .map((returnItem) => ({
         date: returnItem.date || new Date(returnItem.createdAt).toLocaleDateString('en-CA'),
         type: 'Return',
@@ -589,11 +600,11 @@ const KhataLedger = ({
         if (item.previousBalance > 0) {
           printHistory.push({ date: '-', type: 'Opening Balance', reference: '-', debit: Math.round(item.previousBalance), credit: 0 });
         }
-        const salesList = sales.filter((s) => (s.customerName || s.customer) === item.name)
-          .map(s => ({ date: s.date || new Date(s.createdAt).toLocaleDateString('en-CA'), type: 'Invoice', reference: s.invoiceNo || '-', debit: Math.round(Number(s.netTotal || 0)), credit: 0 }));
-        const payList = payments.filter((p) => p.customer === item.name)
+        const salesList = sales.filter((s) => isCustomerMatch(s, item.name))
+          .map(s => ({ date: s.date || new Date(s.createdAt).toLocaleDateString('en-CA'), type: 'Invoice', reference: s.invoiceNo || '-', debit: Math.round(Number(s.netTotal || s.netAmount || s.grandTotal || 0)), credit: 0 }));
+        const payList = payments.filter((p) => isCustomerMatch(p, item.name))
           .map(p => ({ date: p.date || new Date(p.createdAt).toLocaleDateString('en-CA'), type: 'Recovery', reference: p.receiptNo || '-', debit: 0, credit: Math.round(Number(p.amount || 0)) }));
-        const retList = returns.filter((r) => (r.customer || r.customerName) === item.name)
+        const retList = returns.filter((r) => isCustomerMatch(r, item.name))
           .map(r => ({ date: r.date || new Date(r.createdAt).toLocaleDateString('en-CA'), type: 'Return', reference: r.returnNo || '-', debit: 0, credit: Math.round(Number(r.refundAmount || 0)) }));
         
         printHistory = [...printHistory, ...salesList, ...payList, ...retList].sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -757,284 +768,306 @@ const KhataLedger = ({
           <div className="fixed top-5 right-5 z-50 transition-all duration-300 animate-slide-in">
             <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold ${
               toast.type === 'success' 
-                ? 'bg-slate-900/95 border-emerald-500/40 text-emerald-400 shadow-emerald-900/20' 
+                ? 'bg-slate-900/90 text-emerald-400 border-emerald-500/30' 
                 : toast.type === 'warning'
-                ? 'bg-slate-900/95 border-amber-500/40 text-amber-400 shadow-amber-900/20'
-                : 'bg-slate-900/95 border-rose-500/40 text-rose-400 shadow-rose-900/20'
+                ? 'bg-slate-900/90 text-amber-400 border-amber-500/30'
+                : 'bg-slate-900/90 text-rose-400 border-rose-500/30'
             }`}>
-              {toast.type === 'success' && <CheckCircle2 size={18} className="text-emerald-400" />}
-              {toast.type === 'warning' && <AlertCircle size={18} className="text-amber-400" />}
-              {toast.type === 'error' && <AlertCircle size={18} className="text-rose-400" />}
+              {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+              {toast.type === 'warning' && <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />}
+              {toast.type === 'error' && <X className="w-4 h-4 text-rose-400 shrink-0" />}
               <span>{toast.message}</span>
-              <button 
-                onClick={() => setToast(null)}
-                className="ml-2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
-              >
-                <X size={14} />
-              </button>
             </div>
           </div>
         )}
 
-        {/* TAB NAVIGATION */}
-        <div className="flex border-b border-slate-800 gap-4 text-xs font-bold">
-          <button
-            onClick={() => { setActiveTab('customers'); setSelectedVendor(null); }}
-            className={`pb-3 px-2 flex items-center gap-2 border-b-2 transition cursor-pointer ${
-              activeTab === 'customers'
-                ? 'border-amber-500 text-amber-400 font-black'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Users size={16} />
-            Customers Ledger (Debtors)
-          </button>
-          <button
-            onClick={() => { setActiveTab('vendors'); setSelectedCustomer(null); }}
-            className={`pb-3 px-2 flex items-center gap-2 border-b-2 transition cursor-pointer ${
-              activeTab === 'vendors'
-                ? 'border-amber-500 text-amber-400 font-black'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Truck size={16} />
-            Vendors Ledger (Suppliers)
-          </button>
-        </div>
-
-        {/* METRICS CARDS */}
-        {activeTab === 'customers' ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Market Receivables</p>
-                <h3 className="text-xl font-black text-rose-400 mt-1">{formatRs(Math.round(ledgerMetrics.totalOutstanding))}</h3>
-              </div>
-              <div className="bg-rose-500/10 p-3 rounded-xl border border-rose-500/20 text-rose-400">
-                <AlertCircle size={22} />
-              </div>
-            </div>
-
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Recovered This Month</p>
-                <h3 className="text-xl font-black text-emerald-400 mt-1">{formatRs(Math.round(ledgerMetrics.totalRecoveredThisMonth))}</h3>
-              </div>
-              <div className="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 text-emerald-400">
-                <UserCheck size={22} />
-              </div>
-            </div>
-
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Debtors</p>
-                <h3 className="text-xl font-black text-amber-400 mt-1">{ledgerMetrics.activeDebtorsCount} Accounts</h3>
-              </div>
-              <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 text-amber-400">
-                <Users size={22} />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Vendor Payables</p>
-                <h3 className="text-xl font-black text-amber-400 mt-1">{formatRs(Math.round(vendorMetrics.totalPayable))}</h3>
-              </div>
-              <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 text-amber-400">
-                <Wallet size={22} />
-              </div>
-            </div>
-
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Paid to Vendors This Month</p>
-                <h3 className="text-xl font-black text-emerald-400 mt-1">{formatRs(Math.round(vendorMetrics.totalPaidThisMonth))}</h3>
-              </div>
-              <div className="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 text-emerald-400">
-                <UserCheck size={22} />
-              </div>
-            </div>
-
-            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Suppliers/Vendors</p>
-                <h3 className="text-xl font-black text-blue-400 mt-1">{vendorMetrics.activeCreditorsCount} Creditors</h3>
-              </div>
-              <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 text-blue-400">
-                <Truck size={22} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* CONTROLS HEADER */}
-        <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              type="text"
-              placeholder={activeTab === 'customers' ? "Search Customer, Shop, Phone..." : "Search Vendor, Company, Phone..."}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-amber-500/50 cursor-pointer"
+        {/* TOP TABS & GLOBAL ACTIONS */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/60 p-2 rounded-2xl border border-slate-800 backdrop-blur-md">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => { setActiveTab('vendors'); setSelectedCustomer(null); }}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 ${
+                activeTab === 'vendors'
+                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/25 border border-indigo-500/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
             >
-              <option value="all">All Accounts</option>
-              <option value="debtors">{activeTab === 'customers' ? 'Has Outstanding Balance' : 'Has Payable Balance'}</option>
-              <option value="clear">Zero Balance (Clear)</option>
-            </select>
+              <Truck className="w-4 h-4" />
+              <span>Vendors / Suppliers</span>
+              <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-950/50 text-indigo-300 border border-indigo-500/20">
+                {masterVendorsList.length}
+              </span>
+            </button>
 
             <button
-              onClick={handleRefreshData}
-              className="p-2 bg-slate-950 border border-slate-800 text-slate-400 hover:text-amber-400 rounded-xl transition cursor-pointer"
-              title="Refresh Ledger"
+              onClick={() => { setActiveTab('customers'); setSelectedVendor(null); }}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 ${
+                activeTab === 'customers'
+                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/25 border border-indigo-500/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-amber-400' : ''} />
+              <Users className="w-4 h-4" />
+              <span>Customer Debtors</span>
+              <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-950/50 text-indigo-300 border border-indigo-500/20">
+                {customers.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              onClick={handleRefreshData}
+              className="p-2.5 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl border border-slate-700/50 transition-all"
+              title="Refresh Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
             </button>
 
             <button
               onClick={exportToCSV}
-              className="flex items-center gap-2 px-3 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white rounded-xl text-xs transition cursor-pointer font-medium"
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl border border-slate-700/50 transition-all"
             >
-              <Download size={15} />
-              Export CSV
+              <Download className="w-4 h-4 text-slate-400" />
+              <span>Export CSV</span>
             </button>
           </div>
         </div>
 
-        {/* LEDGER DATA TABLE */}
-        <Card className="overflow-hidden border-slate-800 bg-slate-900/40">
+        {/* METRICS SUMMARY CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {activeTab === 'customers' ? (
+            <>
+              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Customer Arrears</p>
+                    <h3 className="text-2xl font-black text-amber-400 mt-1">Rs. {formatRs(ledgerMetrics.totalOutstanding)}</h3>
+                  </div>
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-400">
+                    <Wallet className="w-6 h-6" />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Monthly Recovery</p>
+                    <h3 className="text-2xl font-black text-emerald-400 mt-1">Rs. {formatRs(ledgerMetrics.totalRecoveredThisMonth)}</h3>
+                  </div>
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Debtors</p>
+                    <h3 className="text-2xl font-black text-indigo-400 mt-1">{ledgerMetrics.activeDebtorsCount} Accounts</h3>
+                  </div>
+                  <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
+                    <Users className="w-6 h-6" />
+                  </div>
+                </div>
+              </Card>
+            </>
+          ) : (
+            <>
+              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Vendor Payables</p>
+                    <h3 className="text-2xl font-black text-rose-400 mt-1">Rs. {formatRs(vendorMetrics.totalPayable)}</h3>
+                  </div>
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Paid This Month</p>
+                    <h3 className="text-2xl font-black text-emerald-400 mt-1">Rs. {formatRs(vendorMetrics.totalPaidThisMonth)}</h3>
+                  </div>
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Creditors</p>
+                    <h3 className="text-2xl font-black text-indigo-400 mt-1">{vendorMetrics.activeCreditorsCount} Vendors</h3>
+                  </div>
+                  <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
+                    <Truck className="w-6 h-6" />
+                  </div>
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
+
+        {/* SEARCH AND FILTERS BAR */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+          <div className="relative w-full md:w-80">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={`Search ${activeTab === 'customers' ? 'Customers' : 'Vendors'} by name, shop or phone...`}
+              className="w-full bg-slate-950/60 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <button
+              onClick={() => setFilterType('all')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                filterType === 'all'
+                  ? 'bg-slate-800 border-indigo-500/50 text-indigo-400'
+                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              All Records
+            </button>
+            <button
+              onClick={() => setFilterType('debtors')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                filterType === 'debtors'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Pending Balances
+            </button>
+            <button
+              onClick={() => setFilterType('clear')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                filterType === 'clear'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Clear / Zero Balances
+            </button>
+          </div>
+        </div>
+
+        {/* MAIN DATA TABLE */}
+        <Card className="bg-slate-900/40 border-slate-800 rounded-2xl overflow-hidden p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300 border-collapse">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800">
-                  <th className="p-3.5">#</th>
-                  <th className="p-3.5">{activeTab === 'customers' ? 'Customer Name' : 'Vendor Name'}</th>
-                  <th className="p-3.5">{activeTab === 'customers' ? 'Shop Name' : 'Company Name'}</th>
-                  <th className="p-3.5">Contact</th>
-                  <th className="p-3.5 text-right">Prev Balance</th>
-                  <th className="p-3.5 text-right">{activeTab === 'customers' ? 'Total Sales' : 'Total Purchases'}</th>
-                  <th className="p-3.5 text-right">Total Paid</th>
-                  <th className="p-3.5 text-right">Total Returned</th>
-                  <th className="p-3.5 text-right">Net Balance</th>
-                  <th className="p-3.5 text-center">Actions</th>
+                <tr className="border-b border-slate-800 bg-slate-900/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="py-3.5 px-4">{activeTab === 'customers' ? 'Customer Name' : 'Vendor / Supplier'}</th>
+                  <th className="py-3.5 px-4">{activeTab === 'customers' ? 'Shop Name' : 'Company Name'}</th>
+                  <th className="py-3.5 px-4">Phone / City</th>
+                  <th className="py-3.5 px-4 text-right">Prev Balance</th>
+                  <th className="py-3.5 px-4 text-right">{activeTab === 'customers' ? 'Total Sales' : 'Total Purchases'}</th>
+                  <th className="py-3.5 px-4 text-right">Total Paid</th>
+                  <th className="py-3.5 px-4 text-right">Net Balance</th>
+                  <th className="py-3.5 px-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-800/60 text-xs text-slate-300">
                 {(activeTab === 'customers' ? customerRows : vendorRows).length === 0 ? (
                   <tr>
-                    <td colSpan="10" className="p-8 text-center text-slate-500 font-medium">
-                      No matching {activeTab === 'customers' ? 'customer' : 'vendor'} records found.
+                    <td colSpan="8" className="py-8 text-center text-slate-500">
+                      No {activeTab === 'customers' ? 'customer' : 'vendor'} records found.
                     </td>
                   </tr>
                 ) : (
-                  (activeTab === 'customers' ? customerRows : vendorRows).map((row, idx) => (
-                    <tr key={row.id || idx} className="hover:bg-slate-800/30 transition">
-                      <td className="p-3.5 text-slate-500">{idx + 1}</td>
-                      <td className="p-3.5 font-semibold text-slate-100">{row.name}</td>
-                      <td className="p-3.5 text-slate-400">{row.shopName || row.companyName}</td>
-                      <td className="p-3.5 text-slate-400">{row.phone}</td>
-                      
-                      <td className="p-3.5 text-right text-slate-400 font-mono">
-                        {formatRs(row.previousBalance)}
+                  (activeTab === 'customers' ? customerRows : vendorRows).map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="py-3 px-4 font-semibold text-white">{row.name}</td>
+                      <td className="py-3 px-4 text-slate-400">{row.shopName || row.companyName}</td>
+                      <td className="py-3 px-4 text-slate-400">
+                        <div>{row.phone}</div>
+                        <div className="text-[10px] text-slate-500">{row.area || row.city}</div>
                       </td>
-                      
-                      <td className="p-3.5 text-right text-slate-300 font-mono">
-                        {formatRs(row.totalSales || row.totalPurchases)}
-                      </td>
-
-                      <td className="p-3.5 text-right text-emerald-400 font-mono">
-                        {formatRs(row.totalPaid)}
-                      </td>
-
-                      <td className="p-3.5 text-right text-sky-400 font-mono">
-                        {formatRs(row.totalReturned)}
-                      </td>
-
-                      <td className="p-3.5 text-right font-mono font-bold">
-                        <span className={row.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}>
-                          {formatRs(row.balance)}
+                      <td className="py-3 px-4 text-right text-slate-400 font-medium">Rs. {formatRs(row.previousBalance)}</td>
+                      <td className="py-3 px-4 text-right text-indigo-400 font-medium">Rs. {formatRs(row.totalSales || row.totalPurchases)}</td>
+                      <td className="py-3 px-4 text-right text-emerald-400 font-medium">Rs. {formatRs(row.totalPaid)}</td>
+                      <td className="py-3 px-4 text-right font-black">
+                        <span className={`px-2.5 py-1 rounded-lg text-xs ${
+                          row.balance > 0 
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' 
+                            : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          Rs. {formatRs(row.balance)}
                         </span>
                       </td>
-
-                      <td className="p-3.5">
+                      <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* VIEW STATEMENT POPUP BUTTON */}
-                          <button
-                            onClick={() => activeTab === 'customers' ? setSelectedCustomer(row) : setSelectedVendor(row)}
-                            className="p-1.5 text-slate-400 hover:text-amber-400 bg-slate-950 border border-slate-800 hover:border-amber-500/40 rounded-lg transition cursor-pointer"
-                            title="View Statement History"
-                          >
-                            <Eye size={14} />
-                          </button>
-
-                          {/* PRINT STATEMENT BUTTON */}
-                          <button
-                            onClick={() => handlePrintLedger(row, activeTab === 'customers' ? 'customer' : 'vendor')}
-                            className="p-1.5 text-slate-400 hover:text-blue-400 bg-slate-950 border border-slate-800 hover:border-blue-500/40 rounded-lg transition cursor-pointer"
-                            title="Print Ledger"
-                          >
-                            <Printer size={14} />
-                          </button>
-
-                          {/* VENDOR QUICK PAYMENT BUTTON */}
+                          {/* Pay Vendor Button */}
                           {activeTab === 'vendors' && (
                             <button
-                              onClick={() => { setPayingVendor(row); setPaymentAmount(row.balance > 0 ? row.balance : ''); }}
-                              className="p-1.5 text-slate-400 hover:text-emerald-400 bg-slate-950 border border-slate-800 hover:border-emerald-500/40 rounded-lg transition cursor-pointer"
-                              title="Pay Vendor"
+                              onClick={() => {
+                                setPayingVendor(row);
+                                setPaymentAmount('');
+                                setPaymentNotes('');
+                              }}
+                              className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg transition-all"
+                              title="Pay Supplier"
                             >
-                              <Wallet size={14} />
+                              <Wallet className="w-3.5 h-3.5" />
                             </button>
                           )}
 
-                          {/* EDIT PREVIOUS BALANCE BUTTON */}
+                          {/* View Statement Button */}
                           <button
                             onClick={() => {
-                              if (!isAdmin) {
-                                showToast("Aapke paas Admin Rights nahi hain!", "warning");
-                                return;
-                              }
-                              setEditingItem(row);
-                              setNewPrevBalance(row.previousBalance);
+                              if (activeTab === 'customers') setSelectedCustomer(row);
+                              else setSelectedVendor(row);
                             }}
-                            className={`p-1.5 bg-slate-950 border rounded-lg transition ${
-                              isAdmin 
-                                ? 'text-slate-400 hover:text-amber-300 border-slate-800 hover:border-amber-500/40 cursor-pointer' 
-                                : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
-                            }`}
-                            title={isAdmin ? "Edit Opening/Prev Balance" : "Admin Login Required"}
+                            className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-lg transition-all"
+                            title="View Statement"
                           >
-                            <Edit2 size={14} />
+                            <Eye className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* DELETE RECORD BUTTON */}
+                          {/* Print Ledger Button */}
                           <button
-                            onClick={() => {
-                              if (!isAdmin) {
-                                showToast("Aapke paas Admin Rights nahi hain!", "warning");
-                                return;
-                              }
-                              setDeletingItem(row);
-                            }}
-                            className={`p-1.5 bg-slate-950 border rounded-lg transition ${
-                              isAdmin 
-                                ? 'text-slate-400 hover:text-rose-400 border-slate-800 hover:border-rose-500/40 cursor-pointer' 
-                                : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
-                            }`}
-                            title={isAdmin ? "Delete Account Record" : "Admin Login Required"}
+                            onClick={() => handlePrintLedger(row, activeTab === 'customers' ? 'customer' : 'vendor')}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-all"
+                            title="Print Ledger"
                           >
-                            <Trash2 size={14} />
+                            <Printer className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Edit Prev Balance (Admin) */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => {
+                                setEditingItem(row);
+                                setNewPrevBalance(row.previousBalance);
+                              }}
+                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition-all"
+                              title="Edit Previous Balance"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Delete Record (Admin) */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => setDeletingItem(row)}
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg transition-all"
+                              title="Delete Record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1045,85 +1078,60 @@ const KhataLedger = ({
           </div>
         </Card>
 
-        {/* ========================================== */}
-        {/* MODAL 1: VIEW STATEMENT / HISTORY POPUP    */}
-        {/* ========================================== */}
-        {(selectedCustomer || selectedVendor) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl max-h-[90vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden">
-              
-              {/* Header */}
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+        {/* MODAL: CUSTOMER STATEMENT DETAIL */}
+        {selectedCustomer && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh] shadow-2xl">
+              <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <FileText size={18} className="text-amber-400" />
-                    {selectedCustomer ? `Customer Ledger Statement: ${selectedCustomer.name}` : `Vendor Ledger Statement: ${selectedVendor.name}`}
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {selectedCustomer ? `Shop: ${selectedCustomer.shopName} | Mobile: ${selectedCustomer.phone}` : `Company: ${selectedVendor.companyName} | Contact: ${selectedVendor.phone}`}
-                  </p>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-indigo-400" />
+                    <span>Customer Statement: {selectedCustomer.name}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{selectedCustomer.shopName} | Phone: {selectedCustomer.phone}</p>
                 </div>
-                
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handlePrintLedger(selectedCustomer || selectedVendor, selectedCustomer ? 'customer' : 'vendor')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer"
+                    onClick={() => handlePrintLedger(selectedCustomer, 'customer')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-all"
                   >
-                    <Printer size={14} /> Print Statement
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Statement</span>
                   </button>
                   <button
-                    onClick={() => { setSelectedCustomer(null); setSelectedVendor(null); }}
-                    className="p-1.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-xl cursor-pointer"
+                    onClick={() => setSelectedCustomer(null)}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                   >
-                    <X size={18} />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* History Table */}
-              <div className="p-4 overflow-y-auto flex-1">
-                <table className="w-full text-left text-xs text-slate-300 border-collapse">
+              <div className="p-4 overflow-y-auto space-y-4">
+                <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
-                      <th className="p-3">Date</th>
-                      <th className="p-3">Type</th>
-                      <th className="p-3">Reference / Ref No</th>
-                      <th className="p-3">Description</th>
-                      <th className="p-3 text-right">Debit</th>
-                      <th className="p-3 text-right">Credit</th>
-                      <th className="p-3 text-right">Running Net Balance</th>
+                    <tr className="border-b border-slate-800 bg-slate-950/50 text-[10px] font-bold text-slate-400 uppercase">
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Type</th>
+                      <th className="py-2.5 px-3">Reference No</th>
+                      <th className="py-2.5 px-3 text-right">Debit (Sales)</th>
+                      <th className="py-2.5 px-3 text-right">Credit (Paid)</th>
+                      <th className="py-2.5 px-3 text-right">Balance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
                     {(() => {
-                      const hist = selectedCustomer ? customerHistory : vendorHistory;
-                      if (hist.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan="7" className="p-6 text-center text-slate-500">No transaction records logged yet.</td>
-                          </tr>
-                        );
-                      }
                       let runningBal = 0;
-                      return hist.map((item, idx) => {
+                      return customerHistory.map((item, idx) => {
                         runningBal += (item.debit - item.credit);
                         return (
                           <tr key={idx} className="hover:bg-slate-800/20">
-                            <td className="p-3 text-slate-400 font-mono">{item.date}</td>
-                            <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                item.type === 'Invoice' || item.type === 'Stock Purchase' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                item.type === 'Recovery' || item.type === 'Vendor Payment' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                'bg-slate-800 text-slate-300'
-                              }`}>
-                                {item.type}
-                              </span>
-                            </td>
-                            <td className="p-3 font-mono text-slate-300">{item.reference}</td>
-                            <td className="p-3 text-slate-400">{item.description}</td>
-                            <td className="p-3 text-right text-rose-400 font-mono">{item.debit > 0 ? formatRs(item.debit) : '-'}</td>
-                            <td className="p-3 text-right text-emerald-400 font-mono">{item.credit > 0 ? formatRs(item.credit) : '-'}</td>
-                            <td className="p-3 text-right font-bold font-mono text-amber-400">{formatRs(Math.round(runningBal))}</td>
+                            <td className="py-2.5 px-3 text-slate-400">{item.date}</td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-200">{item.type}</td>
+                            <td className="py-2.5 px-3 text-slate-400">{item.reference}</td>
+                            <td className="py-2.5 px-3 text-right text-rose-400">{item.debit > 0 ? `Rs. ${formatRs(item.debit)}` : '-'}</td>
+                            <td className="py-2.5 px-3 text-right text-emerald-400">{item.credit > 0 ? `Rs. ${formatRs(item.credit)}` : '-'}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-amber-400">Rs. {formatRs(runningBal)}</td>
                           </tr>
                         );
                       });
@@ -1131,206 +1139,223 @@ const KhataLedger = ({
                   </tbody>
                 </table>
               </div>
-
-              {/* Footer Summary */}
-              <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs">
-                <div className="text-slate-400">
-                  Total History Entries: <span className="font-bold text-white">{(selectedCustomer ? customerHistory : vendorHistory).length}</span>
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="text-slate-400">
-                    Current Outstanding Arrears:
-                  </div>
-                  <div className="text-base font-black text-amber-400 font-mono">
-                    {formatRs((selectedCustomer || selectedVendor)?.balance || 0)}
-                  </div>
-                </div>
-              </div>
-
             </div>
           </div>
         )}
 
-        {/* ========================================== */}
-        {/* MODAL 2: EDIT PREVIOUS BALANCE POPUP      */}
-        {/* ========================================== */}
-        {editingItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Edit2 size={16} className="text-amber-400" />
-                  Edit Opening / Prev Balance
-                </h3>
-                <button
-                  onClick={() => setEditingItem(null)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-400 mb-1">
-                  Account: <strong className="text-slate-200">{editingItem.name}</strong> ({activeTab === 'customers' ? 'Customer' : 'Vendor'})
-                </p>
-                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1 mt-3">
-                  Previous Balance (Rs.)
-                </label>
-                <input
-                  type="number"
-                  value={newPrevBalance}
-                  onChange={(e) => setNewPrevBalance(e.target.value)}
-                  placeholder="Enter previous opening balance"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-amber-400 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  onClick={() => setEditingItem(null)}
-                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSavePreviousBalance}
-                  disabled={isSaving}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
-                >
-                  {isSaving ? 'Updating...' : 'Save Changes'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================== */}
-        {/* MODAL 3: DELETE RECORD POPUP (CUSTOM UI)  */}
-        {/* ========================================== */}
-        {deletingItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-slate-900 border border-rose-500/30 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
-                <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
-                  <AlertCircle size={20} />
-                </div>
+        {/* MODAL: VENDOR STATEMENT DETAIL */}
+        {selectedVendor && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh] shadow-2xl">
+              <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-white">Delete Account Record</h3>
-                  <p className="text-xs text-slate-400">Admin Confirmation Required</p>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Truck className="w-4 h-4 text-indigo-400" />
+                    <span>Vendor Statement: {selectedVendor.name}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{selectedVendor.companyName} | Phone: {selectedVendor.phone}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePrintLedger(selectedVendor, 'vendor')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-all"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Statement</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedVendor(null)}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Kiya aap waqai <strong className="text-white font-bold">{deletingItem.name}</strong> ka record database se permanently remove/delete karna chahte hain? Is action ko undo nahi kiya ja sakta.
-              </p>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  onClick={() => setDeletingItem(null)}
-                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteRecord}
-                  disabled={isDeleting}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
-                >
-                  {isDeleting ? 'Deleting...' : 'Delete Record'}
-                </button>
+              <div className="p-4 overflow-y-auto space-y-4">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 bg-slate-950/50 text-[10px] font-bold text-slate-400 uppercase">
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Type</th>
+                      <th className="py-2.5 px-3">Description</th>
+                      <th className="py-2.5 px-3 text-right">Debit (Purchases)</th>
+                      <th className="py-2.5 px-3 text-right">Credit (Payments)</th>
+                      <th className="py-2.5 px-3 text-right">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {(() => {
+                      let runningBal = 0;
+                      return vendorHistory.map((item, idx) => {
+                        runningBal += (item.debit - item.credit);
+                        return (
+                          <tr key={idx} className="hover:bg-slate-800/20">
+                            <td className="py-2.5 px-3 text-slate-400">{item.date}</td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-200">{item.type}</td>
+                            <td className="py-2.5 px-3 text-slate-400">{item.description}</td>
+                            <td className="py-2.5 px-3 text-right text-indigo-400">{item.debit > 0 ? `Rs. ${formatRs(item.debit)}` : '-'}</td>
+                            <td className="py-2.5 px-3 text-right text-emerald-400">{item.credit > 0 ? `Rs. ${formatRs(item.credit)}` : '-'}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-amber-400">Rs. {formatRs(runningBal)}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         )}
 
-        {/* ========================================== */}
-        {/* MODAL 4: VENDOR PAYMENT POPUP             */}
-        {/* ========================================== */}
+        {/* MODAL: PAY VENDOR */}
         {payingVendor && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <form onSubmit={handleSubmitVendorPayment} className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+              <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Wallet size={16} className="text-emerald-400" />
-                  Supplier / Vendor Payment
+                  <Wallet className="w-4 h-4 text-emerald-400" />
+                  <span>Pay Supplier: {payingVendor.name}</span>
                 </h3>
                 <button
-                  type="button"
                   onClick={() => setPayingVendor(null)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                 >
-                  <X size={18} />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1">
-                <p className="text-xs text-slate-400">Supplier: <span className="font-bold text-slate-200">{payingVendor.name}</span></p>
-                <p className="text-xs text-slate-400">Current Payable Balance: <span className="font-bold font-mono text-amber-400">{formatRs(payingVendor.balance)}</span></p>
-              </div>
-
-              <div className="space-y-3">
+              <form onSubmit={handleSubmitVendorPayment} className="p-4 space-y-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Current Balance Due
+                  </label>
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-lg font-black text-amber-400">
+                    Rs. {formatRs(payingVendor.balance)}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                     Payment Amount (Rs.)
                   </label>
                   <input
                     type="number"
-                    required
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
-                    placeholder="Enter amount paid"
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-emerald-400 focus:outline-none focus:border-emerald-500"
+                    placeholder="Enter amount to pay..."
+                    required
+                    min="1"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                     Payment Method
                   </label>
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="Cash">Cash in Hand</option>
+                    <option value="Cash">Cash</option>
                     <option value="Bank Transfer">Bank Transfer</option>
                     <option value="Cheque">Cheque</option>
-                    <option value="Online / JazzCash / EasyPaisa">Online / JazzCash / EasyPaisa</option>
+                    <option value="Easypaisa / JazzCash">Easypaisa / JazzCash</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                    Notes / Description
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Notes / Reference (Optional)
                   </label>
                   <input
                     type="text"
                     value={paymentNotes}
                     onChange={(e) => setPaymentNotes(e.target.value)}
-                    placeholder="Optional notes or receipt reference..."
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    placeholder="e.g., Paid via Meezan Bank..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setPayingVendor(null)}
+                    className="px-4 py-2 bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isProcessingPayment}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isProcessingPayment ? 'Processing...' : 'Confirm Payment'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: EDIT PREVIOUS BALANCE */}
+        {editingItem && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-xs font-bold text-white">Edit Opening/Prev Balance</h3>
+                <button onClick={() => setEditingItem(null)} className="text-slate-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setPayingVendor(null)}
-                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
-                >
+              <div>
+                <p className="text-xs text-slate-400 mb-2">Adjust previous balance for <strong className="text-white">{editingItem.name}</strong>:</p>
+                <input
+                  type="number"
+                  value={newPrevBalance}
+                  onChange={(e) => setNewPrevBalance(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  placeholder="Enter previous balance"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setEditingItem(null)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs font-semibold">
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={isProcessingPayment}
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
-                >
-                  {isProcessingPayment ? 'Processing...' : 'Submit Payment'}
+                <button onClick={handleSavePreviousBalance} disabled={isSaving} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold">
+                  {isSaving ? 'Saving...' : 'Save Balance'}
                 </button>
               </div>
-            </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: DELETE RECORD */}
+        {deletingItem && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+              <div className="flex items-center gap-2 text-rose-400 border-b border-slate-800 pb-3">
+                <AlertCircle className="w-5 h-5" />
+                <h3 className="text-xs font-bold text-white">Delete Ledger Account</h3>
+              </div>
+
+              <p className="text-xs text-slate-300">
+                Kya aap waqai <strong className="text-white">{deletingItem.name}</strong> ko delete karna chahte hain? Yeh action revert nahi ho sakta.
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setDeletingItem(null)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs font-semibold">
+                  Cancel
+                </button>
+                <button onClick={handleDeleteRecord} disabled={isDeleting} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold">
+                  {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
