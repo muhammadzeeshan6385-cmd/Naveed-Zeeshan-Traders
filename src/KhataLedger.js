@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card, DataTable, PageShell } from './components/ui';
 import { formatRs, getCreditSalesTotal } from './utils/helpers';
 
@@ -39,7 +39,7 @@ const KhataLedger = ({
   currentRole = 'admin',
   cashInHand = 0,
   onPaymentSuccess,
-  appLogoUrl = '/logo.png' // Pass custom logo URL or fallback path here
+  appLogoUrl = '/logo.png'
 }) => {
   // --- DIRECT FIREBASE FETCH FALLBACK STATES ---
   const [fetchedSuppliers, setFetchedSuppliers] = useState([]);
@@ -113,7 +113,7 @@ const KhataLedger = ({
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Custom Dark Toast / Alert State
-  const [toast, setToast] = useState(null); // { type: 'success' | 'error' | 'warning', message: '' }
+  const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -126,30 +126,52 @@ const KhataLedger = ({
     return String(currentRole || '').trim().toLowerCase() === 'admin';
   }, [currentRole]);
 
-  // Helper function to extract purchase amount reliably with Math.round (.5 rule)
+  // Helper function to extract purchase amount reliably with Math.round
   const getPurchaseAmount = (p) => {
     const rawAmt = Number(p.grandTotal || p.netTotal || p.totalAmount || p.total || p.amount || p.billAmount || 0);
     return Math.round(rawAmt);
   };
 
-  // Vendor Matching helper
-  const isVendorMatch = (record, vendorName) => {
-    if (!record || !vendorName) return false;
-    const v = String(vendorName).trim().toLowerCase();
-    const target = String(
+  // Vendor Matching helper (Strict ID first, exact string match fallback)
+  const isVendorMatch = (record, vendor) => {
+    if (!record || !vendor) return false;
+    
+    const vId = vendor.id ? String(vendor.id).trim() : null;
+    const rVendorId = String(record.vendorId || record.supplierId || record.vendor_id || record.supplier_id || '').trim();
+
+    if (vId && rVendorId && vId === rVendorId) return true;
+
+    const vendorName = typeof vendor === 'string' ? vendor : (vendor.name || vendor.supplierName || vendor.vendorName || '');
+    if (!vendorName) return false;
+
+    const vName = String(vendorName).trim().toLowerCase();
+    const targetName = String(
       record.vendorName || record.vendor || record.supplierName || record.supplier || record.name || ''
     ).trim().toLowerCase();
-    return target === v || target.includes(v) || v.includes(target);
+
+    return vName === targetName;
   };
 
-  // Customer Matching helper (Fixes Client/Customer Data mismatch)
-  const isCustomerMatch = (record, customerName) => {
-    if (!record || !customerName) return false;
-    const c = String(customerName).trim().toLowerCase();
-    const target = String(
+  // Customer Matching helper (STRICT FIX: Exact Match Only to Prevent Cross-Client Ledger Invoices & Recoveries)
+  const isCustomerMatch = (record, customer) => {
+    if (!record || !customer) return false;
+
+    const cId = customer.id ? String(customer.id).trim() : null;
+    const rCustomerId = String(record.customerId || record.clientId || record.customer_id || record.client_id || '').trim();
+
+    // 1. Direct ID Comparison (Most Accurate)
+    if (cId && rCustomerId && cId === rCustomerId) return true;
+
+    // 2. Exact Name Matching Fallback
+    const customerName = typeof customer === 'string' ? customer : (customer.name || '');
+    if (!customerName) return false;
+
+    const cName = String(customerName).trim().toLowerCase();
+    const targetName = String(
       record.customerName || record.customer || record.customer_name || record.clientName || record.client || record.name || ''
     ).trim().toLowerCase();
-    return target === c || target.includes(c) || c.includes(target);
+
+    return cName === targetName;
   };
 
   // ==========================================
@@ -163,19 +185,19 @@ const KhataLedger = ({
     customers.forEach((customer) => {
       const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || customer.balance || 0));
       
-      const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer.name));
+      const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer));
       const totalSales = Math.round(
         customerSalesList.reduce((sum, s) => sum + Number(s.netTotal || s.netAmount || s.grandTotal || s.totalAmount || 0), 0)
       );
 
       const totalPaid = Math.round(
         payments
-          .filter((p) => isCustomerMatch(p, customer.name))
+          .filter((p) => isCustomerMatch(p, customer))
           .reduce((sum, p) => sum + Number(p.amount || 0), 0)
       );
       const totalReturned = Math.round(
         returns
-          .filter((r) => isCustomerMatch(r, customer.name))
+          .filter((r) => isCustomerMatch(r, customer))
           .reduce((sum, r) => sum + Number(r.refundAmount || r.netTotal || 0), 0)
       );
       
@@ -205,19 +227,19 @@ const KhataLedger = ({
         .map((customer) => {
           const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || customer.balance || 0));
           
-          const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer.name));
+          const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer));
           const totalSales = Math.round(
             customerSalesList.reduce((sum, s) => sum + Number(s.netTotal || s.netAmount || s.grandTotal || s.totalAmount || 0), 0)
           );
 
           const totalPaid = Math.round(
             payments
-              .filter((payment) => isCustomerMatch(payment, customer.name))
+              .filter((payment) => isCustomerMatch(payment, customer))
               .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
           );
           const totalReturned = Math.round(
             returns
-              .filter((returnItem) => isCustomerMatch(returnItem, customer.name))
+              .filter((returnItem) => isCustomerMatch(returnItem, customer))
               .reduce((sum, returnItem) => sum + Number(returnItem.refundAmount || returnItem.netTotal || 0), 0)
           );
           
@@ -260,22 +282,21 @@ const KhataLedger = ({
     let activeCreditorsCount = 0;
 
     masterVendorsList.forEach((vendor) => {
-      const vName = vendor.name || vendor.supplierName || vendor.vendorName || '';
       const prevBal = Math.round(Number(vendor.previousBalance || vendor.openingBalance || vendor.balance || 0));
       
       const totalPurchases = masterPurchasesList
-        .filter((p) => isVendorMatch(p, vName))
+        .filter((p) => isVendorMatch(p, vendor))
         .reduce((sum, p) => sum + getPurchaseAmount(p), 0);
         
       const totalPaid = Math.round(
         masterVendorPaymentsList
-          .filter((vp) => isVendorMatch(vp, vName))
+          .filter((vp) => isVendorMatch(vp, vendor))
           .reduce((sum, vp) => sum + Number(vp.amount || 0), 0)
       );
         
       const totalReturned = Math.round(
         vendorReturns
-          .filter((vr) => isVendorMatch(vr, vName))
+          .filter((vr) => isVendorMatch(vr, vendor))
           .reduce((sum, vr) => sum + Number(vr.refundAmount || vr.total || 0), 0)
       );
 
@@ -307,18 +328,18 @@ const KhataLedger = ({
           const prevBal = Math.round(Number(vendor.previousBalance || vendor.openingBalance || vendor.balance || 0));
           
           const totalPurchases = masterPurchasesList
-            .filter((p) => isVendorMatch(p, vName))
+            .filter((p) => isVendorMatch(p, vendor))
             .reduce((sum, p) => sum + getPurchaseAmount(p), 0);
             
           const totalPaid = Math.round(
             masterVendorPaymentsList
-              .filter((vp) => isVendorMatch(vp, vName))
+              .filter((vp) => isVendorMatch(vp, vendor))
               .reduce((sum, vp) => sum + Number(vp.amount || 0), 0)
           );
             
           const totalReturned = Math.round(
             vendorReturns
-              .filter((vr) => isVendorMatch(vr, vName))
+              .filter((vr) => isVendorMatch(vr, vendor))
               .reduce((sum, vr) => sum + Number(vr.refundAmount || vr.total || 0), 0)
           );
 
@@ -468,9 +489,9 @@ const KhataLedger = ({
     }
 
     const customerSales = sales
-      .filter((sale) => isCustomerMatch(sale, selectedCustomer.name))
+      .filter((sale) => isCustomerMatch(sale, selectedCustomer))
       .map((sale) => ({
-        date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
+        date: sale.date || (sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('en-CA') : '-'),
         type: 'Invoice',
         reference: sale.invoiceNo || sale.billNo || '-',
         description: 'Goods Supplied on Credit Khata',
@@ -479,9 +500,9 @@ const KhataLedger = ({
       }));
 
     const customerPayments = payments
-      .filter((payment) => isCustomerMatch(payment, selectedCustomer.name))
+      .filter((payment) => isCustomerMatch(payment, selectedCustomer))
       .map((payment) => ({
-        date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
+        date: payment.date || (payment.createdAt ? new Date(payment.createdAt).toLocaleDateString('en-CA') : '-'),
         type: 'Recovery',
         reference: payment.receiptNo || payment.reference || '-',
         description: payment.paymentMethod ? `Cash Received via ${payment.paymentMethod}` : 'Cash Recovery Payment',
@@ -490,9 +511,9 @@ const KhataLedger = ({
       }));
 
     const customerReturns = returns
-      .filter((returnItem) => isCustomerMatch(returnItem, selectedCustomer.name))
+      .filter((returnItem) => isCustomerMatch(returnItem, selectedCustomer))
       .map((returnItem) => ({
-        date: returnItem.date || new Date(returnItem.createdAt).toLocaleDateString('en-CA'),
+        date: returnItem.date || (returnItem.createdAt ? new Date(returnItem.createdAt).toLocaleDateString('en-CA') : '-'),
         type: 'Return',
         reference: returnItem.returnNo || '-',
         description: 'Product Returned (Credit Adjustment)',
@@ -522,13 +543,13 @@ const KhataLedger = ({
     }
 
     // Filter purchases belonging to selected vendor
-    const filteredPurchases = masterPurchasesList.filter((p) => isVendorMatch(p, selectedVendor.name));
+    const filteredPurchases = masterPurchasesList.filter((p) => isVendorMatch(p, selectedVendor));
 
     // Group purchases by Date
     const groupedPurchasesMap = {};
     filteredPurchases.forEach((p) => {
       const pDate = p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-CA') : 'Other');
-      const amt = getPurchaseAmount(p); // Already rounded
+      const amt = getPurchaseAmount(p);
       let itemCnt = 0;
       if (Array.isArray(p.items)) itemCnt = p.items.length;
       else if (p.totalItems) itemCnt = Number(p.totalItems);
@@ -546,7 +567,6 @@ const KhataLedger = ({
       groupedPurchasesMap[pDate].totalItems += itemCnt;
     });
 
-    // Convert grouped purchases object to history array
     const groupedPurchasesList = Object.values(groupedPurchasesMap).map((grp) => ({
       date: grp.date,
       type: 'Stock Purchase',
@@ -557,7 +577,7 @@ const KhataLedger = ({
     }));
 
     const vPayments = masterVendorPaymentsList
-      .filter((vp) => isVendorMatch(vp, selectedVendor.name))
+      .filter((vp) => isVendorMatch(vp, selectedVendor))
       .map((vp) => ({
         date: vp.date || (vp.createdAt ? new Date(vp.createdAt).toLocaleDateString('en-CA') : '-'),
         type: 'Vendor Payment',
@@ -568,7 +588,7 @@ const KhataLedger = ({
       }));
 
     const vReturns = vendorReturns
-      .filter((vr) => isVendorMatch(vr, selectedVendor.name))
+      .filter((vr) => isVendorMatch(vr, selectedVendor))
       .map((vr) => ({
         date: vr.date || (vr.createdAt ? new Date(vr.createdAt).toLocaleDateString('en-CA') : '-'),
         type: 'Purchase Return',
@@ -600,12 +620,12 @@ const KhataLedger = ({
         if (item.previousBalance > 0) {
           printHistory.push({ date: '-', type: 'Opening Balance', reference: '-', debit: Math.round(item.previousBalance), credit: 0 });
         }
-        const salesList = sales.filter((s) => isCustomerMatch(s, item.name))
-          .map(s => ({ date: s.date || new Date(s.createdAt).toLocaleDateString('en-CA'), type: 'Invoice', reference: s.invoiceNo || '-', debit: Math.round(Number(s.netTotal || s.netAmount || s.grandTotal || 0)), credit: 0 }));
-        const payList = payments.filter((p) => isCustomerMatch(p, item.name))
-          .map(p => ({ date: p.date || new Date(p.createdAt).toLocaleDateString('en-CA'), type: 'Recovery', reference: p.receiptNo || '-', debit: 0, credit: Math.round(Number(p.amount || 0)) }));
-        const retList = returns.filter((r) => isCustomerMatch(r, item.name))
-          .map(r => ({ date: r.date || new Date(r.createdAt).toLocaleDateString('en-CA'), type: 'Return', reference: r.returnNo || '-', debit: 0, credit: Math.round(Number(r.refundAmount || 0)) }));
+        const salesList = sales.filter((s) => isCustomerMatch(s, item))
+          .map(s => ({ date: s.date || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Invoice', reference: s.invoiceNo || '-', debit: Math.round(Number(s.netTotal || s.netAmount || s.grandTotal || 0)), credit: 0 }));
+        const payList = payments.filter((p) => isCustomerMatch(p, item))
+          .map(p => ({ date: p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Recovery', reference: p.receiptNo || '-', debit: 0, credit: Math.round(Number(p.amount || 0)) }));
+        const retList = returns.filter((r) => isCustomerMatch(r, item))
+          .map(r => ({ date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Return', reference: r.returnNo || '-', debit: 0, credit: Math.round(Number(r.refundAmount || 0)) }));
         
         printHistory = [...printHistory, ...salesList, ...payList, ...retList].sort((a,b) => new Date(a.date) - new Date(b.date));
       } else {
@@ -613,8 +633,7 @@ const KhataLedger = ({
           printHistory.push({ date: '-', type: 'Opening Balance', reference: '-', debit: Math.round(item.previousBalance), credit: 0 });
         }
         
-        // Group vendor purchases date-wise for clean printout
-        const vPurchases = masterPurchasesList.filter((p) => isVendorMatch(p, item.name));
+        const vPurchases = masterPurchasesList.filter((p) => isVendorMatch(p, item));
         const groupedPrintPurchases = {};
         vPurchases.forEach((p) => {
           const pDate = p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-CA') : 'Other');
@@ -633,10 +652,10 @@ const KhataLedger = ({
           credit: 0
         }));
 
-        const vPayList = masterVendorPaymentsList.filter((vp) => isVendorMatch(vp, item.name))
-          .map(vp => ({ date: vp.date || new Date(vp.createdAt).toLocaleDateString('en-CA'), type: 'Payment', reference: vp.receiptNo || '-', debit: 0, credit: Math.round(Number(vp.amount || 0)) }));
-        const vRetList = vendorReturns.filter((vr) => isVendorMatch(vr, item.name))
-          .map(vr => ({ date: vr.date || new Date(vr.createdAt).toLocaleDateString('en-CA'), type: 'Purchase Return', reference: vr.returnNo || '-', debit: 0, credit: Math.round(Number(vr.refundAmount || 0)) }));
+        const vPayList = masterVendorPaymentsList.filter((vp) => isVendorMatch(vp, item))
+          .map(vp => ({ date: vp.date || (vp.createdAt ? new Date(vp.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Payment', reference: vp.receiptNo || '-', debit: 0, credit: Math.round(Number(vp.amount || 0)) }));
+        const vRetList = vendorReturns.filter((vr) => isVendorMatch(vr, item))
+          .map(vr => ({ date: vr.date || (vr.createdAt ? new Date(vr.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Purchase Return', reference: vr.returnNo || '-', debit: 0, credit: Math.round(Number(vr.refundAmount || 0)) }));
         
         printHistory = [...printHistory, ...purList, ...vPayList, ...vRetList].sort((a,b) => new Date(a.date) - new Date(b.date));
       }
@@ -755,611 +774,534 @@ const KhataLedger = ({
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.setAttribute('href', url);
-    a.setAttribute('download', `${isCust ? 'Customer' : 'Vendor'}_Khata_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
+    a.setAttribute('download', `${isCust ? 'Customer' : 'Vendor'}_Khata_Ledger.csv`);
     a.click();
   };
 
   return (
-    <PageShell title="Accounts Khata Ledger">
-      <div className="space-y-6 pb-12 relative">
-        
-        {/* CUSTOM DARK THEME TOAST NOTIFICATION */}
-        {toast && (
-          <div className="fixed top-5 right-5 z-50 transition-all duration-300 animate-slide-in">
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold ${
-              toast.type === 'success' 
-                ? 'bg-slate-900/90 text-emerald-400 border-emerald-500/30' 
-                : toast.type === 'warning'
-                ? 'bg-slate-900/90 text-amber-400 border-amber-500/30'
-                : 'bg-slate-900/90 text-rose-400 border-rose-500/30'
-            }`}>
-              {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-              {toast.type === 'warning' && <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />}
-              {toast.type === 'error' && <X className="w-4 h-4 text-rose-400 shrink-0" />}
-              <span>{toast.message}</span>
-            </div>
-          </div>
+    <PageShell title="Khata & Ledger Management">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg shadow-xl text-white font-medium flex items-center gap-2 transition-all duration-300 ${
+          toast.type === 'error' ? 'bg-red-600' : toast.type === 'warning' ? 'bg-amber-600' : 'bg-emerald-600'
+        }`}>
+          <AlertCircle className="w-5 h-5" />
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* Header Tabs & Actions */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <button
+            onClick={() => { setActiveTab('customers'); setSelectedCustomer(null); }}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+              activeTab === 'customers'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Customer Khata
+          </button>
+          <button
+            onClick={() => { setActiveTab('vendors'); setSelectedVendor(null); }}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+              activeTab === 'vendors'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            Vendor / Supplier Khata
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={handleRefreshData}
+            className={`p-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+            title="Refresh Data"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={exportToCSV}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-lg hover:bg-slate-50 text-sm transition-all shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Analytics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {activeTab === 'customers' ? (
+          <>
+            <Card className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200/60">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-amber-600 tracking-wider">Total Outstanding Arrears</p>
+                  <h3 className="text-2xl font-bold text-amber-900 mt-1">{formatRs(ledgerMetrics.totalOutstanding)}</h3>
+                </div>
+                <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
+                  <Wallet className="w-5 h-5" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200/60">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-emerald-600 tracking-wider">Recovered This Month</p>
+                  <h3 className="text-2xl font-bold text-emerald-900 mt-1">{formatRs(ledgerMetrics.totalRecoveredThisMonth)}</h3>
+                </div>
+                <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200/60">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-blue-600 tracking-wider">Active Debtors</p>
+                  <h3 className="text-2xl font-bold text-blue-900 mt-1">{ledgerMetrics.activeDebtorsCount} Accounts</h3>
+                </div>
+                <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                  <Users className="w-5 h-5" />
+                </div>
+              </div>
+            </Card>
+          </>
+        ) : (
+          <>
+            <Card className="p-4 bg-gradient-to-br from-red-50 to-rose-50 border-red-200/60">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-red-600 tracking-wider">Total Supplier Payable</p>
+                  <h3 className="text-2xl font-bold text-red-900 mt-1">{formatRs(vendorMetrics.totalPayable)}</h3>
+                </div>
+                <div className="p-2 bg-red-100 rounded-lg text-red-600">
+                  <Wallet className="w-5 h-5" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200/60">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-indigo-600 tracking-wider">Paid to Vendors (Month)</p>
+                  <h3 className="text-2xl font-bold text-indigo-900 mt-1">{formatRs(vendorMetrics.totalPaidThisMonth)}</h3>
+                </div>
+                <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-gradient-to-br from-slate-50 to-zinc-50 border-slate-200/60">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-600 tracking-wider">Active Creditors</p>
+                  <h3 className="text-2xl font-bold text-slate-900 mt-1">{vendorMetrics.activeCreditorsCount} Vendors</h3>
+                </div>
+                <div className="p-2 bg-slate-200/60 rounded-lg text-slate-700">
+                  <Truck className="w-5 h-5" />
+                </div>
+              </div>
+            </Card>
+          </>
         )}
+      </div>
 
-        {/* TOP TABS & GLOBAL ACTIONS */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/60 p-2 rounded-2xl border border-slate-800 backdrop-blur-md">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => { setActiveTab('vendors'); setSelectedCustomer(null); }}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'vendors'
-                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/25 border border-indigo-500/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Truck className="w-4 h-4" />
-              <span>Vendors / Suppliers</span>
-              <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-950/50 text-indigo-300 border border-indigo-500/20">
-                {masterVendorsList.length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('customers'); setSelectedVendor(null); }}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'customers'
-                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/25 border border-indigo-500/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>Customer</span>
-              <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-950/50 text-indigo-300 border border-indigo-500/20">
-                {customers.length}
-              </span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <button
-              onClick={handleRefreshData}
-              className="p-2.5 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl border border-slate-700/50 transition-all"
-              title="Refresh Data"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
-            </button>
-
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl border border-slate-700/50 transition-all"
-            >
-              <Download className="w-4 h-4 text-slate-400" />
-              <span>Export CSV</span>
-            </button>
-          </div>
-        </div>
-
-        {/* METRICS SUMMARY CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {activeTab === 'customers' ? (
-            <>
-              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Customer Arrears</p>
-                    <h3 className="text-2xl font-black text-amber-400 mt-1">Rs. {formatRs(ledgerMetrics.totalOutstanding)}</h3>
-                  </div>
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-400">
-                    <Wallet className="w-6 h-6" />
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Monthly Recovery</p>
-                    <h3 className="text-2xl font-black text-emerald-400 mt-1">Rs. {formatRs(ledgerMetrics.totalRecoveredThisMonth)}</h3>
-                  </div>
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400">
-                    <CheckCircle2 className="w-6 h-6" />
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Customer</p>
-                    <h3 className="text-2xl font-black text-indigo-400 mt-1">{ledgerMetrics.activeDebtorsCount} Accounts</h3>
-                  </div>
-                  <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
-                    <Users className="w-6 h-6" />
-                  </div>
-                </div>
-              </Card>
-            </>
-          ) : (
-            <>
-              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Vendor Payables</p>
-                    <h3 className="text-2xl font-black text-rose-400 mt-1">Rs. {formatRs(vendorMetrics.totalPayable)}</h3>
-                  </div>
-                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400">
-                    <CreditCard className="w-6 h-6" />
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Paid This Month</p>
-                    <h3 className="text-2xl font-black text-emerald-400 mt-1">Rs. {formatRs(vendorMetrics.totalPaidThisMonth)}</h3>
-                  </div>
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400">
-                    <CheckCircle2 className="w-6 h-6" />
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="bg-slate-900/40 border-slate-800/80 p-5 rounded-2xl relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Creditors</p>
-                    <h3 className="text-2xl font-black text-indigo-400 mt-1">{vendorMetrics.activeCreditorsCount} Vendors</h3>
-                  </div>
-                  <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
-                    <Truck className="w-6 h-6" />
-                  </div>
-                </div>
-              </Card>
-            </>
-          )}
-        </div>
-
-        {/* SEARCH AND FILTERS BAR */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
-          <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+      {/* Main Table View */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-4">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
+              placeholder={`Search ${activeTab === 'customers' ? 'Customers' : 'Vendors'}...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={`Search ${activeTab === 'customers' ? 'Customers' : 'Vendors'} by name, shop or phone...`}
-              className="w-full bg-slate-950/60 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
+              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => setFilterType('all')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                filterType === 'all'
-                  ? 'bg-slate-800 border-indigo-500/50 text-indigo-400'
-                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filterType === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
-              All Records
+              All
             </button>
             <button
               onClick={() => setFilterType('debtors')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                filterType === 'debtors'
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filterType === 'debtors' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
-              Pending Balances
+              {activeTab === 'customers' ? 'With Balance' : 'Payable Only'}
             </button>
             <button
               onClick={() => setFilterType('clear')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                filterType === 'clear'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filterType === 'clear' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
-              Clear / Zero Balances
+              Clear
             </button>
           </div>
         </div>
 
-        {/* MAIN DATA TABLE */}
-        <Card className="bg-slate-900/40 border-slate-800 rounded-2xl overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-900/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">{activeTab === 'customers' ? 'Customer Name' : 'Vendor / Supplier'}</th>
-                  <th className="py-3.5 px-4">{activeTab === 'customers' ? 'Shop Name' : 'Company Name'}</th>
-                  <th className="py-3.5 px-4">Phone / City</th>
-                  <th className="py-3.5 px-4 text-right">Prev Balance</th>
-                  <th className="py-3.5 px-4 text-right">{activeTab === 'customers' ? 'Total Sales' : 'Total Purchases'}</th>
-                  <th className="py-3.5 px-4 text-right">Total Paid</th>
-                  <th className="py-3.5 px-4 text-right">Net Balance</th>
-                  <th className="py-3.5 px-4 text-center">Actions</th>
+        <DataTable
+          columns={
+            activeTab === 'customers'
+              ? [
+                  { header: 'Customer', accessor: (r) => (
+                    <div>
+                      <div className="font-semibold text-slate-800">{r.name}</div>
+                      <div className="text-xs text-slate-400">{r.shopName}</div>
+                    </div>
+                  )},
+                  { header: 'Contact', accessor: (r) => (
+                    <div className="text-xs text-slate-600">
+                      <div>{r.phone}</div>
+                      <div className="text-slate-400">{r.area}</div>
+                    </div>
+                  )},
+                  { header: 'Prev. Balance', accessor: (r) => <span className="font-medium">{formatRs(r.previousBalance)}</span> },
+                  { header: 'Sales', accessor: (r) => <span className="text-blue-600 font-medium">{formatRs(r.totalSales)}</span> },
+                  { header: 'Recovered', accessor: (r) => <span className="text-emerald-600 font-medium">{formatRs(r.totalPaid)}</span> },
+                  { header: 'Net Balance', accessor: (r) => (
+                    <span className={`font-bold ${r.balance > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {formatRs(r.balance)}
+                    </span>
+                  )},
+                  { header: 'Actions', accessor: (r) => (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setSelectedCustomer(r)}
+                        className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-blue-600"
+                        title="View Ledger Statement"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handlePrintLedger(r, 'customer')}
+                        className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-emerald-600"
+                        title="Print Statement"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            onClick={() => { setEditingItem(r); setNewPrevBalance(r.previousBalance); }}
+                            className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-amber-600"
+                            title="Edit Prev Balance"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingItem(r)}
+                            className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-rose-600"
+                            title="Delete Record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                ]
+              : [
+                  { header: 'Vendor / Supplier', accessor: (r) => (
+                    <div>
+                      <div className="font-semibold text-slate-800">{r.name}</div>
+                      <div className="text-xs text-slate-400">{r.companyName}</div>
+                    </div>
+                  )},
+                  { header: 'Contact', accessor: (r) => (
+                    <div className="text-xs text-slate-600">
+                      <div>{r.phone}</div>
+                      <div className="text-slate-400">{r.city}</div>
+                    </div>
+                  )},
+                  { header: 'Prev. Balance', accessor: (r) => <span className="font-medium">{formatRs(r.previousBalance)}</span> },
+                  { header: 'Purchases', accessor: (r) => <span className="text-blue-600 font-medium">{formatRs(r.totalPurchases)}</span> },
+                  { header: 'Total Paid', accessor: (r) => <span className="text-emerald-600 font-medium">{formatRs(r.totalPaid)}</span> },
+                  { header: 'Net Payable', accessor: (r) => (
+                    <span className={`font-bold ${r.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {formatRs(r.balance)}
+                    </span>
+                  )},
+                  { header: 'Actions', accessor: (r) => (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setSelectedVendor(r)}
+                        className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-blue-600"
+                        title="View Vendor Ledger"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setPayingVendor(r)}
+                        className="px-2 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded text-xs font-semibold transition-all flex items-center gap-1"
+                      >
+                        <Wallet className="w-3 h-3" /> Pay
+                      </button>
+                      <button
+                        onClick={() => handlePrintLedger(r, 'vendor')}
+                        className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-emerald-600"
+                        title="Print Statement"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            onClick={() => { setEditingItem(r); setNewPrevBalance(r.previousBalance); }}
+                            className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-amber-600"
+                            title="Edit Prev Balance"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingItem(r)}
+                            className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-rose-600"
+                            title="Delete Record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                ]
+          }
+          data={activeTab === 'customers' ? customerRows : vendorRows}
+        />
+      </Card>
+
+      {/* Customer History Modal */}
+      {selectedCustomer && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-4 mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">{selectedCustomer.name}</h2>
+                <p className="text-xs text-slate-500">Customer Statement / Khata History</p>
+              </div>
+              <button onClick={() => setSelectedCustomer(null)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-100 font-semibold text-slate-700">
+                <tr>
+                  <th className="p-2">Date</th>
+                  <th className="p-2">Type</th>
+                  <th className="p-2">Ref</th>
+                  <th className="p-2 text-right">Debit</th>
+                  <th className="p-2 text-right">Credit</th>
+                  <th className="p-2 text-right">Balance</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-xs text-slate-300">
-                {(activeTab === 'customers' ? customerRows : vendorRows).length === 0 ? (
-                  <tr>
-                    <td colSpan="8" className="py-8 text-center text-slate-500">
-                      No {activeTab === 'customers' ? 'customer' : 'vendor'} records found.
-                    </td>
-                  </tr>
-                ) : (
-                  (activeTab === 'customers' ? customerRows : vendorRows).map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-3 px-4 font-semibold text-white">{row.name}</td>
-                      <td className="py-3 px-4 text-slate-400">{row.shopName || row.companyName}</td>
-                      <td className="py-3 px-4 text-slate-400">
-                        <div>{row.phone}</div>
-                        <div className="text-[10px] text-slate-500">{row.area || row.city}</div>
-                      </td>
-                      <td className="py-3 px-4 text-right text-slate-400 font-medium">Rs. {formatRs(row.previousBalance)}</td>
-                      <td className="py-3 px-4 text-right text-indigo-400 font-medium">Rs. {formatRs(row.totalSales || row.totalPurchases)}</td>
-                      <td className="py-3 px-4 text-right text-emerald-400 font-medium">Rs. {formatRs(row.totalPaid)}</td>
-                      <td className="py-3 px-4 text-right font-black">
-                        <span className={`px-2.5 py-1 rounded-lg text-xs ${
-                          row.balance > 0 
-                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' 
-                            : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          Rs. {formatRs(row.balance)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Pay Vendor Button */}
-                          {activeTab === 'vendors' && (
-                            <button
-                              onClick={() => {
-                                setPayingVendor(row);
-                                setPaymentAmount('');
-                                setPaymentNotes('');
-                              }}
-                              className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg transition-all"
-                              title="Pay Supplier"
-                            >
-                              <Wallet className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          {/* View Statement Button */}
-                          <button
-                            onClick={() => {
-                              if (activeTab === 'customers') setSelectedCustomer(row);
-                              else setSelectedVendor(row);
-                            }}
-                            className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-lg transition-all"
-                            title="View Statement"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Print Ledger Button */}
-                          <button
-                            onClick={() => handlePrintLedger(row, activeTab === 'customers' ? 'customer' : 'vendor')}
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-all"
-                            title="Print Ledger"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Edit Prev Balance (Admin) */}
-                          {isAdmin && (
-                            <button
-                              onClick={() => {
-                                setEditingItem(row);
-                                setNewPrevBalance(row.previousBalance);
-                              }}
-                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition-all"
-                              title="Edit Previous Balance"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          {/* Delete Record (Admin) */}
-                          {isAdmin && (
-                            <button
-                              onClick={() => setDeletingItem(row)}
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg transition-all"
-                              title="Delete Record"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
+              <tbody>
+                {(() => {
+                  let runBal = 0;
+                  return customerHistory.map((h, idx) => {
+                    runBal += (h.debit - h.credit);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-slate-50">
+                        <td className="p-2 text-slate-600">{h.date}</td>
+                        <td className="p-2 font-medium text-slate-800">{h.type}</td>
+                        <td className="p-2 text-slate-500">{h.reference}</td>
+                        <td className="p-2 text-right font-medium text-slate-800">{h.debit > 0 ? formatRs(h.debit) : '-'}</td>
+                        <td className="p-2 text-right font-medium text-emerald-600">{h.credit > 0 ? formatRs(h.credit) : '-'}</td>
+                        <td className="p-2 text-right font-bold text-slate-900">{formatRs(runBal)}</td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
+      )}
 
-        {/* MODAL: CUSTOMER STATEMENT DETAIL */}
-        {selectedCustomer && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh] shadow-2xl">
-              <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-indigo-400" />
-                    <span>Customer Statement: {selectedCustomer.name}</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{selectedCustomer.shopName} | Phone: {selectedCustomer.phone}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handlePrintLedger(selectedCustomer, 'customer')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-all"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Print Statement</span>
-                  </button>
-                  <button
-                    onClick={() => setSelectedCustomer(null)}
-                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
+      {/* Vendor History Modal */}
+      {selectedVendor && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-4 mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">{selectedVendor.name}</h2>
+                <p className="text-xs text-slate-500">Vendor Statement / Purchase History</p>
               </div>
-
-              <div className="p-4 overflow-y-auto space-y-4">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950/50 text-[10px] font-bold text-slate-400 uppercase">
-                      <th className="py-2.5 px-3">Date</th>
-                      <th className="py-2.5 px-3">Type</th>
-                      <th className="py-2.5 px-3">Reference No</th>
-                      <th className="py-2.5 px-3 text-right">Debit (Sales)</th>
-                      <th className="py-2.5 px-3 text-right">Credit (Paid)</th>
-                      <th className="py-2.5 px-3 text-right">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {(() => {
-                      let runningBal = 0;
-                      return customerHistory.map((item, idx) => {
-                        runningBal += (item.debit - item.credit);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-800/20">
-                            <td className="py-2.5 px-3 text-slate-400">{item.date}</td>
-                            <td className="py-2.5 px-3 font-semibold text-slate-200">{item.type}</td>
-                            <td className="py-2.5 px-3 text-slate-400">{item.reference}</td>
-                            <td className="py-2.5 px-3 text-right text-rose-400">{item.debit > 0 ? `Rs. ${formatRs(item.debit)}` : '-'}</td>
-                            <td className="py-2.5 px-3 text-right text-emerald-400">{item.credit > 0 ? `Rs. ${formatRs(item.credit)}` : '-'}</td>
-                            <td className="py-2.5 px-3 text-right font-bold text-amber-400">Rs. {formatRs(runningBal)}</td>
-                          </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+              <button onClick={() => setSelectedVendor(null)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
             </div>
+
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-100 font-semibold text-slate-700">
+                <tr>
+                  <th className="p-2">Date</th>
+                  <th className="p-2">Type</th>
+                  <th className="p-2">Description</th>
+                  <th className="p-2 text-right">Debit</th>
+                  <th className="p-2 text-right">Credit</th>
+                  <th className="p-2 text-right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  let runBal = 0;
+                  return vendorHistory.map((h, idx) => {
+                    runBal += (h.debit - h.credit);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-slate-50">
+                        <td className="p-2 text-slate-600">{h.date}</td>
+                        <td className="p-2 font-medium text-slate-800">{h.type}</td>
+                        <td className="p-2 text-slate-500">{h.description}</td>
+                        <td className="p-2 text-right font-medium text-slate-800">{h.debit > 0 ? formatRs(h.debit) : '-'}</td>
+                        <td className="p-2 text-right font-medium text-emerald-600">{h.credit > 0 ? formatRs(h.credit) : '-'}</td>
+                        <td className="p-2 text-right font-bold text-slate-900">{formatRs(runBal)}</td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* MODAL: VENDOR STATEMENT DETAIL */}
-        {selectedVendor && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh] shadow-2xl">
-              <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Truck className="w-4 h-4 text-indigo-400" />
-                    <span>Vendor Statement: {selectedVendor.name}</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{selectedVendor.companyName} | Phone: {selectedVendor.phone}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handlePrintLedger(selectedVendor, 'vendor')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-all"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Print Statement</span>
-                  </button>
-                  <button
-                    onClick={() => setSelectedVendor(null)}
-                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 overflow-y-auto space-y-4">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950/50 text-[10px] font-bold text-slate-400 uppercase">
-                      <th className="py-2.5 px-3">Date</th>
-                      <th className="py-2.5 px-3">Type</th>
-                      <th className="py-2.5 px-3">Description</th>
-                      <th className="py-2.5 px-3 text-right">Debit (Purchases)</th>
-                      <th className="py-2.5 px-3 text-right">Credit (Payments)</th>
-                      <th className="py-2.5 px-3 text-right">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {(() => {
-                      let runningBal = 0;
-                      return vendorHistory.map((item, idx) => {
-                        runningBal += (item.debit - item.credit);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-800/20">
-                            <td className="py-2.5 px-3 text-slate-400">{item.date}</td>
-                            <td className="py-2.5 px-3 font-semibold text-slate-200">{item.type}</td>
-                            <td className="py-2.5 px-3 text-slate-400">{item.description}</td>
-                            <td className="py-2.5 px-3 text-right text-indigo-400">{item.debit > 0 ? `Rs. ${formatRs(item.debit)}` : '-'}</td>
-                            <td className="py-2.5 px-3 text-right text-emerald-400">{item.credit > 0 ? `Rs. ${formatRs(item.credit)}` : '-'}</td>
-                            <td className="py-2.5 px-3 text-right font-bold text-amber-400">Rs. {formatRs(runningBal)}</td>
-                          </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+      {/* Pay Vendor Modal */}
+      {payingVendor && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-3 mb-4">
+              <h3 className="font-bold text-slate-800">Pay Supplier / Vendor</h3>
+              <button onClick={() => setPayingVendor(null)}>
+                <X className="w-5 h-5 text-slate-400 hover:text-slate-600" />
+              </button>
             </div>
-          </div>
-        )}
 
-        {/* MODAL: PAY VENDOR */}
-        {payingVendor && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
-              <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-emerald-400" />
-                  <span>Pay Supplier: {payingVendor.name}</span>
-                </h3>
-                <button
-                  onClick={() => setPayingVendor(null)}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmitVendorPayment} className="p-4 space-y-4">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Current Balance Due
-                  </label>
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-lg font-black text-amber-400">
-                    Rs. {formatRs(payingVendor.balance)}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Payment Amount (Rs.)
-                  </label>
-                  <input
-                    type="number"
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
-                    placeholder="Enter amount to pay..."
-                    required
-                    min="1"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Payment Method
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Easypaisa / JazzCash">Easypaisa / JazzCash</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Notes / Reference (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={paymentNotes}
-                    onChange={(e) => setPaymentNotes(e.target.value)}
-                    placeholder="e.g., Paid via Meezan Bank..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setPayingVendor(null)}
-                    className="px-4 py-2 bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isProcessingPayment}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    {isProcessingPayment ? 'Processing...' : 'Confirm Payment'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: EDIT PREVIOUS BALANCE */}
-        {editingItem && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-xs font-bold text-white">Edit Opening/Prev Balance</h3>
-                <button onClick={() => setEditingItem(null)} className="text-slate-400 hover:text-white">
-                  <X className="w-4 h-4" />
-                </button>
+            <form onSubmit={handleSubmitVendorPayment} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Vendor Name</label>
+                <input type="text" disabled value={payingVendor.name} className="w-full mt-1 p-2 bg-slate-100 border rounded-lg text-sm text-slate-700 font-medium" />
               </div>
 
               <div>
-                <p className="text-xs text-slate-400 mb-2">Adjust previous balance for <strong className="text-white">{editingItem.name}</strong>:</p>
+                <label className="text-xs font-semibold text-slate-600">Payment Amount (Rs)</label>
                 <input
                   type="number"
-                  value={newPrevBalance}
-                  onChange={(e) => setNewPrevBalance(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                  placeholder="Enter previous balance"
+                  required
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="Enter Amount"
+                  className="w-full mt-1 p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setEditingItem(null)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs font-semibold">
-                  Cancel
-                </button>
-                <button onClick={handleSavePreviousBalance} disabled={isSaving} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold">
-                  {isSaving ? 'Saving...' : 'Save Balance'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: DELETE RECORD */}
-        {deletingItem && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
-              <div className="flex items-center gap-2 text-rose-400 border-b border-slate-800 pb-3">
-                <AlertCircle className="w-5 h-5" />
-                <h3 className="text-xs font-bold text-white">Delete Ledger Account</h3>
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full mt-1 p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Cheque">Cheque</option>
+                </select>
               </div>
 
-              <p className="text-xs text-slate-300">
-                Kya aap waqai <strong className="text-white">{deletingItem.name}</strong> ko delete karna chahte hain? Yeh action revert nahi ho sakta.
-              </p>
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Notes / Remarks</label>
+                <input
+                  type="text"
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  placeholder="Optional details"
+                  className="w-full mt-1 p-2 border rounded-lg text-sm"
+                />
+              </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setDeletingItem(null)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setPayingVendor(null)}
+                  className="px-4 py-2 border rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
                   Cancel
                 </button>
-                <button onClick={handleDeleteRecord} disabled={isDeleting} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold">
-                  {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+                <button
+                  type="submit"
+                  disabled={isProcessingPayment}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                >
+                  {isProcessingPayment ? 'Saving...' : 'Confirm Payment'}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Previous Balance Modal */}
+      {editingItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+            <h3 className="font-bold text-slate-800 mb-2">Edit Opening Balance</h3>
+            <p className="text-xs text-slate-500 mb-4">{editingItem.name}</p>
+
+            <input
+              type="number"
+              value={newPrevBalance}
+              onChange={(e) => setNewPrevBalance(e.target.value)}
+              className="w-full p-2 border rounded-lg text-sm mb-4"
+              placeholder="Enter new previous balance"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEditingItem(null)} className="px-3 py-1.5 border rounded-lg text-xs font-medium">Cancel</button>
+              <button
+                onClick={handleSavePreviousBalance}
+                disabled={isSaving}
+                className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium"
+              >
+                {isSaving ? 'Saving...' : 'Update Balance'}
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-      </div>
+      {/* Delete Confirmation Modal */}
+      {deletingItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
+            <AlertCircle className="w-10 h-10 text-rose-600 mx-auto mb-2" />
+            <h3 className="font-bold text-slate-800">Confirm Record Deletion</h3>
+            <p className="text-xs text-slate-500 my-2">Kya aap waqai <b>{deletingItem.name}</b> ka record hamesha k liye delete karna chahte hain?</p>
+
+            <div className="flex justify-center gap-2 mt-4">
+              <button onClick={() => setDeletingItem(null)} className="px-4 py-2 border rounded-lg text-xs font-medium">Cancel</button>
+              <button
+                onClick={handleDeleteRecord}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-rose-600 text-white rounded-lg text-xs font-medium"
+              >
+                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 };
