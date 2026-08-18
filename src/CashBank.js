@@ -57,16 +57,23 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return String(userRole || '').trim().toLowerCase() === 'admin';
   }, [userRole]);
 
-  // --- FIREBASE LIVE FETCH ON MOUNT WITH AUTO CODE ALLOCATION FOR OLD ENTRIES ---
+  // --- FIREBASE FETCH WITH DEDUPLICATION (PREVENTS DUPES ON UI) ---
   useEffect(() => {
     const fetchCashDataFromFirebase = async () => {
       try {
         if (!db) return;
         const querySnapshot = await getDocs(collection(db, "cashData"));
         const firebaseCash = [];
+        const seenIds = new Set();
         let indexCounter = 1000;
 
         for (const docSnap of querySnapshot.docs) {
+          const docId = docSnap.id;
+          
+          // Avoid pushing same document twice
+          if (seenIds.has(docId)) continue;
+          seenIds.add(docId);
+
           const data = docSnap.data();
           let allocatedTxnId = data.transactionId;
 
@@ -75,22 +82,20 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
             indexCounter += 1;
             allocatedTxnId = `TXN-OLD-${indexCounter}`;
             try {
-              await updateDoc(doc(db, "cashData", docSnap.id), { transactionId: allocatedTxnId });
+              await updateDoc(doc(db, "cashData", docId), { transactionId: allocatedTxnId });
             } catch (err) {
               console.error("Auto Code Allocation Error:", err);
             }
           }
 
           firebaseCash.push({
-            id: docSnap.id,
+            id: docId,
             ...data,
             transactionId: allocatedTxnId
           });
         }
 
-        if (firebaseCash.length > 0) {
-          setCashData(firebaseCash);
-        }
+        setCashData(firebaseCash);
       } catch (error) {
         console.error("Firebase Cash Fetch Error:", error);
       }
@@ -131,7 +136,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return sortedCashData.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedCashData, currentPage, itemsPerPage]);
 
-  // Firebase Direct Delete Helper Function (Fixed Document ID Resolution)
+  // Firebase Direct Delete Helper Function
   const deleteFromFirebaseDB = async (item) => {
     const targetId = item?.id || item?._id;
     if (!targetId || !db) {
@@ -175,7 +180,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
       if (db) {
         await setDoc(doc(db, 'cashData', customId), newEntry);
       }
-      setCashData([newEntry, ...cashData]);
+      setCashData((prev) => [newEntry, ...prev]);
       showToast('Transaction added successfully!', 'success');
       setForm({
         transactionId: generateTransactionId(),
@@ -244,11 +249,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
       setCashData((prevCashData) =>
         prevCashData.map((item) => {
           const itemId = item.id || item._id;
-          const isTarget = targetId 
-            ? itemId === targetId 
-            : (item.date === editingItem.date && item.description === editingItem.description && Number(item.amount) === Number(editingItem.amount));
-
-          return isTarget ? { ...item, ...updatedData } : item;
+          return itemId === targetId ? { ...item, ...updatedData } : item;
         })
       );
 
@@ -283,25 +284,14 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     setLoading(true);
 
     try {
-      // Direct Firebase Firestore Sync Deletion
+      const targetId = deletingItem.id || deletingItem._id;
+      
+      // Delete directly from Firestore
       await deleteFromFirebaseDB(deletingItem);
 
-      const targetId = deletingItem.id || deletingItem._id;
-
-      // Update Parent / Local State Array
+      // Remove item from state by exact ID match
       setCashData((prevCashData) =>
-        prevCashData.filter((item) => {
-          const itemId = item.id || item._id;
-          if (targetId && itemId && itemId === targetId) {
-            return false;
-          }
-          const isSameEntry =
-            item.date === deletingItem.date &&
-            item.description === deletingItem.description &&
-            Number(item.amount) === Number(deletingItem.amount);
-
-          return !isSameEntry;
-        })
+        prevCashData.filter((item) => (item.id || item._id) !== targetId)
       );
 
       showToast('Transaction Entry has been deleted permanently', 'success');
@@ -338,7 +328,6 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
             <div class="title">${isReceipt ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}</div>
             <div class="sub-title">Naveed & Zeeshan Traders Address A Rakha Colony, Mailsi</div>
             <div class="line"></div>
-            <div class="row"><span>ID:</span> <span>${row.id || row._id || '-'}</span></div>
             <div class="row"><span>Txn ID:</span> <span>${row.transactionId || '-'}</span></div>
             <div class="row"><span>Date:</span> <span>${row.date}</span></div>
             <div class="row"><span>Account:</span> <span>${row.account}</span></div>
@@ -360,10 +349,10 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     printWindow.document.close();
   };
 
+  // COLUMNS: ID REMOVED, ONLY TXN ID SHOWS
   const columns = useMemo(() => {
     return [
-      { key: 'id', label: 'ID', render: (row) => <span className="font-mono text-xs text-slate-400">{row.id || row._id || '-'}</span> },
-      { key: 'transactionId', label: 'Txn ID', render: (row) => <span className="font-mono text-xs text-blue-400">{row.transactionId || '-'}</span> },
+      { key: 'transactionId', label: 'Txn ID', render: (row) => <span className="font-mono text-xs text-blue-400 font-semibold">{row.transactionId || '-'}</span> },
       { key: 'date', label: 'Date' },
       { key: 'account', label: 'Account' },
       { key: 'description', label: 'Description' },
