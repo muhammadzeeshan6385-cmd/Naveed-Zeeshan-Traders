@@ -110,7 +110,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       event.stopPropagation();
     }
 
-    // STRICT DOUBLE SUBMISSION GUARD
+    // STRICT DOUBLE SUBMISSION GUARD - Instant Return if already running
     if (isSubmittingRef.current) return;
 
     if (!form.category || !form.amount) {
@@ -127,12 +127,20 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     const targetTxnId = form.transactionId || generateTransactionId();
 
     try {
-      // --- STRICT DUPLICATE TRANSACTION ID CHECK IN FIRESTORE ---
+      // 1. Check if ID already exists in local state to prevent instant double clicks
+      const isDuplicateLocal = expenses.some(exp => exp.transactionId === targetTxnId);
+      if (isDuplicateLocal) {
+        showToast('Duplicate entry blocked!', 'warning');
+        resetForm();
+        return;
+      }
+
+      // 2. Strict Duplicate ID Check in Firestore
       const duplicateQuery = query(collection(db, "expenses"), where("transactionId", "==", targetTxnId));
       const existingSnap = await getDocs(duplicateQuery);
 
       if (!existingSnap.empty) {
-        showToast(`Transaction ID ${targetTxnId} pehle se exist karti hai! Unique ID regenerate ho rahi hai.`, 'warning');
+        showToast(`Transaction ID ${targetTxnId} pehle se exist karti hai!`, 'warning');
         resetForm();
         return;
       }
@@ -148,11 +156,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         createdAt: new Date().toISOString()
       };
 
-      // 1. Save to Firebase "expenses" collection
+      // Save to Firebase "expenses" collection
       const docRef = await addDoc(collection(db, "expenses"), newExpense);
       const entry = { docId: docRef.id, ...newExpense };
 
-      // 2. Save Cash Register entry to Firebase "cashData"
+      // Save Cash Register entry to Firebase "cashData"
       const cashEntry = {
         id: generateId(),
         transactionId: targetTxnId,
@@ -166,7 +174,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       const cashDocRef = await addDoc(collection(db, "cashData"), cashEntry);
       const cashEntryWithDoc = { docId: cashDocRef.id, ...cashEntry };
 
-      // 3. Local State Sync
+      // Local State Sync
       setExpenses((prevExpenses) => [entry, ...prevExpenses]);
       setCashData((prevCashData) => [cashEntryWithDoc, ...prevCashData]);
 
@@ -182,7 +190,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     }
   };
 
-  // Handle Update Confirmation from Modal (Updated in Firebase)
+  // Handle Update Confirmation from Modal
   const handleConfirmUpdate = async (e) => {
     if (e) {
       e.preventDefault();
@@ -217,13 +225,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         account: form.account,
       };
 
-      // 1. Update in Firebase Firestore
       if (targetDocId) {
         const expDocRef = doc(db, "expenses", String(targetDocId));
         await updateDoc(expDocRef, updatedData);
       }
 
-      // 2. Update Local State
       setExpenses((prevExpenses) =>
         prevExpenses.map((exp) => {
           const expId = exp.docId || exp.id;
@@ -242,7 +248,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     }
   };
 
-  // Handle Delete Confirmation from Modal (Deleted from Firebase)
+  // Handle Delete Confirmation
   const handleConfirmDelete = async () => {
     if (!isAdmin) {
       showToast('Only admin can delete expenses from record.', 'warning');
@@ -258,7 +264,6 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     const targetDocId = targetExpense.docId || targetExpense.id;
 
     try {
-      // 1. Delete Document from Firebase Firestore (With Query Fallback)
       if (targetDocId) {
         await deleteDoc(doc(db, "expenses", String(targetDocId)));
       }
@@ -269,7 +274,6 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         await deleteDoc(doc(db, "expenses", docSnap.id));
       }
 
-      // 2. Delete linked Cash Entry in Firestore
       const cashQ = query(
         collection(db, "cashData"),
         where("expenseDocId", "==", targetDocId)
@@ -279,7 +283,6 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         await deleteDoc(doc(db, "cashData", cashSnap.id));
       }
 
-      // 3. Filter out deleted expense locally
       setExpenses((prev) =>
         prev.filter((exp) => {
           const expId = exp.docId || exp.id;
@@ -287,7 +290,6 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         })
       );
 
-      // 4. Remove corresponding cash entry locally
       setCashData((prev) =>
         prev.filter(
           (c) => c.expenseDocId !== targetDocId && !(c.description.includes(targetExpense.category) && c.date === targetExpense.date)
@@ -389,7 +391,6 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         label: 'Actions',
         render: (row) => (
           <div className="flex items-center gap-1.5 justify-start">
-            {/* EDIT ICON BUTTON */}
             <button
               type="button"
               onClick={() => handleEditClick(row)}
@@ -403,7 +404,6 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
               <Edit2 size={14} />
             </button>
 
-            {/* PRINT ICON BUTTON */}
             <button
               type="button"
               onClick={() => handlePrint(row)}
@@ -413,7 +413,6 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
               <Printer size={14} />
             </button>
 
-            {/* DELETE ICON BUTTON */}
             <button
               type="button"
               onClick={() => handleDeleteClick(row)}
@@ -457,53 +456,55 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
           </div>
         )}
 
-        {/* EXPENSE CREATION FORM */}
+        {/* EXPENSE CREATION FORM WITH WRAPPED SUBMIT HANDLER */}
         <Card title="Expense Entry">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Input
-              label="Transaction ID"
-              value={form.transactionId}
-              onChange={(e) => setForm({ ...form, transactionId: e.target.value })}
-              placeholder="TXN-001"
-              readOnly
-            />
-            <Input
-              label="Category"
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              placeholder="Rent, Fuel, Salary..."
-            />
-            <Input
-              label="Amount"
-              type="number"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-            />
-            <Input
-              label="Date"
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
-            />
-            <Select
-              label="Paid From"
-              value={form.account}
-              onChange={(e) => setForm({ ...form, account: e.target.value })}
-            >
-              <option value="Cash">Cash</option>
-              <option value="Bank">Bank</option>
-            </Select>
-            <Input
-              label="Description"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-            <div className="flex items-end gap-2">
-              <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : 'Save Expense'}
-              </Button>
+          <form onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <Input
+                label="Transaction ID"
+                value={form.transactionId}
+                onChange={(e) => setForm({ ...form, transactionId: e.target.value })}
+                placeholder="TXN-001"
+                readOnly
+              />
+              <Input
+                label="Category"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                placeholder="Rent, Fuel, Salary..."
+              />
+              <Input
+                label="Amount"
+                type="number"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              />
+              <Input
+                label="Date"
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+              />
+              <Select
+                label="Paid From"
+                value={form.account}
+                onChange={(e) => setForm({ ...form, account: e.target.value })}
+              >
+                <option value="Cash">Cash</option>
+                <option value="Bank">Bank</option>
+              </Select>
+              <Input
+                label="Description"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+              <div className="flex items-end gap-2">
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Expense'}
+                </Button>
+              </div>
             </div>
-          </div>
+          </form>
         </Card>
 
         {/* RECENT EXPENSES TABLE */}
