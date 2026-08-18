@@ -43,7 +43,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         const querySnapshot = await getDocs(collection(db, "expenses"));
         const firebaseExpenses = [];
         querySnapshot.forEach((docSnap) => {
-          firebaseExpenses.push({ docId: docSnap.id, ...docSnap.data() });
+          firebaseExpenses.push({ docId: docSnap.id, id: docSnap.id, ...docSnap.data() });
         });
         if (firebaseExpenses.length > 0) {
           setExpenses(firebaseExpenses);
@@ -76,9 +76,10 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     }
 
     const amount = Number(form.amount);
+    const customId = generateId();
 
     const newExpense = {
-      id: generateId(),
+      id: customId,
       category: form.category,
       amount,
       date: form.date,
@@ -92,10 +93,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       const docRef = await addDoc(collection(db, "expenses"), newExpense);
       const entry = { docId: docRef.id, ...newExpense };
 
-      // 2. Local State Sync
-      setExpenses([...expenses, entry]);
-
-      // 3. Save Cash Register entry to Firebase "cashData"
+      // 2. Save Cash Register entry to Firebase "cashData"
       const cashEntry = {
         id: generateId(),
         date: form.date,
@@ -105,8 +103,12 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         type: 'payment',
         expenseDocId: docRef.id
       };
-      await addDoc(collection(db, "cashData"), cashEntry);
-      setCashData([...cashData, cashEntry]);
+      const cashDocRef = await addDoc(collection(db, "cashData"), cashEntry);
+      const cashEntryWithDoc = { docId: cashDocRef.id, ...cashEntry };
+
+      // 3. Local State Sync
+      setExpenses([entry, ...expenses]);
+      setCashData([cashEntryWithDoc, ...cashData]);
 
       showToast('New expense entry added successfully!', 'success');
       resetForm();
@@ -130,7 +132,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     }
 
     const amount = Number(form.amount);
-    const oldExpense = expenses.find((exp) => exp.id === editingItem.id);
+    const targetDocId = editingItem?.docId || editingItem?.id;
 
     try {
       const updatedData = {
@@ -142,34 +144,18 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       };
 
       // 1. Update in Firebase Firestore
-      if (editingItem.docId) {
-        const expDocRef = doc(db, "expenses", editingItem.docId);
+      if (targetDocId) {
+        const expDocRef = doc(db, "expenses", String(targetDocId));
         await updateDoc(expDocRef, updatedData);
       }
 
       // 2. Update Local State
       setExpenses(
-        expenses.map((exp) =>
-          exp.id === editingItem.id ? { ...exp, ...updatedData } : exp
-        )
+        expenses.map((exp) => {
+          const expId = exp.docId || exp.id;
+          return expId === targetDocId ? { ...exp, ...updatedData } : exp;
+        })
       );
-
-      // 3. Cash register update balance reversal
-      const updatedCashData = cashData.filter(
-        (c) => !(c.description === `Expense: ${oldExpense?.category}` && c.date === oldExpense?.date)
-      );
-
-      setCashData([
-        ...updatedCashData,
-        {
-          id: generateId(),
-          date: form.date,
-          account: form.account,
-          amount: -amount,
-          description: `Expense: ${form.category}`,
-          type: 'payment',
-        },
-      ]);
 
       showToast('Expense Entry has been updated', 'success');
       resetForm();
@@ -189,24 +175,39 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     if (!deletingItem) return;
 
     const targetExpense = deletingItem;
+    const targetDocId = targetExpense.docId || targetExpense.id;
 
     try {
-      // 1. Delete Document from Firebase Firestore
-      if (targetExpense.docId) {
-        await deleteDoc(doc(db, "expenses", targetExpense.docId));
-      } else {
-        // Fallback Query Search if docId was not present locally
-        const q = query(collection(db, "expenses"), where("id", "==", targetExpense.id));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach(async (docSnap) => {
-          await deleteDoc(doc(db, "expenses", docSnap.id));
-        });
+      // 1. Delete Document from Firebase Firestore (With Query Fallback)
+      if (targetDocId) {
+        await deleteDoc(doc(db, "expenses", String(targetDocId)));
+      }
+      
+      const q = query(collection(db, "expenses"), where("id", "==", String(targetExpense.id)));
+      const querySnapshot = await getDocs(q);
+      for (const docSnap of querySnapshot.docs) {
+        await deleteDoc(doc(db, "expenses", docSnap.id));
       }
 
-      // 2. Filter out deleted expense locally
-      setExpenses(expenses.filter((exp) => exp.id !== targetExpense.id));
+      // 2. Delete linked Cash Entry in Firestore
+      const cashQ = query(
+        collection(db, "cashData"),
+        where("description", "==", `Expense: ${targetExpense.category}`)
+      );
+      const cashSnapshot = await getDocs(cashQ);
+      for (const cashSnap of cashSnapshot.docs) {
+        await deleteDoc(doc(db, "cashData", cashSnap.id));
+      }
 
-      // 3. Remove corresponding cash entry
+      // 3. Filter out deleted expense locally
+      setExpenses(
+        expenses.filter((exp) => {
+          const expId = exp.docId || exp.id;
+          return expId !== targetDocId && exp.id !== targetExpense.id;
+        })
+      );
+
+      // 4. Remove corresponding cash entry locally
       setCashData(
         cashData.filter(
           (c) => !(c.description === `Expense: ${targetExpense.category}` && c.date === targetExpense.date)
@@ -214,10 +215,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       );
 
       showToast('Expense Entry has been deleted from your record', 'success');
-      setDeletingItem(null);
     } catch (err) {
       console.error("Firebase Delete Error: ", err);
       showToast('Firebase Error: Delete fail ho gya.', 'error');
+    } finally {
+      setDeletingItem(null);
     }
   };
 
@@ -265,7 +267,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
             <div class="title">EXPENSE VOUCHER</div>
             <div class="sub-title">Naveed & Zeeshan Traders Address A Rakha Colony, Mailsi</div>
             <div class="line"></div>
-            <div class="row"><span>Voucher ID:</span> <span>${row.id}</span></div>
+            <div class="row"><span>Voucher ID:</span> <span>${row.docId || row.id}</span></div>
             <div class="row"><span>Date:</span> <span>${row.date}</span></div>
             <div class="row"><span>Category:</span> <span>${row.category}</span></div>
             <div class="row"><span>Paid From:</span> <span>${row.account}</span></div>
