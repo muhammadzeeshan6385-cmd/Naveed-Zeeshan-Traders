@@ -7,11 +7,12 @@ import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2 } from 'lucide-rea
 import { db } from './firebase';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 
-// Helper to generate Auto Transaction ID Code
+// Helper to generate Auto Unique Transaction ID Code
 const generateTransactionId = () => {
   const dateStr = todayISO().replace(/-/g, '');
+  const timeStr = new Date().getTime().toString().slice(-4);
   const randomStr = Math.floor(1000 + Math.random() * 9000);
-  return `TXN-${dateStr}-${randomStr}`;
+  return `TXN-${dateStr}-${timeStr}${randomStr}`;
 };
 
 const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, currentRole = '' }) => {
@@ -24,7 +25,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     account: 'Cash',
   }));
 
-  // Strict Lock to Block Duplicate Execution Instantly
+  // Strict Synchronous Lock to Block Duplicate Executions
   const isSubmittingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -102,7 +103,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     setEditingItem(null);
   };
 
-  // Submit New Expense directly from form (Saved to Firebase)
+  // Submit New Expense directly from form (Saved to Firebase with DB-Level ID Check)
   const handleSubmit = async (event) => {
     if (event) {
       event.preventDefault();
@@ -111,32 +112,42 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
     // STRICT DOUBLE SUBMISSION GUARD
     if (isSubmittingRef.current) return;
-    
+
     if (!form.category || !form.amount) {
       showToast('Category and amount are required.', 'warning');
       return;
     }
 
-    // LOCK IMMEDIATELY BEFORE ANY ASYNC CALLS
+    // LOCK IMMEDIATELY BEFORE ANY ASYNC OPERATION
     isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     const amount = Number(form.amount);
     const customId = generateId();
-    const finalTxnId = form.transactionId || generateTransactionId();
-
-    const newExpense = {
-      id: customId,
-      transactionId: finalTxnId,
-      category: form.category,
-      amount,
-      date: form.date,
-      description: form.description,
-      account: form.account,
-      createdAt: new Date().toISOString()
-    };
+    const targetTxnId = form.transactionId || generateTransactionId();
 
     try {
+      // --- STRICT DUPLICATE TRANSACTION ID CHECK IN FIRESTORE ---
+      const duplicateQuery = query(collection(db, "expenses"), where("transactionId", "==", targetTxnId));
+      const existingSnap = await getDocs(duplicateQuery);
+
+      if (!existingSnap.empty) {
+        showToast(`Transaction ID ${targetTxnId} pehle se exist karti hai! Unique ID regenerate ho rahi hai.`, 'warning');
+        resetForm();
+        return;
+      }
+
+      const newExpense = {
+        id: customId,
+        transactionId: targetTxnId,
+        category: form.category,
+        amount,
+        date: form.date,
+        description: form.description,
+        account: form.account,
+        createdAt: new Date().toISOString()
+      };
+
       // 1. Save to Firebase "expenses" collection
       const docRef = await addDoc(collection(db, "expenses"), newExpense);
       const entry = { docId: docRef.id, ...newExpense };
@@ -144,11 +155,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       // 2. Save Cash Register entry to Firebase "cashData"
       const cashEntry = {
         id: generateId(),
-        transactionId: finalTxnId,
+        transactionId: targetTxnId,
         date: form.date,
         account: form.account,
         amount: -amount,
-        description: `Expense (${finalTxnId}): ${form.category}`,
+        description: `Expense (${targetTxnId}): ${form.category}`,
         type: 'payment',
         expenseDocId: docRef.id
       };
@@ -165,7 +176,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       console.error("Firebase Add Error: ", err);
       showToast('Firebase Error: Expense save nahi ho saka.', 'error');
     } finally {
-      // UNLOCK AFTER EXECUTION
+      // UNLOCK AFTER ENTIRE WORKFLOW COMPLETES
       isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
