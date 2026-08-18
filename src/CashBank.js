@@ -19,34 +19,45 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   // Custom Toast Notification State
   const [toast, setToast] = useState(null);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 3500);
-  };
-
   // --- FETCH RECOVERIES & EXPENSES DIRECTLY FROM FIREBASE ---
   useEffect(() => {
     const fetchFinancialData = async () => {
       try {
         if (!db) return;
 
-        // 1. Fetch Recoveries
-        try {
-          const recSnapshot = await getDocs(collection(db, "recoveries"));
-          const recList = [];
-          recSnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            recList.push({
-              id: docSnap.id,
-              ...data,
+        // 1. Fetch Recoveries (Checking 'recoveries' and 'recovery' collections)
+        const recList = [];
+        const targetCollections = ["recoveries", "recovery", "payment_recoveries"];
+
+        for (const colName of targetCollections) {
+          try {
+            const recSnapshot = await getDocs(collection(db, colName));
+            recSnapshot.forEach((docSnap) => {
+              const data = docSnap.data();
+              
+              // Handle Nested Array inside recovery docs if any
+              if (Array.isArray(data.history || data.entries)) {
+                const list = data.history || data.entries;
+                list.forEach((item, idx) => {
+                  recList.push({
+                    id: `${docSnap.id}_${idx}`,
+                    ...item,
+                    customerName: data.customerName || data.name || item.customerName
+                  });
+                });
+              } else {
+                recList.push({
+                  id: docSnap.id,
+                  ...data,
+                });
+              }
             });
-          });
-          setFetchedRecoveries(recList);
-        } catch (e) {
-          console.warn("Recoveries fetch notice:", e);
+          } catch (e) {
+            // collection might not exist
+          }
         }
+        console.log("Fetched Recoveries Total:", recList.length, recList);
+        setFetchedRecoveries(recList);
 
         // 2. Fetch Expenses
         try {
@@ -75,8 +86,9 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   const allRecoveries = useMemo(() => {
     const map = new Map();
     [...recoveriesData, ...fetchedRecoveries].forEach((item) => {
-      if (item && (item.id || item.docId)) {
-        map.set(String(item.id || item.docId), item);
+      if (item) {
+        const key = String(item.id || item.docId || item.recoveryId || Math.random());
+        map.set(key, item);
       }
     });
     return Array.from(map.values());
@@ -85,8 +97,9 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   const allExpenses = useMemo(() => {
     const map = new Map();
     [...expensesData, ...fetchedExpenses].forEach((item) => {
-      if (item && (item.id || item.docId)) {
-        map.set(String(item.id || item.docId), item);
+      if (item) {
+        const key = String(item.id || item.docId || item.expenseId || Math.random());
+        map.set(key, item);
       }
     });
     return Array.from(map.values());
@@ -98,18 +111,18 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
 
     // Map Recovery Entries -> PLUS (+)
     allRecoveries.forEach((rec) => {
-      // Check multiple field fallbacks for amount in recoveries
-      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? 0;
+      // Extraction of amount from all possible key names
+      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? rec.paidAmount ?? rec.cashReceived ?? 0;
       const recAmount = Math.abs(Number(rawVal) || 0);
 
-      const custName = rec.customerName || rec.customer || rec.client || 'Customer';
+      const custName = rec.customerName || rec.customer || rec.client || rec.name || 'Customer';
 
       if (recAmount > 0) {
         records.push({
           id: String(rec.id || rec.docId || `REC-${Math.random()}`),
-          transactionId: rec.transactionId || `REC-${(rec.id || '').slice(0, 6)}`,
+          transactionId: rec.transactionId || rec.recoveryId || `REC-${String(rec.id || '').slice(0, 6)}`,
           date: rec.date || todayISO(),
-          account: rec.account || 'Cash',
+          account: rec.account || rec.paymentMethod || 'Cash',
           description: rec.description || `Recovery Received - ${custName}`,
           amount: recAmount, // PLUS
           type: 'receipt',
@@ -126,7 +139,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
       if (expAmount > 0) {
         records.push({
           id: String(exp.id || exp.docId || `EXP-${Math.random()}`),
-          transactionId: exp.transactionId || `EXP-${(exp.id || '').slice(0, 6)}`,
+          transactionId: exp.transactionId || exp.expenseId || `EXP-${String(exp.id || '').slice(0, 6)}`,
           date: exp.date || todayISO(),
           account: exp.account || 'Cash',
           description: exp.description || `Expense - ${exp.category || exp.title || 'General'}`,
@@ -148,11 +161,11 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   // --- TOTAL CALCULATIONS ---
   const totals = useMemo(() => {
     const cash = combinedTransactions
-      .filter((t) => t.account === 'Cash')
+      .filter((t) => String(t.account).toLowerCase() === 'cash')
       .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
     const bank = combinedTransactions
-      .filter((t) => t.account === 'Bank')
+      .filter((t) => String(t.account).toLowerCase() === 'bank')
       .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
     return { cash, bank };
@@ -246,7 +259,6 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
         label: 'Actions',
         render: (row) => (
           <div className="flex items-center gap-1.5 justify-start">
-            {/* PRINT ICON */}
             <button
               type="button"
               onClick={() => handlePrint(row)}
