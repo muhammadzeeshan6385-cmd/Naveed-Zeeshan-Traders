@@ -64,7 +64,6 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
         if (!db) return;
         const allFetchedEntries = [];
         const seenIds = new Set();
-        let indexCounter = 1000;
 
         // 1. Fetch Direct Cash & Bank Transactions
         const cashSnapshot = await getDocs(collection(db, "cashData"));
@@ -179,7 +178,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return sortedCashData.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedCashData, currentPage, itemsPerPage]);
 
-  // Absolute Permanent Delete Logic
+  // --- GUARANTEED PERMANENT FIRESTORE DELETION LOGIC ---
   const handleConfirmDelete = async () => {
     if (!isAdmin) {
       showToast('Only admin can delete transaction record.', 'warning');
@@ -191,30 +190,36 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     setLoading(true);
 
     try {
-      const targetId = String(deletingItem.docId || deletingItem.id || deletingItem._id);
-      const collectionName = deletingItem.sourceCollection || 'cashData';
+      const targetId = String(deletingItem.docId || deletingItem.id || '');
+      const primaryCollection = deletingItem.sourceCollection || 'cashData';
 
-      // Delete directly from Firestore
       if (db && targetId) {
-        await deleteDoc(doc(db, collectionName, targetId));
+        // Delete directly from primary assigned collection in Firebase
+        await deleteDoc(doc(db, primaryCollection, targetId));
+
+        // Backup safety: clear from alternate collections if duplicate ID exists
+        const collectionsToClean = ['cashData', 'recoveries', 'expenses'].filter(c => c !== primaryCollection);
+        for (const colName of collectionsToClean) {
+          try {
+            await deleteDoc(doc(db, colName, targetId));
+          } catch (e) {
+            // Ignore missing documents in other collections
+          }
+        }
       }
 
-      // Filter state by multiple matching safeguards
+      // Update local state ONLY after successful Firestore deletion
       setCashData((prev) =>
         prev.filter((item) => {
-          const itemId = String(item.docId || item.id || item._id);
+          const itemId = String(item.docId || item.id || '');
           return itemId !== targetId && item.transactionId !== deletingItem.transactionId;
         })
       );
 
-      showToast('Transaction Entry has been deleted permanently', 'success');
+      showToast('Transaction Entry deleted permanently from database!', 'success');
     } catch (err) {
-      console.error("Firebase delete transaction error:", err);
-      // Fallback local UI delete if network or rule issue occurs
-      setCashData((prev) =>
-        prev.filter((item) => (item.docId || item.id) !== (deletingItem.docId || deletingItem.id))
-      );
-      showToast('Removed from local view. Please check Firebase Rules if it reappears.', 'warning');
+      console.error("Firebase permanent delete error:", err);
+      showToast('Error deleting from Database. Check Firebase Security Rules.', 'error');
     } finally {
       setLoading(false);
       setDeletingItem(null);
