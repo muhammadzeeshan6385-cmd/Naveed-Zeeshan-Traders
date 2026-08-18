@@ -1,47 +1,20 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Button, Card, DataTable, Input, PageShell, Select, StatCard } from './components/ui';
-import { formatRs, generateId, todayISO } from './utils/helpers';
-import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Card, DataTable, PageShell, StatCard } from './components/ui';
+import { formatRs, todayISO } from './utils/helpers';
+import { Printer, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 // Firebase Database Imports
 import { db } from './firebase'; 
-import { doc, deleteDoc, updateDoc, setDoc, collection, getDocs } from 'firebase/firestore'; 
+import { collection, getDocs } from 'firebase/firestore'; 
 
-// Helper to generate Auto Transaction ID Code
-const generateTransactionId = () => {
-  const dateStr = todayISO().replace(/-/g, '');
-  const randomStr = Math.floor(1000 + Math.random() * 9000);
-  return `TXN-${dateStr}-${randomStr}`;
-};
-
-const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
-  const [form, setForm] = useState({
-    transactionId: generateTransactionId(),
-    date: todayISO(),
-    account: 'Cash',
-    amount: '',
-    description: '',
-    type: 'receipt',
-  });
+const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => {
+  // State for fetched Firestore dynamic entries
+  const [fetchedRecoveries, setFetchedRecoveries] = useState([]);
+  const [fetchedExpenses, setFetchedExpenses] = useState([]);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-
-  // Edit Modal State
-  const [editingItem, setEditingItem] = useState(null);
-  const [editForm, setEditForm] = useState({
-    transactionId: '',
-    date: todayISO(),
-    account: 'Cash',
-    amount: '',
-    description: '',
-    type: 'receipt',
-  });
-
-  // Delete Confirmation & Loading State
-  const [deletingItem, setDeletingItem] = useState(null);
-  const [loading, setLoading] = useState(false);
 
   // Custom Toast Notification State
   const [toast, setToast] = useState(null);
@@ -53,298 +26,146 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     }, 3500);
   };
 
-  const isAdmin = useMemo(() => {
-    return String(userRole || '').trim().toLowerCase() === 'admin';
-  }, [userRole]);
-
-  // --- FETCH CASH, RECOVERY & EXPENSES DATA FROM FIREBASE WITH EXACT DOC IDs ---
+  // --- FETCH RECOVERIES & EXPENSES DIRECTLY FROM FIREBASE ---
   useEffect(() => {
-    const fetchAllFinancialData = async () => {
+    const fetchFinancialData = async () => {
       try {
         if (!db) return;
-        const allFetchedEntries = [];
-        const seenIds = new Set();
 
-        // 1. Fetch Direct Cash & Bank Transactions
-        const cashSnapshot = await getDocs(collection(db, "cashData"));
-        cashSnapshot.forEach((docSnap) => {
-          const docId = docSnap.id;
-          if (!seenIds.has(docId)) {
-            seenIds.add(docId);
+        // 1. Fetch Recoveries
+        try {
+          const recSnapshot = await getDocs(collection(db, "recoveries"));
+          const recList = [];
+          recSnapshot.forEach((docSnap) => {
             const data = docSnap.data();
-            let allocatedTxnId = data.transactionId || `TXN-CASH-${docId.slice(0, 5)}`;
-            allFetchedEntries.push({
+            recList.push({
+              id: docSnap.id,
               ...data,
-              id: docId,
-              docId: docId,
-              sourceCollection: 'cashData',
-              transactionId: allocatedTxnId,
-              amount: Number(data.amount || 0)
             });
-          }
-        });
-
-        // 2. Fetch Recovery Entries (Add as Receipt +)
-        try {
-          const recoverySnapshot = await getDocs(collection(db, "recoveries"));
-          recoverySnapshot.forEach((docSnap) => {
-            const docId = docSnap.id;
-            if (!seenIds.has(docId)) {
-              seenIds.add(docId);
-              const data = docSnap.data();
-              const recAmount = Math.abs(Number(data.amount || data.receivedAmount || 0));
-              allFetchedEntries.push({
-                id: docId,
-                docId: docId,
-                sourceCollection: 'recoveries',
-                transactionId: data.transactionId || `REC-${data.recoveryId || docId.slice(0, 5)}`,
-                date: data.date || todayISO(),
-                account: data.account || 'Cash',
-                description: data.description || `Recovery Received - ${data.customerName || 'Customer'}`,
-                amount: recAmount, // PLUS in total
-                type: 'receipt'
-              });
-            }
           });
-        } catch (recErr) {
-          console.warn("Recoveries collection fetch optional info:", recErr);
+          setFetchedRecoveries(recList);
+        } catch (e) {
+          console.warn("Recoveries fetch notice:", e);
         }
 
-        // 3. Fetch Expense Entries (Add as Expense/Payment -)
+        // 2. Fetch Expenses
         try {
-          const expenseSnapshot = await getDocs(collection(db, "expenses"));
-          expenseSnapshot.forEach((docSnap) => {
-            const docId = docSnap.id;
-            if (!seenIds.has(docId)) {
-              seenIds.add(docId);
-              const data = docSnap.data();
-              const expAmount = -Math.abs(Number(data.amount || 0)); // LESS / MINUS in total
-              allFetchedEntries.push({
-                id: docId,
-                docId: docId,
-                sourceCollection: 'expenses',
-                transactionId: data.transactionId || `EXP-${data.expenseId || docId.slice(0, 5)}`,
-                date: data.date || todayISO(),
-                account: data.account || 'Cash',
-                description: data.description || `Expense - ${data.category || 'General'}`,
-                amount: expAmount, // MINUS from total
-                type: 'payment'
-              });
-            }
+          const expSnapshot = await getDocs(collection(db, "expenses"));
+          const expList = [];
+          expSnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            expList.push({
+              id: docSnap.id,
+              ...data,
+            });
           });
-        } catch (expErr) {
-          console.warn("Expenses collection fetch optional info:", expErr);
+          setFetchedExpenses(expList);
+        } catch (e) {
+          console.warn("Expenses fetch notice:", e);
         }
-
-        setCashData(allFetchedEntries);
       } catch (error) {
-        console.error("Firebase Finance Fetch Error:", error);
+        console.error("Error loading financial data:", error);
       }
     };
 
-    fetchAllFinancialData();
-  }, [setCashData]);
+    fetchFinancialData();
+  }, [recoveriesData, expensesData]);
 
-  // CALCULATION: Recovery amounts (+) added, Expense amounts (-) deducted
-  const totals = useMemo(() => {
-    const cash = cashData.filter((entry) => entry.account === 'Cash').reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-    const bank = cashData.filter((entry) => entry.account === 'Bank').reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-    return { cash, bank };
-  }, [cashData]);
+  // COMBINE PROP DATA AND FIRESTORE DATA (AVOIDING DUPLICATES)
+  const allRecoveries = useMemo(() => {
+    const map = new Map();
+    [...recoveriesData, ...fetchedRecoveries].forEach((item) => {
+      if (item && (item.id || item.docId)) {
+        map.set(String(item.id || item.docId), item);
+      }
+    });
+    return Array.from(map.values());
+  }, [recoveriesData, fetchedRecoveries]);
 
-  // --- SORT TRANSACTIONS BY DATE (RECENT DATES ON TOP) ---
-  const sortedCashData = useMemo(() => {
-    return [...cashData].sort((a, b) => {
+  const allExpenses = useMemo(() => {
+    const map = new Map();
+    [...expensesData, ...fetchedExpenses].forEach((item) => {
+      if (item && (item.id || item.docId)) {
+        map.set(String(item.id || item.docId), item);
+      }
+    });
+    return Array.from(map.values());
+  }, [expensesData, fetchedExpenses]);
+
+  // --- GENERATE COMBINED TRANSACTIONS (ONLY RECOVERY [+] AND EXPENSE [-]) ---
+  const combinedTransactions = useMemo(() => {
+    const records = [];
+
+    // Map Recovery Entries -> PLUS (+)
+    allRecoveries.forEach((rec) => {
+      const recAmount = Math.abs(Number(rec.amount || rec.receivedAmount || 0));
+      if (recAmount > 0) {
+        records.push({
+          id: String(rec.id || rec.docId || `REC-${Math.random()}`),
+          transactionId: rec.transactionId || `REC-${(rec.id || '').slice(0, 6)}`,
+          date: rec.date || todayISO(),
+          account: rec.account || 'Cash',
+          description: rec.description || `Recovery Received - ${rec.customerName || 'Customer'}`,
+          amount: recAmount, // PLUS
+          type: 'receipt',
+          source: 'Recovery',
+        });
+      }
+    });
+
+    // Map Expense Entries -> MINUS (-)
+    allExpenses.forEach((exp) => {
+      const expAmount = Math.abs(Number(exp.amount || 0));
+      if (expAmount > 0) {
+        records.push({
+          id: String(exp.id || exp.docId || `EXP-${Math.random()}`),
+          transactionId: exp.transactionId || `EXP-${(exp.id || '').slice(0, 6)}`,
+          date: exp.date || todayISO(),
+          account: exp.account || 'Cash',
+          description: exp.description || `Expense - ${exp.category || exp.title || 'General'}`,
+          amount: -expAmount, // MINUS / DEDUCT
+          type: 'payment',
+          source: 'Expense',
+        });
+      }
+    });
+
+    // Sort by Date (Most recent on top)
+    return records.sort((a, b) => {
       const dateA = new Date(a.date || 0).getTime();
       const dateB = new Date(b.date || 0).getTime();
-      if (dateB !== dateA) {
-        return dateB - dateA;
-      }
-      return String(b.id || b.transactionId || '').localeCompare(String(a.id || a.transactionId || ''));
+      return dateB - dateA;
     });
-  }, [cashData]);
+  }, [allRecoveries, allExpenses]);
+
+  // --- TOTAL CALCULATIONS ---
+  const totals = useMemo(() => {
+    const cash = combinedTransactions
+      .filter((t) => t.account === 'Cash')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    const bank = combinedTransactions
+      .filter((t) => t.account === 'Bank')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    return { cash, bank };
+  }, [combinedTransactions]);
 
   // --- PAGINATION COMPUTATION ---
-  const totalPages = Math.max(1, Math.ceil(sortedCashData.length / itemsPerPage));
+  const totalPages = Math.max(1, Math.ceil(combinedTransactions.length / itemsPerPage));
 
   useEffect(() => {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
     }
-  }, [sortedCashData.length, totalPages, currentPage]);
+  }, [combinedTransactions.length, totalPages, currentPage]);
 
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return sortedCashData.slice(startIndex, startIndex + itemsPerPage);
-  }, [sortedCashData, currentPage, itemsPerPage]);
+    return combinedTransactions.slice(startIndex, startIndex + itemsPerPage);
+  }, [combinedTransactions, currentPage, itemsPerPage]);
 
-  // --- GUARANTEED PERMANENT FIRESTORE DELETION LOGIC ---
-  const handleConfirmDelete = async () => {
-    if (!isAdmin) {
-      showToast('Only admin can delete transaction record.', 'warning');
-      return;
-    }
-
-    if (!deletingItem) return;
-
-    setLoading(true);
-
-    try {
-      const targetId = String(deletingItem.docId || deletingItem.id || '');
-      const primaryCollection = deletingItem.sourceCollection || 'cashData';
-
-      if (db && targetId) {
-        // Delete directly from primary assigned collection in Firebase
-        await deleteDoc(doc(db, primaryCollection, targetId));
-
-        // Backup safety: clear from alternate collections if duplicate ID exists
-        const collectionsToClean = ['cashData', 'recoveries', 'expenses'].filter(c => c !== primaryCollection);
-        for (const colName of collectionsToClean) {
-          try {
-            await deleteDoc(doc(db, colName, targetId));
-          } catch (e) {
-            // Ignore missing documents in other collections
-          }
-        }
-      }
-
-      // Update local state ONLY after successful Firestore deletion
-      setCashData((prev) =>
-        prev.filter((item) => {
-          const itemId = String(item.docId || item.id || '');
-          return itemId !== targetId && item.transactionId !== deletingItem.transactionId;
-        })
-      );
-
-      showToast('Transaction Entry deleted permanently from database!', 'success');
-    } catch (err) {
-      console.error("Firebase permanent delete error:", err);
-      showToast('Error deleting from Database. Check Firebase Security Rules.', 'error');
-    } finally {
-      setLoading(false);
-      setDeletingItem(null);
-    }
-  };
-
-  const addTransaction = async () => {
-    if (!form.amount || !form.description) {
-      showToast('Amount and description are required.', 'warning');
-      return;
-    }
-
-    const signedAmount = form.type === 'payment' ? -Math.abs(Number(form.amount)) : Math.abs(Number(form.amount));
-    const customId = generateId();
-    const finalTxnId = form.transactionId || generateTransactionId();
-
-    const newEntry = {
-      id: customId,
-      docId: customId,
-      sourceCollection: 'cashData',
-      transactionId: finalTxnId,
-      date: form.date,
-      account: form.account,
-      amount: signedAmount,
-      description: form.description,
-      type: form.type,
-    };
-
-    try {
-      if (db) {
-        await setDoc(doc(db, 'cashData', customId), newEntry);
-      }
-      setCashData((prev) => [newEntry, ...prev]);
-      showToast('Transaction added successfully!', 'success');
-      setForm({
-        transactionId: generateTransactionId(),
-        date: todayISO(),
-        account: 'Cash',
-        amount: '',
-        description: '',
-        type: 'receipt',
-      });
-    } catch (err) {
-      console.error("Firebase add transaction error:", err);
-      showToast('Failed to save transaction to database.', 'error');
-    }
-  };
-
-  // Handle Edit Click
-  const handleEditClick = (row) => {
-    if (!isAdmin) {
-      showToast('Only admin login has access to edit transactions.', 'warning');
-      return;
-    }
-    setEditingItem(row);
-    const isPayment = Number(row.amount) < 0;
-    setEditForm({
-      transactionId: row.transactionId || generateTransactionId(),
-      date: row.date || todayISO(),
-      account: row.account || 'Cash',
-      amount: Math.abs(Number(row.amount)),
-      description: row.description || '',
-      type: row.type || (isPayment ? 'payment' : 'receipt'),
-    });
-  };
-
-  // Submit Update Transaction
-  const handleConfirmUpdate = async (e) => {
-    e.preventDefault();
-    if (!isAdmin) {
-      showToast('Only admin can modify transactions.', 'warning');
-      return;
-    }
-
-    if (!editForm.amount || !editForm.description) {
-      showToast('Amount and description are required.', 'warning');
-      return;
-    }
-
-    const signedAmount = editForm.type === 'payment' ? -Math.abs(Number(editForm.amount)) : Math.abs(Number(editForm.amount));
-
-    const updatedData = {
-      transactionId: editForm.transactionId,
-      date: editForm.date,
-      account: editForm.account,
-      amount: signedAmount,
-      description: editForm.description,
-      type: editForm.type,
-    };
-
-    setLoading(true);
-    try {
-      const targetId = String(editingItem?.docId || editingItem?.id);
-      const collectionName = editingItem?.sourceCollection || 'cashData';
-
-      if (db && targetId) {
-        await updateDoc(doc(db, collectionName, targetId), updatedData);
-      }
-
-      setCashData((prevCashData) =>
-        prevCashData.map((item) => {
-          const itemId = String(item.docId || item.id);
-          return itemId === targetId ? { ...item, ...updatedData } : item;
-        })
-      );
-
-      showToast('Transaction Entry has been updated', 'success');
-      setEditingItem(null);
-    } catch (err) {
-      console.error("Firebase update transaction error:", err);
-      showToast('Failed to update record in database.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteClick = (row) => {
-    if (!isAdmin) {
-      showToast('Only admin login has access to delete transactions.', 'warning');
-      return;
-    }
-    setDeletingItem(row);
-  };
-
-  // Handle Print Receipt
+  // --- PRINT RECEIPT / VOUCHER ---
   const handlePrint = (row) => {
     const printWindow = window.open('', '_blank', 'width=600,height=600');
     const isReceipt = Number(row.amount) >= 0;
@@ -389,10 +210,18 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     printWindow.document.close();
   };
 
-  // COLUMNS: ID REMOVED, ONLY TXN ID SHOWS
+  // --- TABLE COLUMNS ---
   const columns = useMemo(() => {
     return [
-      { key: 'transactionId', label: 'Txn ID', render: (row) => <span className="font-mono text-xs text-blue-400 font-semibold">{row.transactionId || '-'}</span> },
+      {
+        key: 'transactionId',
+        label: 'Txn ID',
+        render: (row) => (
+          <span className="font-mono text-xs text-blue-400 font-semibold">
+            {row.transactionId || '-'}
+          </span>
+        ),
+      },
       { key: 'date', label: 'Date' },
       { key: 'account', label: 'Account' },
       { key: 'description', label: 'Description' },
@@ -410,20 +239,6 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
         label: 'Actions',
         render: (row) => (
           <div className="flex items-center gap-1.5 justify-start">
-            {/* EDIT ICON */}
-            <button
-              type="button"
-              onClick={() => handleEditClick(row)}
-              className={`p-1.5 bg-slate-950 border rounded-lg transition ${
-                isAdmin
-                  ? 'text-slate-400 hover:text-blue-400 border-slate-800 hover:border-blue-500/40 cursor-pointer'
-                  : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
-              }`}
-              title={isAdmin ? "Edit Transaction" : "Admin Access Required"}
-            >
-              <Edit2 size={14} />
-            </button>
-
             {/* PRINT ICON */}
             <button
               type="button"
@@ -433,25 +248,11 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
             >
               <Printer size={14} />
             </button>
-
-            {/* DELETE ICON */}
-            <button
-              type="button"
-              onClick={() => handleDeleteClick(row)}
-              className={`p-1.5 bg-slate-950 border rounded-lg transition ${
-                isAdmin
-                  ? 'text-slate-400 hover:text-rose-400 border-slate-800 hover:border-rose-500/40 cursor-pointer'
-                  : 'text-slate-600 border-slate-900 cursor-not-allowed opacity-50'
-              }`}
-              title={isAdmin ? "Delete Transaction" : "Admin Access Required"}
-            >
-              <Trash2 size={14} />
-            </button>
           </div>
         ),
       },
     ];
-  }, [userRole, isAdmin]);
+  }, []);
 
   return (
     <PageShell title="Finance Hub">
@@ -478,42 +279,20 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
           </div>
         )}
 
+        {/* STATS CARDS */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <StatCard title="Cash in Hand" value={formatRs(totals.cash)} tone="emerald" />
           <StatCard title="Bank Balance" value={formatRs(totals.bank)} tone="blue" />
         </div>
 
-        {/* Manual Transaction Card */}
-        {isAdmin && (
-          <Card title="Manual Transaction">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Input label="Transaction ID" value={form.transactionId} onChange={(e) => setForm({ ...form, transactionId: e.target.value })} readOnly />
-              <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-              <Select label="Account" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
-                <option value="Cash">Cash</option>
-                <option value="Bank">Bank</option>
-              </Select>
-              <Select label="Type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                <option value="receipt">Receipt (+)</option>
-                <option value="payment">Payment (-)</option>
-              </Select>
-              <Input label="Amount" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-              <Input label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </div>
-            <Button className="mt-4" onClick={addTransaction}>
-              Add Transaction
-            </Button>
-          </Card>
-        )}
-
-        {/* Recent Transactions Table */}
-        <Card title="Transactions Ledger">
+        {/* TRANSACTIONS TABLE */}
+        <Card title="Cash & Bank Ledger">
           <DataTable columns={columns} rows={paginatedTransactions} />
 
           {/* PAGINATION CONTROLS */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 pt-4 border-t border-slate-800 text-xs text-slate-400">
             <div>
-              Showing <span className="text-white font-semibold">{paginatedTransactions.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> to <span className="text-white font-semibold">{Math.min(currentPage * itemsPerPage, sortedCashData.length)}</span> of <span className="text-white font-semibold">{sortedCashData.length}</span> entries
+              Showing <span className="text-white font-semibold">{paginatedTransactions.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> to <span className="text-white font-semibold">{Math.min(currentPage * itemsPerPage, combinedTransactions.length)}</span> of <span className="text-white font-semibold">{combinedTransactions.length}</span> entries
             </div>
 
             <div className="flex items-center gap-1">
@@ -552,102 +331,6 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
             </div>
           </div>
         </Card>
-
-        {/* EDIT MODAL */}
-        {editingItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Edit2 size={16} className="text-blue-400" />
-                  Edit Transaction Entry
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setEditingItem(null)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={handleConfirmUpdate} className="space-y-3">
-                <Input label="Transaction ID" value={editForm.transactionId} readOnly />
-                <Input label="Date" type="date" value={editForm.date} onChange={(e) => setEditForm({ ...editForm, date: e.target.value })} />
-                <Select label="Account" value={editForm.account} onChange={(e) => setEditForm({ ...editForm, account: e.target.value })}>
-                  <option value="Cash">Cash</option>
-                  <option value="Bank">Bank</option>
-                </Select>
-                <Select label="Type" value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
-                  <option value="receipt">Receipt (+)</option>
-                  <option value="payment">Payment (-)</option>
-                </Select>
-                <Input label="Amount" type="number" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
-                <Input label="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
-
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setEditingItem(null)}
-                    disabled={loading}
-                    className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-2"
-                  >
-                    {loading && <Loader2 size={14} className="animate-spin" />}
-                    Update
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* DELETE CONFIRMATION MODAL */}
-        {deletingItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-slate-900 border border-rose-500/30 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
-                <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
-                  <AlertCircle size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Delete Transaction Entry</h3>
-                  <p className="text-xs text-slate-400">Admin Confirmation Required</p>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Are you sure you want to delete this transaction (<strong className="text-white font-bold">{deletingItem.transactionId || deletingItem.id}</strong>) permanently from Firebase Database?
-              </p>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setDeletingItem(null)}
-                  disabled={loading}
-                  className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDelete}
-                  disabled={loading}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-2"
-                >
-                  {loading && <Loader2 size={14} className="animate-spin" />}
-                  Ok
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
       </div>
     </PageShell>
