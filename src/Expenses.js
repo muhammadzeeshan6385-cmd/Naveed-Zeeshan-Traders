@@ -24,6 +24,9 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     account: 'Cash',
   });
 
+  // Loading / Submitting State to prevent Double Submission Trigger
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Edit Modal State
   const [editingItem, setEditingItem] = useState(null);
   
@@ -100,11 +103,17 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
   // Submit New Expense directly from form (Saved to Firebase)
   const handleSubmit = async (event) => {
-    event.preventDefault();
+    if (event) event.preventDefault();
+
+    // Prevent duplicate triggers if request is already in progress
+    if (isSubmitting) return;
+
     if (!form.category || !form.amount) {
       showToast('Category and amount are required.', 'warning');
       return;
     }
+
+    setIsSubmitting(true);
 
     const amount = Number(form.amount);
     const customId = generateId();
@@ -141,20 +150,25 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       const cashEntryWithDoc = { docId: cashDocRef.id, ...cashEntry };
 
       // 3. Local State Sync
-      setExpenses([entry, ...expenses]);
-      setCashData([cashEntryWithDoc, ...cashData]);
+      setExpenses((prevExpenses) => [entry, ...prevExpenses]);
+      setCashData((prevCashData) => [cashEntryWithDoc, ...prevCashData]);
 
       showToast('New expense entry added successfully!', 'success');
       resetForm();
     } catch (err) {
       console.error("Firebase Add Error: ", err);
       showToast('Firebase Error: Expense save nahi ho saka.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Handle Update Confirmation from Modal (Updated in Firebase)
   const handleConfirmUpdate = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    
+    if (isSubmitting) return;
+
     if (!isAdmin) {
       showToast('Only admin can modify or update expenses.', 'warning');
       return;
@@ -164,6 +178,8 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       showToast('Category and amount are required.', 'warning');
       return;
     }
+
+    setIsSubmitting(true);
 
     const amount = Number(form.amount);
     const targetDocId = editingItem?.docId || editingItem?.id;
@@ -185,8 +201,8 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       }
 
       // 2. Update Local State
-      setExpenses(
-        expenses.map((exp) => {
+      setExpenses((prevExpenses) =>
+        prevExpenses.map((exp) => {
           const expId = exp.docId || exp.id;
           return expId === targetDocId ? { ...exp, ...updatedData } : exp;
         })
@@ -197,6 +213,8 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     } catch (err) {
       console.error("Firebase Update Error: ", err);
       showToast('Firebase Error: Update fail ho gya.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -207,7 +225,9 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       return;
     }
 
-    if (!deletingItem) return;
+    if (!deletingItem || isSubmitting) return;
+
+    setIsSubmitting(true);
 
     const targetExpense = deletingItem;
     const targetDocId = targetExpense.docId || targetExpense.id;
@@ -235,16 +255,16 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       }
 
       // 3. Filter out deleted expense locally
-      setExpenses(
-        expenses.filter((exp) => {
+      setExpenses((prev) =>
+        prev.filter((exp) => {
           const expId = exp.docId || exp.id;
           return expId !== targetDocId && exp.id !== targetExpense.id;
         })
       );
 
       // 4. Remove corresponding cash entry locally
-      setCashData(
-        cashData.filter(
+      setCashData((prev) =>
+        prev.filter(
           (c) => c.expenseDocId !== targetDocId && !(c.description.includes(targetExpense.category) && c.date === targetExpense.date)
         )
       );
@@ -254,6 +274,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       console.error("Firebase Delete Error: ", err);
       showToast('Firebase Error: Delete fail ho gya.', 'error');
     } finally {
+      setIsSubmitting(false);
       setDeletingItem(null);
     }
   };
@@ -412,7 +433,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
         {/* EXPENSE CREATION FORM */}
         <Card title="Expense Entry">
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Input
               label="Transaction ID"
               value={form.transactionId}
@@ -452,9 +473,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
             <div className="flex items-end gap-2">
-              <Button type="submit">Save Expense</Button>
+              <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Saving...' : 'Save Expense'}
+              </Button>
             </div>
-          </form>
+          </div>
         </Card>
 
         {/* RECENT EXPENSES TABLE */}
@@ -480,7 +503,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
                 </button>
               </div>
 
-              <form onSubmit={handleConfirmUpdate} className="space-y-3">
+              <div className="space-y-3">
                 <Input
                   label="Transaction ID"
                   value={form.transactionId}
@@ -522,18 +545,21 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
                   <button
                     type="button"
                     onClick={resetForm}
+                    disabled={isSubmitting}
                     className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={handleConfirmUpdate}
+                    disabled={isSubmitting}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition cursor-pointer"
                   >
-                    Update
+                    {isSubmitting ? 'Updating...' : 'Update'}
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         )}
@@ -560,6 +586,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
                 <button
                   type="button"
                   onClick={() => setDeletingItem(null)}
+                  disabled={isSubmitting}
                   className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold rounded-xl cursor-pointer"
                 >
                   Cancel
@@ -567,9 +594,10 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
                 <button
                   type="button"
                   onClick={handleConfirmDelete}
+                  disabled={isSubmitting}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
                 >
-                  Ok
+                  {isSubmitting ? 'Deleting...' : 'Ok'}
                 </button>
               </div>
             </div>
