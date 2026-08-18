@@ -3,10 +3,9 @@ import { Button, Card, DataTable, Input, PageShell, Select, StatCard } from './c
 import { formatRs, generateId, todayISO } from './utils/helpers';
 import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
-// Firebase Database Imports (Supports Realtime DB & Firestore)
+// Firebase Database Imports (Firestore Primary Alignment)
 import { db } from './firebase'; // Ensure path matches your firebaseConfig location
-import { ref, remove, update } from 'firebase/database'; // Realtime DB
-import { doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Firestore
+import { doc, deleteDoc, updateDoc, setDoc } from 'firebase/firestore'; 
 
 const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
   const [form, setForm] = useState({
@@ -51,62 +50,55 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return { cash, bank };
   }, [cashData]);
 
-  // Firebase Direct Delete Helper Function
-  const deleteFromFirebaseDB = async (itemId) => {
-    if (!itemId || !db) return;
-    try {
-      // 1. Try Realtime DB Removal
-      const dbRef = ref(db, `cashData/${itemId}`);
-      await remove(dbRef);
-    } catch (e1) {
-      try {
-        // 2. Fallback to Firestore Doc Removal
-        const docRef = doc(db, 'cashData', String(itemId));
-        await deleteDoc(docRef);
-      } catch (e2) {
-        console.warn("Firebase record remove bypassed or failed:", e2);
-      }
+  // Firebase Direct Delete Helper Function (Fixed Document ID Resolution)
+  const deleteFromFirebaseDB = async (item) => {
+    const targetId = item?.id || item?._id;
+    if (!targetId || !db) {
+      throw new Error("No valid document ID found for deletion.");
     }
+    const docRef = doc(db, 'cashData', String(targetId));
+    await deleteDoc(docRef);
   };
 
   // Firebase Direct Update Helper Function
-  const updateInFirebaseDB = async (itemId, updatedData) => {
-    if (!itemId || !db) return;
-    try {
-      const dbRef = ref(db, `cashData/${itemId}`);
-      await update(dbRef, updatedData);
-    } catch (e1) {
-      try {
-        const docRef = doc(db, 'cashData', String(itemId));
-        await updateDoc(docRef, updatedData);
-      } catch (e2) {
-        console.warn("Firebase record update bypassed or failed:", e2);
-      }
+  const updateInFirebaseDB = async (item, updatedData) => {
+    const targetId = item?.id || item?._id;
+    if (!targetId || !db) {
+      throw new Error("No valid document ID found for update.");
     }
+    const docRef = doc(db, 'cashData', String(targetId));
+    await updateDoc(docRef, updatedData);
   };
 
-  const addTransaction = () => {
+  const addTransaction = async () => {
     if (!form.amount || !form.description) {
       showToast('Amount and description are required.', 'warning');
       return;
     }
 
     const signedAmount = form.type === 'payment' ? -Math.abs(Number(form.amount)) : Math.abs(Number(form.amount));
+    const customId = generateId();
 
-    setCashData([
-      ...cashData,
-      {
-        id: generateId(),
-        date: form.date,
-        account: form.account,
-        amount: signedAmount,
-        description: form.description,
-        type: form.type,
-      },
-    ]);
+    const newEntry = {
+      id: customId,
+      date: form.date,
+      account: form.account,
+      amount: signedAmount,
+      description: form.description,
+      type: form.type,
+    };
 
-    showToast('Transaction added successfully!', 'success');
-    setForm({ date: todayISO(), account: 'Cash', amount: '', description: '', type: 'receipt' });
+    try {
+      if (db) {
+        await setDoc(doc(db, 'cashData', customId), newEntry);
+      }
+      setCashData([newEntry, ...cashData]);
+      showToast('Transaction added successfully!', 'success');
+      setForm({ date: todayISO(), account: 'Cash', amount: '', description: '', type: 'receipt' });
+    } catch (err) {
+      console.error("Firebase add transaction error:", err);
+      showToast('Failed to save transaction to database.', 'error');
+    }
   };
 
   // Handle Edit Click
@@ -151,14 +143,17 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
 
     setLoading(true);
     try {
-      if (editingItem?.id) {
-        await updateInFirebaseDB(editingItem.id, updatedData);
+      if (editingItem) {
+        await updateInFirebaseDB(editingItem, updatedData);
       }
+
+      const targetId = editingItem?.id || editingItem?._id;
 
       setCashData((prevCashData) =>
         prevCashData.map((item) => {
-          const isTarget = item.id && editingItem.id 
-            ? item.id === editingItem.id 
+          const itemId = item.id || item._id;
+          const isTarget = targetId 
+            ? itemId === targetId 
             : (item.date === editingItem.date && item.description === editingItem.description && Number(item.amount) === Number(editingItem.amount));
 
           return isTarget ? { ...item, ...updatedData } : item;
@@ -168,6 +163,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
       showToast('Transaction Entry has been updated', 'success');
       setEditingItem(null);
     } catch (err) {
+      console.error("Firebase update transaction error:", err);
       showToast('Failed to update record in database.', 'error');
     } finally {
       setLoading(false);
@@ -195,15 +191,16 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     setLoading(true);
 
     try {
-      // Direct Firebase Database sync call
-      if (deletingItem.id) {
-        await deleteFromFirebaseDB(deletingItem.id);
-      }
+      // Direct Firebase Firestore Sync Deletion
+      await deleteFromFirebaseDB(deletingItem);
+
+      const targetId = deletingItem.id || deletingItem._id;
 
       // Update Parent / Local State Array
       setCashData((prevCashData) =>
         prevCashData.filter((item) => {
-          if (item.id && deletingItem.id && item.id === deletingItem.id) {
+          const itemId = item.id || item._id;
+          if (targetId && itemId && itemId === targetId) {
             return false;
           }
           const isSameEntry =
@@ -217,6 +214,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
 
       showToast('Transaction Entry has been deleted permanently', 'success');
     } catch (err) {
+      console.error("Firebase delete transaction error:", err);
       showToast('Failed to delete transaction from Firebase.', 'error');
     } finally {
       setLoading(false);
@@ -248,7 +246,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
             <div class="title">${isReceipt ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}</div>
             <div class="sub-title">Naveed & Zeeshan Traders Mailsi</div>
             <div class="line"></div>
-            <div class="row"><span>Voucher ID:</span> <span>${row.id || '-'}</span></div>
+            <div class="row"><span>Voucher ID:</span> <span>${row.id || row._id || '-'}</span></div>
             <div class="row"><span>Date:</span> <span>${row.date}</span></div>
             <div class="row"><span>Account:</span> <span>${row.account}</span></div>
             <div class="line"></div>
