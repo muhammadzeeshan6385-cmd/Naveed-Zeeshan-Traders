@@ -57,7 +57,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return String(userRole || '').trim().toLowerCase() === 'admin';
   }, [userRole]);
 
-  // --- FIREBASE FETCH WITH DEDUPLICATION (PREVENTS DUPES ON UI) ---
+  // --- FIREBASE FETCH WITH EXACT FIRESTORE DOCUMENT ID ---
   useEffect(() => {
     const fetchCashDataFromFirebase = async () => {
       try {
@@ -68,29 +68,28 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
         let indexCounter = 1000;
 
         for (const docSnap of querySnapshot.docs) {
-          const docId = docSnap.id;
+          const firestoreDocId = docSnap.id; // Asal Firestore Document Key
           
-          // Avoid pushing same document twice
-          if (seenIds.has(docId)) continue;
-          seenIds.add(docId);
+          if (seenIds.has(firestoreDocId)) continue;
+          seenIds.add(firestoreDocId);
 
           const data = docSnap.data();
           let allocatedTxnId = data.transactionId;
 
-          // If old record does not have transactionId, allot code and sync back to Firebase
           if (!allocatedTxnId) {
             indexCounter += 1;
             allocatedTxnId = `TXN-OLD-${indexCounter}`;
             try {
-              await updateDoc(doc(db, "cashData", docId), { transactionId: allocatedTxnId });
+              await updateDoc(doc(db, "cashData", firestoreDocId), { transactionId: allocatedTxnId });
             } catch (err) {
               console.error("Auto Code Allocation Error:", err);
             }
           }
 
           firebaseCash.push({
-            id: docId,
             ...data,
+            id: firestoreDocId, // Assuring 'id' is ALWAYS the exact Firestore Doc ID
+            docId: firestoreDocId,
             transactionId: allocatedTxnId
           });
         }
@@ -116,7 +115,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
       const dateA = new Date(a.date || 0).getTime();
       const dateB = new Date(b.date || 0).getTime();
       if (dateB !== dateA) {
-        return dateB - dateA; // Most Recent Date First
+        return dateB - dateA;
       }
       return String(b.id || b.transactionId || '').localeCompare(String(a.id || a.transactionId || ''));
     });
@@ -136,21 +135,21 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return sortedCashData.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedCashData, currentPage, itemsPerPage]);
 
-  // Firebase Direct Delete Helper Function
+  // Firebase Direct Delete Helper Function Fixed
   const deleteFromFirebaseDB = async (item) => {
-    const targetId = item?.id || item?._id;
+    const targetId = item?.docId || item?.id || item?._id;
     if (!targetId || !db) {
-      throw new Error("No valid document ID found for deletion.");
+      throw new Error("Valid Firestore document ID missing.");
     }
     const docRef = doc(db, 'cashData', String(targetId));
     await deleteDoc(docRef);
   };
 
-  // Firebase Direct Update Helper Function
+  // Firebase Direct Update Helper Function Fixed
   const updateInFirebaseDB = async (item, updatedData) => {
-    const targetId = item?.id || item?._id;
+    const targetId = item?.docId || item?.id || item?._id;
     if (!targetId || !db) {
-      throw new Error("No valid document ID found for update.");
+      throw new Error("Valid Firestore document ID missing.");
     }
     const docRef = doc(db, 'cashData', String(targetId));
     await updateDoc(docRef, updatedData);
@@ -168,6 +167,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
 
     const newEntry = {
       id: customId,
+      docId: customId,
       transactionId: finalTxnId,
       date: form.date,
       account: form.account,
@@ -244,11 +244,11 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
         await updateInFirebaseDB(editingItem, updatedData);
       }
 
-      const targetId = editingItem?.id || editingItem?._id;
+      const targetId = editingItem?.docId || editingItem?.id || editingItem?._id;
 
       setCashData((prevCashData) =>
         prevCashData.map((item) => {
-          const itemId = item.id || item._id;
+          const itemId = item.docId || item.id || item._id;
           return itemId === targetId ? { ...item, ...updatedData } : item;
         })
       );
@@ -284,14 +284,17 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     setLoading(true);
 
     try {
-      const targetId = deletingItem.id || deletingItem._id;
+      const targetId = deletingItem.docId || deletingItem.id || deletingItem._id;
       
-      // Delete directly from Firestore
+      // Delete directly from Firestore using exact Doc ID
       await deleteFromFirebaseDB(deletingItem);
 
-      // Remove item from state by exact ID match
+      // Instantly remove item from local React state
       setCashData((prevCashData) =>
-        prevCashData.filter((item) => (item.id || item._id) !== targetId)
+        prevCashData.filter((item) => {
+          const itemId = item.docId || item.id || item._id;
+          return itemId !== targetId && item.transactionId !== deletingItem.transactionId;
+        })
       );
 
       showToast('Transaction Entry has been deleted permanently', 'success');
