@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Card, DataTable, PageShell } from './components/ui';
-import { formatRs, getCreditSalesTotal } from './utils/helpers';
+import { formatRs } from './utils/helpers';
 
 // Firebase Firestore setup
 import { db } from './firebase'; 
@@ -13,9 +13,7 @@ import {
   Search, 
   Download, 
   RefreshCw, 
-  UserCheck, 
   AlertCircle, 
-  FileText,
   Edit2,
   Trash2,
   Users,
@@ -41,7 +39,7 @@ const KhataLedger = ({
   onPaymentSuccess,
   appLogoUrl = '/logo.png'
 }) => {
-  // --- DIRECT FIREBASE FETCH FALLBACK STATES ---
+  // Direct Firebase Fetch States
   const [fetchedSuppliers, setFetchedSuppliers] = useState([]);
   const [fetchedPurchases, setFetchedPurchases] = useState([]);
   const [fetchedVendorPayments, setFetchedVendorPayments] = useState([]);
@@ -49,48 +47,44 @@ const KhataLedger = ({
   useEffect(() => {
     const fetchDirectData = async () => {
       try {
-        if (vendors.length === 0 && suppliers.length === 0) {
+        if ((!vendors || vendors.length === 0) && (!suppliers || suppliers.length === 0)) {
           const supSnap = await getDocs(collection(db, 'suppliers'));
-          const loadedSuppliers = supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setFetchedSuppliers(loadedSuppliers);
+          setFetchedSuppliers(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }
 
-        if (purchases.length === 0) {
+        if (!purchases || purchases.length === 0) {
           const purSnap = await getDocs(collection(db, 'purchases'));
-          const loadedPurchases = purSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setFetchedPurchases(loadedPurchases);
+          setFetchedPurchases(purSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }
 
-        if (vendorPayments.length === 0) {
+        if (!vendorPayments || vendorPayments.length === 0) {
           const vpaySnap = await getDocs(collection(db, 'vendorPayments'));
-          const loadedVPay = vpaySnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setFetchedVendorPayments(loadedVPay);
+          setFetchedVendorPayments(vpaySnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }
       } catch (err) {
-        console.error("Firebase Auto-fetch Ledger Error:", err);
+        console.error("Firebase fetch error:", err);
       }
     };
 
     fetchDirectData();
   }, [vendors, suppliers, purchases, vendorPayments]);
 
-  // Master Lists Setup
   const masterVendorsList = useMemo(() => {
-    if (vendors.length > 0) return vendors;
-    if (suppliers.length > 0) return suppliers;
-    return fetchedSuppliers;
+    if (vendors && vendors.length > 0) return vendors;
+    if (suppliers && suppliers.length > 0) return suppliers;
+    return fetchedSuppliers || [];
   }, [vendors, suppliers, fetchedSuppliers]);
 
   const masterPurchasesList = useMemo(() => {
-    return purchases.length > 0 ? purchases : fetchedPurchases;
+    return purchases && purchases.length > 0 ? purchases : (fetchedPurchases || []);
   }, [purchases, fetchedPurchases]);
 
   const masterVendorPaymentsList = useMemo(() => {
-    return vendorPayments.length > 0 ? vendorPayments : fetchedVendorPayments;
+    return vendorPayments && vendorPayments.length > 0 ? vendorPayments : (fetchedVendorPayments || []);
   }, [vendorPayments, fetchedVendorPayments]);
 
   // Active Tab & Selection States
-  const [activeTab, setActiveTab] = useState('vendors');
+  const [activeTab, setActiveTab] = useState('customers');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedVendor, setSelectedVendor] = useState(null);
   
@@ -98,7 +92,7 @@ const KhataLedger = ({
   const [filterType, setFilterType] = useState('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Database Update & Delete States
+  // Database Operations States
   const [editingItem, setEditingItem] = useState(null);
   const [deletingItem, setDeletingItem] = useState(null);
   const [newPrevBalance, setNewPrevBalance] = useState('');
@@ -112,27 +106,24 @@ const KhataLedger = ({
   const [paymentNotes, setPaymentNotes] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // Custom Dark Toast / Alert State
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 3500);
+    setTimeout(() => setToast(null), 3500);
   };
 
   const isAdmin = useMemo(() => {
     return String(currentRole || '').trim().toLowerCase() === 'admin';
   }, [currentRole]);
 
-  // Helper function to extract purchase amount reliably with Math.round
   const getPurchaseAmount = (p) => {
+    if (!p) return 0;
     const rawAmt = Number(p.grandTotal || p.netTotal || p.totalAmount || p.total || p.amount || p.billAmount || 0);
     return Math.round(rawAmt);
   };
 
-  // Vendor Matching helper (Strict ID first, exact string match fallback)
+  // Safe Vendor Exact Match Rule
   const isVendorMatch = (record, vendor) => {
     if (!record || !vendor) return false;
     
@@ -152,17 +143,15 @@ const KhataLedger = ({
     return vName === targetName;
   };
 
-  // Customer Matching helper (STRICT FIX: Exact Match Only to Prevent Cross-Client Ledger Invoices & Recoveries)
+  // Safe Customer Exact Match Rule
   const isCustomerMatch = (record, customer) => {
     if (!record || !customer) return false;
 
     const cId = customer.id ? String(customer.id).trim() : null;
     const rCustomerId = String(record.customerId || record.clientId || record.customer_id || record.client_id || '').trim();
 
-    // 1. Direct ID Comparison (Most Accurate)
     if (cId && rCustomerId && cId === rCustomerId) return true;
 
-    // 2. Exact Name Matching Fallback
     const customerName = typeof customer === 'string' ? customer : (customer.name || '');
     if (!customerName) return false;
 
@@ -174,29 +163,27 @@ const KhataLedger = ({
     return cName === targetName;
   };
 
-  // ==========================================
-  // 1. CUSTOMER ANALYTICS & ROWS
-  // ==========================================
+  // Customer Calculation Analytics
   const ledgerMetrics = useMemo(() => {
     let totalOutstanding = 0;
     let totalRecoveredThisMonth = 0;
     let activeDebtorsCount = 0;
 
-    customers.forEach((customer) => {
+    (customers || []).forEach((customer) => {
       const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || customer.balance || 0));
       
-      const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer));
+      const customerSalesList = (sales || []).filter((s) => isCustomerMatch(s, customer));
       const totalSales = Math.round(
         customerSalesList.reduce((sum, s) => sum + Number(s.netTotal || s.netAmount || s.grandTotal || s.totalAmount || 0), 0)
       );
 
       const totalPaid = Math.round(
-        payments
+        (payments || [])
           .filter((p) => isCustomerMatch(p, customer))
           .reduce((sum, p) => sum + Number(p.amount || 0), 0)
       );
       const totalReturned = Math.round(
-        returns
+        (returns || [])
           .filter((r) => isCustomerMatch(r, customer))
           .reduce((sum, r) => sum + Number(r.refundAmount || r.netTotal || 0), 0)
       );
@@ -209,7 +196,7 @@ const KhataLedger = ({
       }
     });
 
-    payments.forEach((p) => {
+    (payments || []).forEach((p) => {
       const pDate = new Date(p.date || p.createdAt);
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
@@ -223,22 +210,22 @@ const KhataLedger = ({
 
   const customerRows = useMemo(
     () =>
-      customers
+      (customers || [])
         .map((customer) => {
           const prevBal = Math.round(Number(customer.previousBalance || customer.openingBalance || customer.balance || 0));
           
-          const customerSalesList = sales.filter((s) => isCustomerMatch(s, customer));
+          const customerSalesList = (sales || []).filter((s) => isCustomerMatch(s, customer));
           const totalSales = Math.round(
             customerSalesList.reduce((sum, s) => sum + Number(s.netTotal || s.netAmount || s.grandTotal || s.totalAmount || 0), 0)
           );
 
           const totalPaid = Math.round(
-            payments
+            (payments || [])
               .filter((payment) => isCustomerMatch(payment, customer))
               .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
           );
           const totalReturned = Math.round(
-            returns
+            (returns || [])
               .filter((returnItem) => isCustomerMatch(returnItem, customer))
               .reduce((sum, returnItem) => sum + Number(returnItem.refundAmount || returnItem.netTotal || 0), 0)
           );
@@ -247,7 +234,7 @@ const KhataLedger = ({
 
           return {
             id: customer.id,
-            name: customer.name,
+            name: customer.name || 'Unnamed',
             shopName: customer.shopName || customer.companyName || '-',
             phone: customer.phone || customer.mobile || customer.contact || '-',
             area: customer.area || customer.city || 'Mailsi',
@@ -261,9 +248,9 @@ const KhataLedger = ({
         })
         .filter((row) => {
           const matchesSearch = 
-            row.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            row.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            row.phone.includes(searchTerm);
+            (row.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (row.shopName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (row.phone || '').includes(searchTerm);
             
           if (filterType === 'all') return matchesSearch;
           if (filterType === 'debtors') return matchesSearch && row.balance > 0;
@@ -273,9 +260,7 @@ const KhataLedger = ({
     [customers, sales, payments, returns, searchTerm, filterType]
   );
 
-  // ==========================================
-  // 2. VENDOR / SUPPLIER ANALYTICS & ROWS
-  // ==========================================
+  // Vendor Calculation Analytics
   const vendorMetrics = useMemo(() => {
     let totalPayable = 0;
     let totalPaidThisMonth = 0;
@@ -295,7 +280,7 @@ const KhataLedger = ({
       );
         
       const totalReturned = Math.round(
-        vendorReturns
+        (vendorReturns || [])
           .filter((vr) => isVendorMatch(vr, vendor))
           .reduce((sum, vr) => sum + Number(vr.refundAmount || vr.total || 0), 0)
       );
@@ -338,7 +323,7 @@ const KhataLedger = ({
           );
             
           const totalReturned = Math.round(
-            vendorReturns
+            (vendorReturns || [])
               .filter((vr) => isVendorMatch(vr, vendor))
               .reduce((sum, vr) => sum + Number(vr.refundAmount || vr.total || 0), 0)
           );
@@ -360,9 +345,9 @@ const KhataLedger = ({
         })
         .filter((row) => {
           const matchesSearch = 
-            row.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            row.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            row.phone.includes(searchTerm);
+            (row.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (row.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (row.phone || '').includes(searchTerm);
             
           if (filterType === 'all') return matchesSearch;
           if (filterType === 'debtors') return matchesSearch && row.balance > 0;
@@ -372,10 +357,9 @@ const KhataLedger = ({
     [masterVendorsList, masterPurchasesList, masterVendorPaymentsList, vendorReturns, searchTerm, filterType]
   );
 
-  // Database Previous Balance Save
   const handleSavePreviousBalance = async () => {
     if (!isAdmin) {
-      showToast('Aapke paas is record ko change karne ki authority nahi hai!', 'warning');
+      showToast('Aapke paas opening balance change karne ki authority nahi hai!', 'warning');
       return;
     }
     if (!editingItem) return;
@@ -388,20 +372,19 @@ const KhataLedger = ({
         previousBalance: Math.round(Number(newPrevBalance || 0))
       });
       
-      showToast('Previous Balance successfully updated!', 'success');
+      showToast('Previous Balance update ho gaya!', 'success');
       setEditingItem(null);
     } catch (error) {
       console.error("Firebase Error: ", error);
-      showToast('Firebase database update failed!', 'error');
+      showToast('Database update failed!', 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Database Delete Record Handler (Admin Only)
   const handleDeleteRecord = async () => {
     if (!isAdmin) {
-      showToast('Aapke paas is record ko remove/delete karne ki authority nahi hai!', 'warning');
+      showToast('Aapke paas is record ko delete karne ki authority nahi hai!', 'warning');
       return;
     }
     if (!deletingItem) return;
@@ -412,23 +395,22 @@ const KhataLedger = ({
       
       await deleteDoc(docRef);
       
-      showToast(`${activeTab === 'customers' ? 'Customer' : 'Vendor'} record successfully deleted!`, 'success');
+      showToast('Record delete ho gaya!', 'success');
       setDeletingItem(null);
     } catch (error) {
       console.error("Firebase Delete Error: ", error);
-      showToast('Record delete karte waqt error aaya! Internet check karein.', 'error');
+      showToast('Delete karte waqt error aaya!', 'error');
     } finally {
       setIsDeleting(false);
     }
   };
 
-  // Submit Vendor Payment
   const handleSubmitVendorPayment = async (e) => {
     e.preventDefault();
     const payAmt = Math.round(Number(paymentAmount));
     
     if (!payingVendor || payAmt <= 0) {
-      showToast('Meharbani karke valid payment amount dakhil karein!', 'warning');
+      showToast('Valid payment amount dakhil karein!', 'warning');
       return;
     }
 
@@ -458,21 +440,20 @@ const KhataLedger = ({
         createdAt: serverTimestamp()
       });
 
-      showToast(`Rs. ${payAmt} Supplier (${payingVendor.name}) ko pay kar diye gaye hain!`, 'success');
+      showToast(`Rs. ${payAmt} Supplier (${payingVendor.name}) ko pay kar diye gaye!`, 'success');
       
       if (onPaymentSuccess) onPaymentSuccess();
       setPayingVendor(null);
       setPaymentAmount('');
       setPaymentNotes('');
     } catch (err) {
-      console.error("Payment Submission Error: ", err);
-      showToast('Payment save karte waqt error aaya!', 'error');
+      console.error("Payment Error: ", err);
+      showToast('Payment save nahi ho saki!', 'error');
     } finally {
       setIsProcessingPayment(false);
     }
   };
 
-  // --- CUSTOMER HISTORY STATEMENT ---
   const customerHistory = useMemo(() => {
     if (!selectedCustomer) return [];
     const historyArray = [];
@@ -488,7 +469,7 @@ const KhataLedger = ({
       });
     }
 
-    const customerSales = sales
+    const customerSales = (sales || [])
       .filter((sale) => isCustomerMatch(sale, selectedCustomer))
       .map((sale) => ({
         date: sale.date || (sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('en-CA') : '-'),
@@ -499,7 +480,7 @@ const KhataLedger = ({
         credit: 0,
       }));
 
-    const customerPayments = payments
+    const customerPayments = (payments || [])
       .filter((payment) => isCustomerMatch(payment, selectedCustomer))
       .map((payment) => ({
         date: payment.date || (payment.createdAt ? new Date(payment.createdAt).toLocaleDateString('en-CA') : '-'),
@@ -510,7 +491,7 @@ const KhataLedger = ({
         credit: Math.round(Number(payment.amount || 0)),
       }));
 
-    const customerReturns = returns
+    const customerReturns = (returns || [])
       .filter((returnItem) => isCustomerMatch(returnItem, selectedCustomer))
       .map((returnItem) => ({
         date: returnItem.date || (returnItem.createdAt ? new Date(returnItem.createdAt).toLocaleDateString('en-CA') : '-'),
@@ -526,7 +507,6 @@ const KhataLedger = ({
     );
   }, [selectedCustomer, sales, payments, returns]);
 
-  // --- VENDOR HISTORY STATEMENT ---
   const vendorHistory = useMemo(() => {
     if (!selectedVendor) return [];
     const historyArray = [];
@@ -542,10 +522,8 @@ const KhataLedger = ({
       });
     }
 
-    // Filter purchases belonging to selected vendor
     const filteredPurchases = masterPurchasesList.filter((p) => isVendorMatch(p, selectedVendor));
 
-    // Group purchases by Date
     const groupedPurchasesMap = {};
     filteredPurchases.forEach((p) => {
       const pDate = p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-CA') : 'Other');
@@ -555,12 +533,7 @@ const KhataLedger = ({
       else if (p.totalItems) itemCnt = Number(p.totalItems);
 
       if (!groupedPurchasesMap[pDate]) {
-        groupedPurchasesMap[pDate] = {
-          date: pDate,
-          totalAmount: 0,
-          purchaseCount: 0,
-          totalItems: 0,
-        };
+        groupedPurchasesMap[pDate] = { date: pDate, totalAmount: 0, purchaseCount: 0, totalItems: 0 };
       }
       groupedPurchasesMap[pDate].totalAmount += amt;
       groupedPurchasesMap[pDate].purchaseCount += 1;
@@ -587,7 +560,7 @@ const KhataLedger = ({
         credit: Math.round(Number(vp.amount || 0)),
       }));
 
-    const vReturns = vendorReturns
+    const vReturns = (vendorReturns || [])
       .filter((vr) => isVendorMatch(vr, selectedVendor))
       .map((vr) => ({
         date: vr.date || (vr.createdAt ? new Date(vr.createdAt).toLocaleDateString('en-CA') : '-'),
@@ -603,7 +576,6 @@ const KhataLedger = ({
     );
   }, [selectedVendor, masterPurchasesList, masterVendorPaymentsList, vendorReturns]);
 
-  // --- PRINT LEDGER STATEMENT ---
   const handlePrintLedger = (item, type = 'customer') => {
     if (type === 'customer') setSelectedCustomer(item);
     else setSelectedVendor(item);
@@ -620,11 +592,11 @@ const KhataLedger = ({
         if (item.previousBalance > 0) {
           printHistory.push({ date: '-', type: 'Opening Balance', reference: '-', debit: Math.round(item.previousBalance), credit: 0 });
         }
-        const salesList = sales.filter((s) => isCustomerMatch(s, item))
+        const salesList = (sales || []).filter((s) => isCustomerMatch(s, item))
           .map(s => ({ date: s.date || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Invoice', reference: s.invoiceNo || '-', debit: Math.round(Number(s.netTotal || s.netAmount || s.grandTotal || 0)), credit: 0 }));
-        const payList = payments.filter((p) => isCustomerMatch(p, item))
+        const payList = (payments || []).filter((p) => isCustomerMatch(p, item))
           .map(p => ({ date: p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Recovery', reference: p.receiptNo || '-', debit: 0, credit: Math.round(Number(p.amount || 0)) }));
-        const retList = returns.filter((r) => isCustomerMatch(r, item))
+        const retList = (returns || []).filter((r) => isCustomerMatch(r, item))
           .map(r => ({ date: r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Return', reference: r.returnNo || '-', debit: 0, credit: Math.round(Number(r.refundAmount || 0)) }));
         
         printHistory = [...printHistory, ...salesList, ...payList, ...retList].sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -654,7 +626,7 @@ const KhataLedger = ({
 
         const vPayList = masterVendorPaymentsList.filter((vp) => isVendorMatch(vp, item))
           .map(vp => ({ date: vp.date || (vp.createdAt ? new Date(vp.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Payment', reference: vp.receiptNo || '-', debit: 0, credit: Math.round(Number(vp.amount || 0)) }));
-        const vRetList = vendorReturns.filter((vr) => isVendorMatch(vr, item))
+        const vRetList = (vendorReturns || []).filter((vr) => isVendorMatch(vr, item))
           .map(vr => ({ date: vr.date || (vr.createdAt ? new Date(vr.createdAt).toLocaleDateString('en-CA') : '-'), type: 'Purchase Return', reference: vr.returnNo || '-', debit: 0, credit: Math.round(Number(vr.refundAmount || 0)) }));
         
         printHistory = [...printHistory, ...purList, ...vPayList, ...vRetList].sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -780,7 +752,6 @@ const KhataLedger = ({
 
   return (
     <PageShell title="Khata & Ledger Management">
-      {/* Toast Notification */}
       {toast && (
         <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg shadow-xl text-white font-medium flex items-center gap-2 transition-all duration-300 ${
           toast.type === 'error' ? 'bg-red-600' : toast.type === 'warning' ? 'bg-amber-600' : 'bg-emerald-600'
@@ -916,7 +887,7 @@ const KhataLedger = ({
         )}
       </div>
 
-      {/* Main Table View */}
+      {/* Table Data */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-4">
           <div className="relative w-full sm:w-80">
@@ -1082,7 +1053,7 @@ const KhataLedger = ({
         />
       </Card>
 
-      {/* Customer History Modal */}
+      {/* Customer Modal */}
       {selectedCustomer && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -1130,7 +1101,7 @@ const KhataLedger = ({
         </div>
       )}
 
-      {/* Vendor History Modal */}
+      {/* Vendor Modal */}
       {selectedVendor && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -1281,13 +1252,13 @@ const KhataLedger = ({
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       {deletingItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
             <AlertCircle className="w-10 h-10 text-rose-600 mx-auto mb-2" />
-            <h3 className="font-bold text-slate-800">Confirm Record Deletion</h3>
-            <p className="text-xs text-slate-500 my-2">Kya aap waqai <b>{deletingItem.name}</b> ka record hamesha k liye delete karna chahte hain?</p>
+            <h3 className="font-bold text-slate-800">Confirm Deletion</h3>
+            <p className="text-xs text-slate-500 my-2">Kya aap waqai <b>{deletingItem.name}</b> ko delete karna chahte hain?</p>
 
             <div className="flex justify-center gap-2 mt-4">
               <button onClick={() => setDeletingItem(null)} className="px-4 py-2 border rounded-lg text-xs font-medium">Cancel</button>
