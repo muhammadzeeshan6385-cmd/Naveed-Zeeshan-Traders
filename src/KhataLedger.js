@@ -150,11 +150,11 @@ const KhataLedger = ({
     return vName !== '' && target === vName;
   };
 
-  // Customer Matching helper (Exact Matching Fixed)
+  // Customer Matching helper
   const isCustomerMatch = (record, customerObj) => {
     if (!record || !customerObj) return false;
 
-    // Check by ID match first (Best accuracy)
+    // Check by ID match first
     const cId = String(customerObj.id || '').trim();
     const rCustId = String(record.customerId || record.client_id || record.clientId || record.customer_id || '').trim();
     if (cId && rCustId && cId === rCustId) return true;
@@ -395,7 +395,7 @@ const KhataLedger = ({
     }
   };
 
-  // Database Delete Record Handler (Deletion Issue Fix)
+  // Database Delete Record Handler
   const handleDeleteRecord = async () => {
     if (!isAdmin) {
       showToast('Aapke paas is record ko remove/delete karne ki authority nahi hai!', 'warning');
@@ -404,7 +404,6 @@ const KhataLedger = ({
     if (!deletingItem || !deletingItem.id) return;
     setIsDeleting(true);
     try {
-      // Direct delete checks on possible collection names (customers, suppliers, vendors)
       const primaryCollection = activeTab === 'customers' ? 'customers' : 'suppliers';
       
       try {
@@ -548,10 +547,8 @@ const KhataLedger = ({
       });
     }
 
-    // Filter purchases belonging to selected vendor
     const filteredPurchases = masterPurchasesList.filter((p) => isVendorMatch(p, selectedVendor.original || selectedVendor));
 
-    // Group purchases by Date
     const groupedPurchasesMap = {};
     filteredPurchases.forEach((p) => {
       const pDate = p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-CA') : 'Other');
@@ -811,15 +808,15 @@ const KhataLedger = ({
       )}
 
       {/* Main Container */}
-      <div className="p-4 space-y-6">
+      <div className="p-4 space-y-6 bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100">
         {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setActiveTab('vendors')}
             className={`py-3 px-6 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${
               activeTab === 'vendors'
-                ? 'border-indigo-600 text-indigo-600 font-semibold'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
           >
             <Truck className="w-4 h-4" />
@@ -829,8 +826,8 @@ const KhataLedger = ({
             onClick={() => setActiveTab('customers')}
             className={`py-3 px-6 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${
               activeTab === 'customers'
-                ? 'border-indigo-600 text-indigo-600 font-semibold'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -841,46 +838,46 @@ const KhataLedger = ({
         {/* Analytics Top Cards */}
         {activeTab === 'customers' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-4 border-l-4 border-amber-500">
-              <div className="text-gray-500 text-xs font-medium uppercase">Total Arrears / Outstanding</div>
-              <div className="text-2xl font-bold text-gray-800 mt-1">{formatRs(ledgerMetrics.totalOutstanding)}</div>
+            <Card className="p-4 border-l-4 border-amber-500 bg-white dark:bg-gray-800 dark:border-gray-700">
+              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Total Arrears / Outstanding</div>
+              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-1">{formatRs(ledgerMetrics.totalOutstanding)}</div>
             </Card>
-            <Card className="p-4 border-l-4 border-emerald-500">
-              <div className="text-gray-500 text-xs font-medium uppercase">Recovered This Month</div>
-              <div className="text-2xl font-bold text-emerald-600 mt-1">{formatRs(ledgerMetrics.totalRecoveredThisMonth)}</div>
+            <Card className="p-4 border-l-4 border-emerald-500 bg-white dark:bg-gray-800 dark:border-gray-700">
+              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Recovered This Month</div>
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatRs(ledgerMetrics.totalRecoveredThisMonth)}</div>
             </Card>
-            <Card className="p-4 border-l-4 border-indigo-500">
-              <div className="text-gray-500 text-xs font-medium uppercase">Active Debtors</div>
-              <div className="text-2xl font-bold text-indigo-600 mt-1">{ledgerMetrics.activeDebtorsCount}</div>
+            <Card className="p-4 border-l-4 border-indigo-500 bg-white dark:bg-gray-800 dark:border-gray-700">
+              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Active Debtors</div>
+              <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{ledgerMetrics.activeDebtorsCount}</div>
             </Card>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-4 border-l-4 border-rose-500">
-              <div className="text-gray-500 text-xs font-medium uppercase">Total Vendor Payable</div>
-              <div className="text-2xl font-bold text-rose-600 mt-1">{formatRs(vendorMetrics.totalPayable)}</div>
+            <Card className="p-4 border-l-4 border-rose-500 bg-white dark:bg-gray-800 dark:border-gray-700">
+              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Total Vendor Payable</div>
+              <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">{formatRs(vendorMetrics.totalPayable)}</div>
             </Card>
-            <Card className="p-4 border-l-4 border-blue-500">
-              <div className="text-gray-500 text-xs font-medium uppercase">Paid to Suppliers This Month</div>
-              <div className="text-2xl font-bold text-blue-600 mt-1">{formatRs(vendorMetrics.totalPaidThisMonth)}</div>
+            <Card className="p-4 border-l-4 border-blue-500 bg-white dark:bg-gray-800 dark:border-gray-700">
+              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Paid to Suppliers This Month</div>
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">{formatRs(vendorMetrics.totalPaidThisMonth)}</div>
             </Card>
-            <Card className="p-4 border-l-4 border-purple-500">
-              <div className="text-gray-500 text-xs font-medium uppercase">Active Suppliers/Creditors</div>
-              <div className="text-2xl font-bold text-purple-600 mt-1">{vendorMetrics.activeCreditorsCount}</div>
+            <Card className="p-4 border-l-4 border-purple-500 bg-white dark:bg-gray-800 dark:border-gray-700">
+              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Active Suppliers/Creditors</div>
+              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">{vendorMetrics.activeCreditorsCount}</div>
             </Card>
           </div>
         )}
 
         {/* Search & Action Bar */}
-        <div className="flex flex-col sm:flex-row gap-3 justify-between items-center bg-white p-3 rounded-lg border border-gray-200">
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-center bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+            <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400 dark:text-gray-500" />
             <input
               type="text"
               placeholder={`Search ${activeTab === 'customers' ? 'customer or shop...' : 'vendor or company...'}`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-400"
             />
           </div>
 
@@ -888,7 +885,7 @@ const KhataLedger = ({
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="py-2 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="all">All Accounts</option>
               <option value="debtors">Active Balances (&gt; 0)</option>
@@ -897,7 +894,7 @@ const KhataLedger = ({
 
             <button
               onClick={handleRefreshData}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-md border border-gray-300"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600"
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -914,10 +911,10 @@ const KhataLedger = ({
         </div>
 
         {/* Table Rendering */}
-        <Card>
+        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
-              <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+              <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium">
                 <tr>
                   <th className="p-3">#</th>
                   <th className="p-3">{activeTab === 'customers' ? 'Customer Name' : 'Vendor Name'}</th>
@@ -930,23 +927,23 @@ const KhataLedger = ({
                   <th className="p-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {(activeTab === 'customers' ? customerRows : vendorRows).length > 0 ? (
                   (activeTab === 'customers' ? customerRows : vendorRows).map((row, idx) => (
-                    <tr key={row.id} className="hover:bg-gray-50">
-                      <td className="p-3 text-gray-400 text-xs">{idx + 1}</td>
-                      <td className="p-3 font-semibold text-gray-800">{row.name}</td>
-                      <td className="p-3 text-gray-600">{row.shopName || row.companyName}</td>
-                      <td className="p-3 text-gray-600">{row.phone}</td>
-                      <td className="p-3 text-right font-medium text-gray-500">{formatRs(row.previousBalance)}</td>
-                      <td className="p-3 text-right text-gray-700">{formatRs(row.totalSales || row.totalPurchases)}</td>
-                      <td className="p-3 text-right text-emerald-600 font-medium">{formatRs(row.totalPaid)}</td>
-                      <td className="p-3 text-right font-bold text-amber-700">{formatRs(row.balance)}</td>
+                    <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="p-3 text-gray-400 dark:text-gray-500 text-xs">{idx + 1}</td>
+                      <td className="p-3 font-semibold text-gray-800 dark:text-gray-100">{row.name}</td>
+                      <td className="p-3 text-gray-600 dark:text-gray-300">{row.shopName || row.companyName}</td>
+                      <td className="p-3 text-gray-600 dark:text-gray-300">{row.phone}</td>
+                      <td className="p-3 text-right font-medium text-gray-500 dark:text-gray-400">{formatRs(row.previousBalance)}</td>
+                      <td className="p-3 text-right text-gray-700 dark:text-gray-200">{formatRs(row.totalSales || row.totalPurchases)}</td>
+                      <td className="p-3 text-right text-emerald-600 dark:text-emerald-400 font-medium">{formatRs(row.totalPaid)}</td>
+                      <td className="p-3 text-right font-bold text-amber-700 dark:text-amber-400">{formatRs(row.balance)}</td>
                       <td className="p-3">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => activeTab === 'customers' ? setSelectedCustomer(row) : setSelectedVendor(row)}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"
                             title="View Statement"
                           >
                             <Eye className="w-4 h-4" />
@@ -955,7 +952,7 @@ const KhataLedger = ({
                           {activeTab === 'vendors' && (
                             <button
                               onClick={() => setPayingVendor(row)}
-                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                              className="p-1 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded"
                               title="Pay Supplier"
                             >
                               <Wallet className="w-4 h-4" />
@@ -964,7 +961,7 @@ const KhataLedger = ({
 
                           <button
                             onClick={() => handlePrintLedger(row, activeTab === 'customers' ? 'customer' : 'vendor')}
-                            className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                            className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             title="Print Ledger"
                           >
                             <Printer className="w-4 h-4" />
@@ -977,7 +974,7 @@ const KhataLedger = ({
                                   setEditingItem(row);
                                   setNewPrevBalance(row.previousBalance);
                                 }}
-                                className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                                className="p-1 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded"
                                 title="Edit Opening Balance"
                               >
                                 <Edit2 className="w-4 h-4" />
@@ -985,7 +982,7 @@ const KhataLedger = ({
 
                               <button
                                 onClick={() => setDeletingItem(row)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
                                 title="Delete Record"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -998,7 +995,7 @@ const KhataLedger = ({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="9" className="p-8 text-center text-gray-400">
+                    <td colSpan="9" className="p-8 text-center text-gray-400 dark:text-gray-500">
                       No ledger accounts found.
                     </td>
                   </tr>
@@ -1011,21 +1008,21 @@ const KhataLedger = ({
 
       {/* MODAL: CUSTOMER / VENDOR STATEMENT */}
       {(selectedCustomer || selectedVendor) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-lg">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl border border-gray-200 dark:border-gray-700">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 rounded-t-lg">
               <div>
-                <h3 className="font-bold text-lg text-gray-800">
+                <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100">
                   {selectedCustomer ? `Customer Statement: ${selectedCustomer.name}` : `Vendor Statement: ${selectedVendor.name}`}
                 </h3>
-                <p className="text-xs text-gray-500">Complete Debit / Credit Ledger History</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Complete Debit / Credit Ledger History</p>
               </div>
               <button
                 onClick={() => {
                   setSelectedCustomer(null);
                   setSelectedVendor(null);
                 }}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1033,7 +1030,7 @@ const KhataLedger = ({
 
             <div className="p-4 overflow-y-auto flex-1">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 font-semibold">
+                <thead className="bg-gray-100 dark:bg-gray-700/60 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold">
                   <tr>
                     <th className="p-2">Date</th>
                     <th className="p-2">Type</th>
@@ -1043,23 +1040,23 @@ const KhataLedger = ({
                     <th className="p-2 text-right">Credit</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {(selectedCustomer ? customerHistory : vendorHistory).map((h, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="p-2 text-gray-500">{h.date}</td>
+                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="p-2 text-gray-500 dark:text-gray-400">{h.date}</td>
                       <td className="p-2 font-medium">{h.type}</td>
-                      <td className="p-2 text-gray-600">{h.reference}</td>
-                      <td className="p-2 text-gray-500">{h.description}</td>
-                      <td className="p-2 text-right text-gray-700 font-medium">{h.debit > 0 ? formatRs(h.debit) : '-'}</td>
-                      <td className="p-2 text-right text-emerald-600 font-medium">{h.credit > 0 ? formatRs(h.credit) : '-'}</td>
+                      <td className="p-2 text-gray-600 dark:text-gray-300">{h.reference}</td>
+                      <td className="p-2 text-gray-500 dark:text-gray-400">{h.description}</td>
+                      <td className="p-2 text-right text-gray-700 dark:text-gray-200 font-medium">{h.debit > 0 ? formatRs(h.debit) : '-'}</td>
+                      <td className="p-2 text-right text-emerald-600 dark:text-emerald-400 font-medium">{h.credit > 0 ? formatRs(h.credit) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center rounded-b-lg">
-              <div className="text-sm font-bold text-amber-800">
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex justify-between items-center rounded-b-lg">
+              <div className="text-sm font-bold text-amber-800 dark:text-amber-400">
                 Current Net Balance: {formatRs(selectedCustomer ? selectedCustomer.balance : selectedVendor.balance)}
               </div>
               <button
@@ -1075,23 +1072,23 @@ const KhataLedger = ({
 
       {/* MODAL: EDIT PREVIOUS BALANCE */}
       {editingItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-xl space-y-4">
-            <h3 className="font-bold text-gray-800 text-base">Edit Opening / Previous Balance</h3>
-            <p className="text-xs text-gray-500">Update starting balance for {editingItem.name}.</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-md p-6 shadow-xl space-y-4 border border-gray-200 dark:border-gray-700">
+            <h3 className="font-bold text-gray-800 dark:text-gray-100 text-base">Edit Opening / Previous Balance</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Update starting balance for {editingItem.name}.</p>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Previous Balance (Rs.)</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Previous Balance (Rs.)</label>
               <input
                 type="number"
                 value={newPrevBalance}
                 onChange={(e) => setNewPrevBalance(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setEditingItem(null)}
-                className="px-4 py-2 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-100"
+                className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 Cancel
               </button>
@@ -1109,19 +1106,19 @@ const KhataLedger = ({
 
       {/* MODAL: DELETE RECORD CONFIRMATION */}
       {deletingItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-xl space-y-4">
-            <div className="flex items-center gap-3 text-red-600">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-md p-6 shadow-xl space-y-4 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3 text-red-600 dark:text-red-400">
               <AlertCircle className="w-6 h-6" />
-              <h3 className="font-bold text-gray-800 text-base">Confirm Deletion</h3>
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 text-base">Confirm Deletion</h3>
             </div>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-gray-600 dark:text-gray-300">
               Are you sure you want to delete <strong>{deletingItem.name}</strong> from database? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setDeletingItem(null)}
-                className="px-4 py-2 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-100"
+                className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 Cancel
               </button>
@@ -1139,26 +1136,26 @@ const KhataLedger = ({
 
       {/* MODAL: VENDOR PAYMENT */}
       {payingVendor && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleSubmitVendorPayment} className="bg-white rounded-lg w-full max-w-md p-6 shadow-xl space-y-4">
-            <h3 className="font-bold text-gray-800 text-base">Pay Supplier: {payingVendor.name}</h3>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <form onSubmit={handleSubmitVendorPayment} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-md p-6 shadow-xl space-y-4 border border-gray-200 dark:border-gray-700">
+            <h3 className="font-bold text-gray-800 dark:text-gray-100 text-base">Pay Supplier: {payingVendor.name}</h3>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Amount to Pay (Rs.)</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Amount to Pay (Rs.)</label>
               <input
                 type="number"
                 required
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
                 placeholder="0"
-                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Payment Method</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Payment Method</label>
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded bg-white"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="Cash">Cash</option>
                 <option value="Bank Transfer">Bank Transfer</option>
@@ -1166,20 +1163,20 @@ const KhataLedger = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Notes / Remarks</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Notes / Remarks</label>
               <input
                 type="text"
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
                 placeholder="e.g. Ledger Payment"
-                className="w-full p-2 border border-gray-300 rounded"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setPayingVendor(null)}
-                className="px-4 py-2 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-100"
+                className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 Cancel
               </button>
