@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Button, Card, DataTable, Input, PageShell, Select } from './components/ui';
 import { generateId, todayISO } from './utils/helpers';
 import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -15,16 +15,17 @@ const generateTransactionId = () => {
 };
 
 const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, currentRole = '' }) => {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     transactionId: generateTransactionId(),
     category: '',
     amount: '',
     date: todayISO(),
     description: '',
     account: 'Cash',
-  });
+  }));
 
-  // Loading / Submitting State to prevent Double Submission Trigger
+  // Strict Lock to Block Duplicate Execution Instantly
+  const isSubmittingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit Modal State
@@ -103,16 +104,21 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
   // Submit New Expense directly from form (Saved to Firebase)
   const handleSubmit = async (event) => {
-    if (event) event.preventDefault();
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
 
-    // Prevent duplicate triggers if request is already in progress
-    if (isSubmitting) return;
-
+    // STRICT DOUBLE SUBMISSION GUARD
+    if (isSubmittingRef.current) return;
+    
     if (!form.category || !form.amount) {
       showToast('Category and amount are required.', 'warning');
       return;
     }
 
+    // LOCK IMMEDIATELY BEFORE ANY ASYNC CALLS
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     const amount = Number(form.amount);
@@ -159,15 +165,20 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       console.error("Firebase Add Error: ", err);
       showToast('Firebase Error: Expense save nahi ho saka.', 'error');
     } finally {
+      // UNLOCK AFTER EXECUTION
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   // Handle Update Confirmation from Modal (Updated in Firebase)
   const handleConfirmUpdate = async (e) => {
-    if (e) e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     
-    if (isSubmitting) return;
+    if (isSubmittingRef.current) return;
 
     if (!isAdmin) {
       showToast('Only admin can modify or update expenses.', 'warning');
@@ -179,6 +190,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     const amount = Number(form.amount);
@@ -214,6 +226,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       console.error("Firebase Update Error: ", err);
       showToast('Firebase Error: Update fail ho gya.', 'error');
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -225,8 +238,9 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       return;
     }
 
-    if (!deletingItem || isSubmitting) return;
+    if (!deletingItem || isSubmittingRef.current) return;
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     const targetExpense = deletingItem;
@@ -274,6 +288,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       console.error("Firebase Delete Error: ", err);
       showToast('Firebase Error: Delete fail ho gya.', 'error');
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
       setDeletingItem(null);
     }
