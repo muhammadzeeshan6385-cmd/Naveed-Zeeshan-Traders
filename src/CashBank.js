@@ -3,8 +3,8 @@ import { Button, Card, DataTable, Input, PageShell, Select, StatCard } from './c
 import { formatRs, generateId, todayISO } from './utils/helpers';
 import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
-// Firebase Database Imports (Firestore Primary Alignment)
-import { db } from './firebase'; // Ensure path matches your firebaseConfig location
+// Firebase Database Imports
+import { db } from './firebase'; 
 import { doc, deleteDoc, updateDoc, setDoc, collection, getDocs } from 'firebase/firestore'; 
 
 // Helper to generate Auto Transaction ID Code
@@ -57,52 +57,96 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return String(userRole || '').trim().toLowerCase() === 'admin';
   }, [userRole]);
 
-  // --- FIREBASE FETCH WITH EXACT FIRESTORE DOCUMENT ID ---
+  // --- FETCH CASH, RECOVERY & EXPENSES DATA FROM FIREBASE WITH EXACT DOC IDs ---
   useEffect(() => {
-    const fetchCashDataFromFirebase = async () => {
+    const fetchAllFinancialData = async () => {
       try {
         if (!db) return;
-        const querySnapshot = await getDocs(collection(db, "cashData"));
-        const firebaseCash = [];
+        const allFetchedEntries = [];
         const seenIds = new Set();
         let indexCounter = 1000;
 
-        for (const docSnap of querySnapshot.docs) {
-          const firestoreDocId = docSnap.id; // Asal Firestore Document Key
-          
-          if (seenIds.has(firestoreDocId)) continue;
-          seenIds.add(firestoreDocId);
-
-          const data = docSnap.data();
-          let allocatedTxnId = data.transactionId;
-
-          if (!allocatedTxnId) {
-            indexCounter += 1;
-            allocatedTxnId = `TXN-OLD-${indexCounter}`;
-            try {
-              await updateDoc(doc(db, "cashData", firestoreDocId), { transactionId: allocatedTxnId });
-            } catch (err) {
-              console.error("Auto Code Allocation Error:", err);
-            }
+        // 1. Fetch Direct Cash & Bank Transactions
+        const cashSnapshot = await getDocs(collection(db, "cashData"));
+        cashSnapshot.forEach((docSnap) => {
+          const docId = docSnap.id;
+          if (!seenIds.has(docId)) {
+            seenIds.add(docId);
+            const data = docSnap.data();
+            let allocatedTxnId = data.transactionId || `TXN-CASH-${docId.slice(0, 5)}`;
+            allFetchedEntries.push({
+              ...data,
+              id: docId,
+              docId: docId,
+              sourceCollection: 'cashData',
+              transactionId: allocatedTxnId,
+              amount: Number(data.amount || 0)
+            });
           }
+        });
 
-          firebaseCash.push({
-            ...data,
-            id: firestoreDocId, // Assuring 'id' is ALWAYS the exact Firestore Doc ID
-            docId: firestoreDocId,
-            transactionId: allocatedTxnId
+        // 2. Fetch Recovery Entries (Add as Receipt +)
+        try {
+          const recoverySnapshot = await getDocs(collection(db, "recoveries"));
+          recoverySnapshot.forEach((docSnap) => {
+            const docId = docSnap.id;
+            if (!seenIds.has(docId)) {
+              seenIds.add(docId);
+              const data = docSnap.data();
+              const recAmount = Math.abs(Number(data.amount || data.receivedAmount || 0));
+              allFetchedEntries.push({
+                id: docId,
+                docId: docId,
+                sourceCollection: 'recoveries',
+                transactionId: data.transactionId || `REC-${data.recoveryId || docId.slice(0, 5)}`,
+                date: data.date || todayISO(),
+                account: data.account || 'Cash',
+                description: data.description || `Recovery Received - ${data.customerName || 'Customer'}`,
+                amount: recAmount, // PLUS in total
+                type: 'receipt'
+              });
+            }
           });
+        } catch (recErr) {
+          console.warn("Recoveries collection fetch optional info:", recErr);
         }
 
-        setCashData(firebaseCash);
+        // 3. Fetch Expense Entries (Add as Expense/Payment -)
+        try {
+          const expenseSnapshot = await getDocs(collection(db, "expenses"));
+          expenseSnapshot.forEach((docSnap) => {
+            const docId = docSnap.id;
+            if (!seenIds.has(docId)) {
+              seenIds.add(docId);
+              const data = docSnap.data();
+              const expAmount = -Math.abs(Number(data.amount || 0)); // LESS / MINUS in total
+              allFetchedEntries.push({
+                id: docId,
+                docId: docId,
+                sourceCollection: 'expenses',
+                transactionId: data.transactionId || `EXP-${data.expenseId || docId.slice(0, 5)}`,
+                date: data.date || todayISO(),
+                account: data.account || 'Cash',
+                description: data.description || `Expense - ${data.category || 'General'}`,
+                amount: expAmount, // MINUS from total
+                type: 'payment'
+              });
+            }
+          });
+        } catch (expErr) {
+          console.warn("Expenses collection fetch optional info:", expErr);
+        }
+
+        setCashData(allFetchedEntries);
       } catch (error) {
-        console.error("Firebase Cash Fetch Error:", error);
+        console.error("Firebase Finance Fetch Error:", error);
       }
     };
 
-    fetchCashDataFromFirebase();
+    fetchAllFinancialData();
   }, [setCashData]);
 
+  // CALCULATION: Recovery amounts (+) added, Expense amounts (-) deducted
   const totals = useMemo(() => {
     const cash = cashData.filter((entry) => entry.account === 'Cash').reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
     const bank = cashData.filter((entry) => entry.account === 'Bank').reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
@@ -135,24 +179,46 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     return sortedCashData.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedCashData, currentPage, itemsPerPage]);
 
-  // Firebase Direct Delete Helper Function Fixed
-  const deleteFromFirebaseDB = async (item) => {
-    const targetId = item?.docId || item?.id || item?._id;
-    if (!targetId || !db) {
-      throw new Error("Valid Firestore document ID missing.");
+  // Absolute Permanent Delete Logic
+  const handleConfirmDelete = async () => {
+    if (!isAdmin) {
+      showToast('Only admin can delete transaction record.', 'warning');
+      return;
     }
-    const docRef = doc(db, 'cashData', String(targetId));
-    await deleteDoc(docRef);
-  };
 
-  // Firebase Direct Update Helper Function Fixed
-  const updateInFirebaseDB = async (item, updatedData) => {
-    const targetId = item?.docId || item?.id || item?._id;
-    if (!targetId || !db) {
-      throw new Error("Valid Firestore document ID missing.");
+    if (!deletingItem) return;
+
+    setLoading(true);
+
+    try {
+      const targetId = String(deletingItem.docId || deletingItem.id || deletingItem._id);
+      const collectionName = deletingItem.sourceCollection || 'cashData';
+
+      // Delete directly from Firestore
+      if (db && targetId) {
+        await deleteDoc(doc(db, collectionName, targetId));
+      }
+
+      // Filter state by multiple matching safeguards
+      setCashData((prev) =>
+        prev.filter((item) => {
+          const itemId = String(item.docId || item.id || item._id);
+          return itemId !== targetId && item.transactionId !== deletingItem.transactionId;
+        })
+      );
+
+      showToast('Transaction Entry has been deleted permanently', 'success');
+    } catch (err) {
+      console.error("Firebase delete transaction error:", err);
+      // Fallback local UI delete if network or rule issue occurs
+      setCashData((prev) =>
+        prev.filter((item) => (item.docId || item.id) !== (deletingItem.docId || deletingItem.id))
+      );
+      showToast('Removed from local view. Please check Firebase Rules if it reappears.', 'warning');
+    } finally {
+      setLoading(false);
+      setDeletingItem(null);
     }
-    const docRef = doc(db, 'cashData', String(targetId));
-    await updateDoc(docRef, updatedData);
   };
 
   const addTransaction = async () => {
@@ -168,6 +234,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     const newEntry = {
       id: customId,
       docId: customId,
+      sourceCollection: 'cashData',
       transactionId: finalTxnId,
       date: form.date,
       account: form.account,
@@ -240,15 +307,16 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
 
     setLoading(true);
     try {
-      if (editingItem) {
-        await updateInFirebaseDB(editingItem, updatedData);
-      }
+      const targetId = String(editingItem?.docId || editingItem?.id);
+      const collectionName = editingItem?.sourceCollection || 'cashData';
 
-      const targetId = editingItem?.docId || editingItem?.id || editingItem?._id;
+      if (db && targetId) {
+        await updateDoc(doc(db, collectionName, targetId), updatedData);
+      }
 
       setCashData((prevCashData) =>
         prevCashData.map((item) => {
-          const itemId = item.docId || item.id || item._id;
+          const itemId = String(item.docId || item.id);
           return itemId === targetId ? { ...item, ...updatedData } : item;
         })
       );
@@ -263,48 +331,12 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     }
   };
 
-  // Handle Delete Click
   const handleDeleteClick = (row) => {
     if (!isAdmin) {
       showToast('Only admin login has access to delete transactions.', 'warning');
       return;
     }
     setDeletingItem(row);
-  };
-
-  // Confirm Delete Transaction linked with Firebase
-  const handleConfirmDelete = async () => {
-    if (!isAdmin) {
-      showToast('Only admin can delete transaction record.', 'warning');
-      return;
-    }
-
-    if (!deletingItem) return;
-
-    setLoading(true);
-
-    try {
-      const targetId = deletingItem.docId || deletingItem.id || deletingItem._id;
-      
-      // Delete directly from Firestore using exact Doc ID
-      await deleteFromFirebaseDB(deletingItem);
-
-      // Instantly remove item from local React state
-      setCashData((prevCashData) =>
-        prevCashData.filter((item) => {
-          const itemId = item.docId || item.id || item._id;
-          return itemId !== targetId && item.transactionId !== deletingItem.transactionId;
-        })
-      );
-
-      showToast('Transaction Entry has been deleted permanently', 'success');
-    } catch (err) {
-      console.error("Firebase delete transaction error:", err);
-      showToast('Failed to delete transaction from Firebase.', 'error');
-    } finally {
-      setLoading(false);
-      setDeletingItem(null);
-    }
   };
 
   // Handle Print Receipt
