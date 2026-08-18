@@ -92,20 +92,25 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
     return Array.from(map.values());
   }, [expensesData, fetchedExpenses]);
 
-  // --- GENERATE COMBINED TRANSACTIONS (ONLY RECOVERY [+] AND EXPENSE [-]) ---
+  // --- GENERATE COMBINED TRANSACTIONS (RECOVERY [+] AND EXPENSE [-]) ---
   const combinedTransactions = useMemo(() => {
     const records = [];
 
     // Map Recovery Entries -> PLUS (+)
     allRecoveries.forEach((rec) => {
-      const recAmount = Math.abs(Number(rec.amount || rec.receivedAmount || 0));
+      // Check multiple field fallbacks for amount in recoveries
+      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? 0;
+      const recAmount = Math.abs(Number(rawVal) || 0);
+
+      const custName = rec.customerName || rec.customer || rec.client || 'Customer';
+
       if (recAmount > 0) {
         records.push({
           id: String(rec.id || rec.docId || `REC-${Math.random()}`),
           transactionId: rec.transactionId || `REC-${(rec.id || '').slice(0, 6)}`,
           date: rec.date || todayISO(),
           account: rec.account || 'Cash',
-          description: rec.description || `Recovery Received - ${rec.customerName || 'Customer'}`,
+          description: rec.description || `Recovery Received - ${custName}`,
           amount: recAmount, // PLUS
           type: 'receipt',
           source: 'Recovery',
@@ -115,7 +120,9 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
 
     // Map Expense Entries -> MINUS (-)
     allExpenses.forEach((exp) => {
-      const expAmount = Math.abs(Number(exp.amount || 0));
+      const rawVal = exp.amount ?? exp.expenseAmount ?? 0;
+      const expAmount = Math.abs(Number(rawVal) || 0);
+
       if (expAmount > 0) {
         records.push({
           id: String(exp.id || exp.docId || `EXP-${Math.random()}`),
