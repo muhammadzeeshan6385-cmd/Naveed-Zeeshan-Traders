@@ -33,32 +33,85 @@ function Reports({
   const [showReportView, setShowReportView] = useState(false);
 
   // Firebase Live States
-  const [dbSales, setDbSales] = useState([]);
-  const [dbExpenses, setDbExpenses] = useState([]);
-  const [dbPayments, setDbPayments] = useState([]);
-  const [dbPurchases, setDbPurchases] = useState([]);
-  const [dbProducts, setDbProducts] = useState([]);
-  const [dbInventory, setDbInventory] = useState([]);
+  const [dbSales, setDbSales] = useState(null);
+  const [dbExpenses, setDbExpenses] = useState(null);
+  const [dbPayments, setDbPayments] = useState(null);
+  const [dbPurchases, setDbPurchases] = useState(null);
+  const [dbProducts, setDbProducts] = useState(null);
+  const [dbInventory, setDbInventory] = useState(null);
   const [dbInventoryLogs, setDbInventoryLogs] = useState([]);
 
   const fallbackTodayDate = new Date().toISOString().split('T')[0];
+
+  // STRICT & UNIVERSAL DATE NORMALIZER (Handles Strings, Timestamps, ISO, Dates)
+  const normalizeDateStr = (dateVal) => {
+    if (!dateVal) return '';
+    
+    // If it's a Firestore Timestamp or Object with seconds
+    if (typeof dateVal === 'object' && dateVal !== null) {
+      if (typeof dateVal.toDate === 'function') {
+        dateVal = dateVal.toDate();
+      } else if (dateVal.seconds) {
+        dateVal = new Date(dateVal.seconds * 1000);
+      }
+    }
+
+    if (dateVal instanceof Date) {
+      if (isNaN(dateVal.getTime())) return '';
+      return dateVal.toISOString().split('T')[0];
+    }
+
+    const str = String(dateVal).trim();
+    if (!str) return '';
+
+    // If ISO or YYYY-MM-DD
+    if (str.includes('T')) {
+      return str.split('T')[0];
+    }
+
+    // Handle DD-MM-YYYY or DD/MM/YYYY
+    if (str.includes('-') || str.includes('/')) {
+      const parts = str.split(/[-/]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          // YYYY-MM-DD
+          const y = parts[0];
+          const m = parts[1].padStart(2, '0');
+          const d = parts[2].padStart(2, '0');
+          return `${y}-${m}-${d}`;
+        } else if (parts[2].length === 4) {
+          // DD-MM-YYYY
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          const y = parts[2];
+          return `${y}-${m}-${d}`;
+        }
+      }
+    }
+
+    // Fallback standard JS Date Parse
+    const parsedDate = new Date(str);
+    if (!isNaN(parsedDate.getTime())) {
+      return parsedDate.toISOString().split('T')[0];
+    }
+
+    return str;
+  };
 
   // ULTRA STRICT NUMBER PARSER & EXTRACTOR
   const safeNumber = (val) => {
     if (val === undefined || val === null || val === '' || val === 'null' || val === 'undefined') return 0;
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
     
-    // Clean strings like "10 pcs", "Rs. 500", " 25 "
     const cleanedStr = String(val).replace(/[^0-9.-]/g, '');
     const num = parseFloat(cleanedStr);
     return isNaN(num) ? 0 : num;
   };
 
-  // DEEP STOCK EXTRACTOR (Scans all possible database key aliases)
+  // DEEP STOCK EXTRACTOR
   const extractStockFromObject = (obj) => {
     if (!obj || typeof obj !== 'object') return 0;
 
-    // Direct key scan list
     const priorityKeys = [
       'resolvedStock', 'stock', 'quantity', 'qty', 'currentStock', 
       'availableStock', 'totalStock', 'openingStock', 'item_qty', 
@@ -72,7 +125,6 @@ function Reports({
       }
     }
 
-    // Secondary scan for nested objects / dynamic keys
     for (const key in obj) {
       if (key.toLowerCase().includes('stock') || key.toLowerCase().includes('qty') || key.toLowerCase().includes('quantity')) {
         const parsed = safeNumber(obj[key]);
@@ -134,19 +186,19 @@ function Reports({
     };
   }, []);
 
-  // Merge Firebase state with Props
-  const sales = dbSales.length > 0 ? dbSales : initialSales;
-  const expenses = dbExpenses.length > 0 ? dbExpenses : initialExpenses;
-  const payments = dbPayments.length > 0 ? dbPayments : initialPayments;
-  const purchases = dbPurchases.length > 0 ? dbPurchases : initialPurchases;
+  // Merge Firebase state with Props (Firebase listener prioritized if attached)
+  const sales = dbSales !== null ? dbSales : initialSales;
+  const expenses = dbExpenses !== null ? dbExpenses : initialExpenses;
+  const payments = dbPayments !== null ? dbPayments : initialPayments;
+  const purchases = dbPurchases !== null ? dbPurchases : initialPurchases;
 
   // Raw Products Combined Master List
   const rawBaseProducts = useMemo(() => {
     let combined = [];
-    if (dbProducts.length > 0) combined = [...dbProducts];
+    if (dbProducts !== null && dbProducts.length > 0) combined = [...dbProducts];
     else if (initialProducts.length > 0) combined = [...initialProducts];
 
-    const sourceInventory = dbInventory.length > 0 ? dbInventory : initialInventory;
+    const sourceInventory = (dbInventory !== null && dbInventory.length > 0) ? dbInventory : initialInventory;
     sourceInventory.forEach(item => {
       if (!combined.some(p => p.id === item.id || (p.name && item.name && p.name.trim() === item.name.trim()))) {
         combined.push(item);
@@ -164,10 +216,8 @@ function Reports({
       const pName = (item.name || item.productName || item.title || item.itemName || '').trim().toLowerCase();
       const pId = item.id;
 
-      // Extract Direct Document Stock Value
       let directDocStock = extractStockFromObject(item);
 
-      // Search Logs matching this item
       const matchingLogs = dbInventoryLogs.filter(log => {
         const logId = log.productId || log.itemId || log.id;
         const logName = (log.productName || log.name || log.title || '').trim().toLowerCase();
@@ -177,14 +227,12 @@ function Reports({
       let logCalculatedStock = 0;
 
       if (matchingLogs.length > 0) {
-        // Latest snapshot check
         const lastLog = matchingLogs[matchingLogs.length - 1];
         const logSnapshot = extractStockFromObject(lastLog);
 
         if (logSnapshot > 0) {
           logCalculatedStock = logSnapshot;
         } else {
-          // Transaction Aggregation (+In / -Out)
           logCalculatedStock = matchingLogs.reduce((sum, l) => {
             const added = safeNumber(l.qtyAdded || l.inQty || l.addQty || l.receivedQty || l.qty || l.quantity);
             const removed = safeNumber(l.qtyRemoved || l.outQty || l.subQty || l.deductQty || l.soldQty);
@@ -193,7 +241,6 @@ function Reports({
         }
       }
 
-      // Final Value Priority: Logs Calculated > Direct Doc Stock
       const finalResolvedStock = (logCalculatedStock !== 0) ? logCalculatedStock : directDocStock;
 
       return {
@@ -284,31 +331,55 @@ function Reports({
     return 'Cash';
   };
 
-  // --- DATA CALCULATIONS WITH DATE FILTER ---
+  // --- UNIVERSAL ACCURATE FILTER ENGINE WITH STRICT DATE SYNC ---
   const filteredSales = useMemo(() => {
-    if (!startDate || !endDate) return sales;
-    return sales.filter(s => s.date >= startDate && s.date <= endDate);
+    if (!sales || sales.length === 0) return [];
+    return sales.filter(s => {
+      const itemDate = normalizeDateStr(s.date || s.createdAt || s.created_at);
+      if (!itemDate) return true;
+      if (startDate && itemDate < startDate) return false;
+      if (endDate && itemDate > endDate) return false;
+      return true;
+    });
   }, [sales, startDate, endDate]);
 
   const totalSales = useMemo(() => filteredSales.reduce((sum, s) => sum + safeNumber(s.netTotal || s.total || s.grandTotal), 0), [filteredSales]);
 
   const filteredExpenses = useMemo(() => {
-    if (!startDate || !endDate) return expenses;
-    return expenses.filter(e => e.date >= startDate && e.date <= endDate);
+    if (!expenses || expenses.length === 0) return [];
+    return expenses.filter(e => {
+      const itemDate = normalizeDateStr(e.date || e.createdAt || e.created_at);
+      if (!itemDate) return true;
+      if (startDate && itemDate < startDate) return false;
+      if (endDate && itemDate > endDate) return false;
+      return true;
+    });
   }, [expenses, startDate, endDate]);
 
   const totalExpenses = useMemo(() => filteredExpenses.reduce((sum, e) => sum + safeNumber(e.amount), 0), [filteredExpenses]);
 
   const filteredRecoveries = useMemo(() => {
-    if (!startDate || !endDate) return payments;
-    return payments.filter(r => r.date >= startDate && r.date <= endDate);
+    if (!payments || payments.length === 0) return [];
+    return payments.filter(r => {
+      const itemDate = normalizeDateStr(r.date || r.createdAt || r.created_at);
+      if (!itemDate) return true;
+      if (startDate && itemDate < startDate) return false;
+      if (endDate && itemDate > endDate) return false;
+      return true;
+    });
   }, [payments, startDate, endDate]);
 
   const totalRecoveries = useMemo(() => filteredRecoveries.reduce((sum, r) => sum + safeNumber(r.amount), 0), [filteredRecoveries]);
 
   const filteredPurchases = useMemo(() => {
-    if (!startDate || !endDate) return purchases;
-    return purchases.filter(p => p.date >= startDate && p.date <= endDate);
+    if (!purchases || purchases.length === 0) return [];
+    return purchases.filter(p => {
+      const itemDate = normalizeDateStr(p.date || p.createdAt || p.created_at);
+      if (!itemDate) return true;
+      if (startDate && itemDate < startDate) return false;
+      if (endDate && itemDate > endDate) return false;
+      return true;
+    });
   }, [purchases, startDate, endDate]);
 
   const totalPurchases = useMemo(() => {
@@ -549,7 +620,7 @@ function Reports({
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-2 text-slate-700">{s.date || fallbackTodayDate}</td>
+                          <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(s.date) || fallbackTodayDate}</td>
                           <td className="py-2.5 px-2 font-bold text-slate-900">{s.invoiceNo || `INV-${1000 + idx}`}</td>
                           <td className="py-2.5 px-2 text-slate-800">{s.customerName || s.customer || 'Counter Cash Client'}</td>
                           <td className="py-2.5 px-2">
@@ -592,11 +663,11 @@ function Reports({
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {filteredExpenses.length === 0 ? (
-                    <tr><td colSpan="3" className="py-6 text-center text-slate-400">No operational expenses logged.</td></tr>
+                    <tr><td colSpan="3" className="py-6 text-center text-slate-400">No operational expenses logged in this date range.</td></tr>
                   ) : (
                     filteredExpenses.map((e, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-2 text-slate-700">{e.date}</td>
+                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(e.date) || fallbackTodayDate}</td>
                         <td className="py-2.5 px-2 text-slate-800">{e.description || e.category || e.title}</td>
                         <td className="py-2.5 px-2 text-right font-bold text-rose-600">-{formatCurrency(e.amount)}</td>
                       </tr>
@@ -637,7 +708,7 @@ function Reports({
                   ) : (
                     filteredRecoveries.map((r, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-2 text-slate-700">{r.date}</td>
+                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(r.date) || fallbackTodayDate}</td>
                         <td className="py-2.5 px-2 font-bold text-slate-900">{r.customerName || r.customer || r.client || 'Client Account'}</td>
                         <td className="py-2.5 px-2 text-slate-600">{r.voucherNo || `REC-${5000 + idx}`}</td>
                         <td className="py-2.5 px-2 text-right font-bold text-emerald-600">+{formatCurrency(r.amount)}</td>
@@ -652,7 +723,7 @@ function Reports({
                         Total Recovered Amount:
                       </td>
                       <td className="py-3 px-2 text-right font-black text-emerald-600 text-sm">
-                        +{formatCurrency(totalRecoveries)}
+                        {formatCurrency(totalRecoveries)}
                       </td>
                     </tr>
                   </tfoot>
@@ -668,42 +739,32 @@ function Reports({
                 <thead>
                   <tr className="border-b-2 border-slate-300">
                     <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Date</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Supplier Vendor</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Product / Description</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Quantity</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Purchase Amount</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Supplier / Vendor</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Ref Inv</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Inbound Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {filteredPurchases.length === 0 ? (
-                    <tr><td colSpan="5" className="py-6 text-center text-slate-400">No vendor purchase transactions loaded.</td></tr>
+                    <tr><td colSpan="4" className="py-6 text-center text-slate-400">No vendor purchases logged.</td></tr>
                   ) : (
-                    filteredPurchases.map((p, idx) => {
-                      const rowAmount = getPurchaseRowAmount(p);
-                      const displayQty = safeNumber(p.qty || p.quantity) || (p.items ? p.items.reduce((s, i) => s + safeNumber(i.qty || i.quantity), 0) : 0);
-                      const displayItem = p.product || p.itemName || (p.items && p.items.length > 0 ? p.items.map(i => i.name || i.product).join(', ') : 'Bulk Stock Inventory');
-
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-2 text-slate-700">{p.date || fallbackTodayDate}</td>
-                          <td className="py-2.5 px-2 font-bold text-slate-900">{p.supplierName || p.supplier || 'Market Supplier'}</td>
-                          <td className="py-2.5 px-2 text-slate-800">{displayItem}</td>
-                          <td className="py-2.5 px-2 text-slate-700">{displayQty}</td>
-                          <td className="py-2.5 px-2 text-right font-bold text-slate-900">
-                            {formatCurrency(rowAmount)}
-                          </td>
-                        </tr>
-                      );
-                    })
+                    filteredPurchases.map((p, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(p.date) || fallbackTodayDate}</td>
+                        <td className="py-2.5 px-2 font-bold text-slate-900">{p.supplierName || p.supplier || p.vendor || 'Vendor Store'}</td>
+                        <td className="py-2.5 px-2 text-slate-600">{p.billNo || p.invoiceNo || `PUR-${3000 + idx}`}</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-slate-900">{formatCurrency(getPurchaseRowAmount(p))}</td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
                 {filteredPurchases.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-slate-900 bg-slate-50">
-                      <td colSpan="4" className="py-3 px-2 font-extrabold text-slate-900 uppercase text-right text-xs">
-                        Total Purchase Amount:
+                      <td colSpan="3" className="py-3 px-2 font-extrabold text-slate-900 uppercase text-right text-xs">
+                        Total Procurement Value:
                       </td>
-                      <td className="py-3 px-2 text-right font-black text-cyan-700 text-sm">
+                      <td className="py-3 px-2 text-right font-black text-slate-900 text-sm">
                         {formatCurrency(totalPurchases)}
                       </td>
                     </tr>
@@ -715,24 +776,30 @@ function Reports({
 
           {/* 5. PROFIT & LOSS BLOCK */}
           {activeReport === 'profit_loss' && (
-            <div className="space-y-4">
-              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
-                <div className="flex justify-between text-xs text-slate-600 py-1.5">
-                  <span>Total Gross Revenue (Sales):</span>
-                  <span className="font-bold text-slate-900">{formatCurrency(profitAndLoss.revenue)}</span>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase text-slate-400">Total Sales Revenue</p>
+                  <p className="text-base font-black text-slate-900">{formatCurrency(profitAndLoss.revenue)}</p>
                 </div>
-                <div className="flex justify-between text-xs text-slate-600 py-1.5">
-                  <span>Cost of Goods Sold (COGS):</span>
-                  <span className="font-bold text-slate-500">-{formatCurrency(profitAndLoss.cogs)}</span>
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase text-slate-400">Cost of Goods Sold (COGS)</p>
+                  <p className="text-base font-black text-slate-700">-{formatCurrency(profitAndLoss.cogs)}</p>
                 </div>
-                <div className="flex justify-between text-xs text-slate-600 py-1.5">
-                  <span>Operational Expenses:</span>
+              </div>
+
+              <div className="divide-y divide-slate-200 text-xs font-semibold">
+                <div className="flex justify-between py-2.5">
+                  <span className="text-slate-600">Gross Profit Margin:</span>
+                  <span className="font-bold text-slate-900">{formatCurrency(profitAndLoss.gross)}</span>
+                </div>
+                <div className="flex justify-between py-2.5">
+                  <span className="text-slate-600">Operational Expenses Payout:</span>
                   <span className="font-bold text-rose-600">-{formatCurrency(totalExpenses)}</span>
                 </div>
-                <div className="h-[1px] bg-slate-300 my-2" />
-                <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-1">
-                  <span>Net Retained Margin (Pure Profit):</span>
-                  <span className={profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                <div className="flex justify-between py-3 border-t-2 border-slate-900 text-sm">
+                  <span className="font-black text-slate-900 uppercase">Net Accounting Profit:</span>
+                  <span className={`font-black ${profitAndLoss.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {formatCurrency(profitAndLoss.net)}
                   </span>
                 </div>
@@ -740,63 +807,42 @@ function Reports({
             </div>
           )}
 
-          {/* 6. INVENTORY BLOCK (RESOLVED ZERO ISSUE) */}
+          {/* 6. INVENTORY STOCK AUDIT BLOCK */}
           {activeReport === 'inventory' && (
             <div className="space-y-4">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b-2 border-slate-300">
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Product Name</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Cost Price</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Sale Price</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Available Volume</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Status</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Item / Product Name</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Available Stock</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Unit Sale Price</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {activeInventory.length === 0 ? (
-                    <tr><td colSpan="5" className="py-6 text-center text-slate-400">Inventory data is empty or loading...</td></tr>
+                    <tr><td colSpan="3" className="py-6 text-center text-slate-400">No inventory products registered.</td></tr>
                   ) : (
-                    activeInventory.map((item, idx) => {
-                      const itemName = item.name || item.productName || item.title || item.itemName || 'Unnamed Item';
-                      const itemCode = item.code || item.barcode || item.sku || item.itemCode || item.id || `PROD-${idx + 1}`;
-                      
-                      const qty = safeNumber(item.resolvedStock);
-
-                      const costPrice = safeNumber(item.purchaseRate ?? item.costPrice ?? item.purchasePrice ?? item.cost ?? item.buyPrice);
-                      const salePrice = safeNumber(item.saleRate ?? item.salePrice ?? item.price ?? item.rate ?? item.retailPrice);
-                      
-                      const unit = item.unit || item.unitType || item.packing || item.package || 'Pcs';
-                      const isOut = qty <= 0;
-
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-2 font-bold text-slate-900">
-                            {itemName} <span className="text-[9px] text-slate-400 font-normal block">{itemCode}</span>
-                          </td>
-                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(costPrice)}</td>
-                          <td className="py-2.5 px-2 text-slate-700">{formatCurrency(salePrice)}</td>
-                          <td className="py-2.5 px-2 font-black text-slate-900 text-sm">
-                            {qty} <span className="text-[10px] font-normal text-slate-500">{unit}</span>
-                          </td>
-                          <td className="py-2.5 px-2 text-right">
-                            <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase ${isOut ? 'bg-rose-100 text-rose-700' : qty < 10 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                              {isOut ? 'Out of Stock' : qty < 10 ? 'Low Stock' : 'In Stock'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
+                    activeInventory.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2 font-bold text-slate-900">{item.name || item.productName || item.title || 'Product Item'}</td>
+                        <td className="py-2.5 px-2 text-right font-black text-slate-800">
+                          {item.resolvedStock}
+                        </td>
+                        <td className="py-2.5 px-2 text-right font-semibold text-slate-600">
+                          {formatCurrency(item.salePrice || item.price || item.rate)}
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
             </div>
           )}
 
-          {/* Footer Block */}
+          {/* Footer Signatures */}
           <div className="footer-container border-t border-dashed border-slate-300 mt-12 pt-4 flex justify-between text-[10px] font-semibold text-slate-400 uppercase">
-            <div>System Generated Report</div>
-            <div className="signature-line text-slate-600 font-bold">Authorized Signature: __________________</div>
+            <span>System Generated Report</span>
+            <span className="signature-line text-slate-600 font-bold">Authorized Signature: ______________________</span>
           </div>
 
         </div>
