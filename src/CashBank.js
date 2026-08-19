@@ -8,18 +8,14 @@ import { db } from './firebase';
 import { collection, getDocs } from 'firebase/firestore'; 
 
 const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => {
-  // State for fetched Firestore dynamic entries
   const [fetchedRecoveries, setFetchedRecoveries] = useState([]);
   const [fetchedExpenses, setFetchedExpenses] = useState([]);
 
-  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-
-  // Custom Toast Notification State
   const [toast, setToast] = useState(null);
 
-  // --- FETCH RECOVERIES & EXPENSES DIRECTLY FROM FIREBASE ---
+  // --- FETCH BOTH PAYMENTS & EXPENSES FROM FIRESTORE ---
   useEffect(() => {
     let isMounted = true;
 
@@ -27,7 +23,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
       try {
         if (!db) return;
 
-        // 1. Fetch Expenses (Guaranteed fetch)
+        // 1. Fetch Expenses
         try {
           const expSnapshot = await getDocs(collection(db, "expenses"));
           const expList = [];
@@ -42,20 +38,34 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
           console.warn("Expenses fetch notice:", e);
         }
 
-        // 2. Fetch Recoveries safely
+        // 2. Fetch Recoveries from 'payments', 'recoveries' and 'customers'
+        const recList = [];
+
+        // Check 'payments' collection (Recovery.jsx writes here)
+        try {
+          const paySnapshot = await getDocs(collection(db, "payments"));
+          paySnapshot.forEach((docSnap) => {
+            recList.push({
+              id: docSnap.id,
+              ...docSnap.data(),
+            });
+          });
+        } catch (e) {
+          console.warn("Payments fetch notice:", e);
+        }
+
+        // Check fallback 'recoveries' collection
         try {
           const recSnapshot = await getDocs(collection(db, "recoveries"));
-          const recList = [];
           recSnapshot.forEach((docSnap) => {
             recList.push({
               id: docSnap.id,
               ...docSnap.data(),
             });
           });
-          if (isMounted) setFetchedRecoveries(recList);
-        } catch (e) {
-          console.warn("Recoveries fetch notice:", e);
-        }
+        } catch (e) {}
+
+        if (isMounted) setFetchedRecoveries(recList);
 
       } catch (error) {
         console.error("Error loading financial data:", error);
@@ -69,7 +79,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
     };
   }, []);
 
-  // COMBINE PROP DATA AND FIRESTORE DATA (AVOIDING DUPLICATES)
+  // COMBINE PROP DATA AND FIRESTORE DATA
   const allRecoveries = useMemo(() => {
     const map = new Map();
     const combined = [...(Array.isArray(recoveriesData) ? recoveriesData : []), ...fetchedRecoveries];
@@ -96,25 +106,24 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
     return Array.from(map.values());
   }, [expensesData, fetchedExpenses]);
 
-  // --- GENERATE COMBINED TRANSACTIONS (RECOVERY [+] AND EXPENSE [-]) ---
+  // --- GENERATE COMBINED TRANSACTIONS ---
   const combinedTransactions = useMemo(() => {
     const records = [];
 
     // Map Recovery Entries -> PLUS (+)
     allRecoveries.forEach((rec) => {
-      // Catch all possible naming patterns for recovery amount
-      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? rec.paidAmount ?? rec.cashReceived ?? 0;
+      const rawVal = rec.amount ?? rec.credit ?? rec.received ?? rec.payingAmount ?? rec.receivedAmount ?? 0;
       const recAmount = Math.abs(Number(rawVal) || 0);
 
-      const custName = rec.customerName || rec.customer || rec.client || rec.name || 'Customer';
+      const custName = rec.customer || rec.customerName || rec.client || rec.name || 'Customer';
 
       if (recAmount > 0) {
         records.push({
           id: String(rec.id || rec.docId || `REC-${Math.random()}`),
-          transactionId: rec.transactionId || rec.recoveryId || `REC-${String(rec.id || '').slice(0, 6)}`,
+          transactionId: rec.transactionId || rec.recoveryId || `REC-${String(rec.id || '').slice(0, 8)}`,
           date: rec.date || todayISO(),
           account: rec.account || rec.paymentMethod || 'Cash',
-          description: rec.description || `Recovery - ${custName}`,
+          description: rec.note ? `Recovery - ${custName} (${rec.note})` : `Recovery - ${custName}`,
           amount: recAmount, // PLUS
           type: 'receipt',
           source: 'Recovery',
@@ -130,11 +139,11 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
       if (expAmount > 0) {
         records.push({
           id: String(exp.id || exp.docId || `EXP-${Math.random()}`),
-          transactionId: exp.transactionId || exp.expenseId || `EXP-${String(exp.id || '').slice(0, 6)}`,
+          transactionId: exp.transactionId || exp.expenseId || `EXP-${String(exp.id || '').slice(0, 8)}`,
           date: exp.date || todayISO(),
           account: exp.account || 'Cash',
           description: exp.description || `Expense - ${exp.category || exp.title || 'General'}`,
-          amount: -expAmount, // MINUS / DEDUCT
+          amount: -expAmount, // MINUS
           type: 'payment',
           source: 'Expense',
         });
@@ -176,7 +185,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
     return combinedTransactions.slice(startIndex, startIndex + itemsPerPage);
   }, [combinedTransactions, currentPage, itemsPerPage]);
 
-  // --- PRINT RECEIPT / VOUCHER ---
+  // --- PRINT RECEIPT ---
   const handlePrint = (row) => {
     const printWindow = window.open('', '_blank', 'width=600,height=600');
     const isReceipt = Number(row.amount) >= 0;
@@ -267,8 +276,6 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   return (
     <PageShell title="Finance Hub">
       <div className="space-y-6 relative">
-        
-        {/* CUSTOM TOAST NOTIFICATION */}
         {toast && (
           <div className="fixed top-5 right-5 z-50 transition-all duration-300">
             <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold ${
@@ -289,17 +296,14 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
           </div>
         )}
 
-        {/* STATS CARDS */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <StatCard title="Cash in Hand" value={formatRs(totals.cash)} tone="emerald" />
           <StatCard title="Bank Balance" value={formatRs(totals.bank)} tone="blue" />
         </div>
 
-        {/* TRANSACTIONS TABLE */}
         <Card title="Cash & Bank Ledger">
           <DataTable columns={columns} rows={paginatedTransactions} />
 
-          {/* PAGINATION CONTROLS */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 pt-4 border-t border-slate-800 text-xs text-slate-400">
             <div>
               Showing <span className="text-white font-semibold">{paginatedTransactions.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> to <span className="text-white font-semibold">{Math.min(currentPage * itemsPerPage, combinedTransactions.length)}</span> of <span className="text-white font-semibold">{combinedTransactions.length}</span> entries
@@ -341,7 +345,6 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
             </div>
           </div>
         </Card>
-
       </div>
     </PageShell>
   );
