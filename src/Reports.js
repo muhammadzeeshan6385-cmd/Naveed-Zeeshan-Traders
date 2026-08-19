@@ -102,16 +102,32 @@ function Reports({
     return isNaN(num) ? 0 : num;
   };
 
-  // ACCURATE CURRENT STOCK EXTRACTOR (EXCLUDES minLevel / minStock / threshold)
+  // ACCURATE CURRENT STOCK EXTRACTOR
   const extractStockFromObject = (obj) => {
     if (!obj || typeof obj !== 'object') return 0;
-
     const primaryStockKeys = ['stock', 'currentStock', 'quantity', 'qty', 'availableStock', 'totalStock', 'item_qty', 'p_qty', 'stock_quantity', 'balance'];
 
     for (const key of primaryStockKeys) {
       if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
         return safeNumber(obj[key]);
       }
+    }
+    return 0;
+  };
+
+  // EXTRACT PURCHASE PRICE / COST RATE
+  const extractPurchasePrice = (obj) => {
+    if (!obj || typeof obj !== 'object') return 0;
+    
+    const purchaseKeys = [
+      'purchasePrice', 'purchase_price', 'purchaseRate', 'purchase_rate',
+      'costPrice', 'cost_price', 'cost', 'buyPrice', 'buy_price',
+      'unitPrice', 'unit_price', 'rate', 'price'
+    ];
+
+    for (const key of purchaseKeys) {
+      const val = safeNumber(obj[key]);
+      if (val > 0) return val;
     }
 
     return 0;
@@ -182,19 +198,19 @@ function Reports({
     return combined;
   }, [dbProducts, dbInventory, initialProducts, initialInventory]);
 
-  // RESOLVED ACTUAL CURRENT INVENTORY STOCK & PRICE
+  // RESOLVED ACTUAL INVENTORY WITH PURCHASE PRICE
   const activeInventory = useMemo(() => {
     if (!rawBaseProducts || rawBaseProducts.length === 0) return [];
 
     return rawBaseProducts.map(item => {
       const directDocStock = extractStockFromObject(item);
-      const unitPrice = safeNumber(item.salePrice || item.price || item.rate || item.unitPrice);
+      const purchasePrice = extractPurchasePrice(item);
 
       return {
         ...item,
         resolvedStock: directDocStock,
-        resolvedUnitPrice: unitPrice,
-        totalStockValue: directDocStock * unitPrice
+        resolvedUnitPrice: purchasePrice,
+        totalStockValue: directDocStock * purchasePrice
       };
     });
   }, [rawBaseProducts]);
@@ -348,7 +364,7 @@ function Reports({
         revenue += (safeNumber(item.price || item.rate || item.saleRate) * qty);
         
         const matchingProd = activeInventory.find(p => p.id === item.productId || (p.name || p.title || p.productName) === item.name);
-        const pRate = matchingProd ? safeNumber(matchingProd.purchaseRate || matchingProd.costPrice || matchingProd.purchasePrice) : safeNumber(item.purchaseRate);
+        const pRate = matchingProd ? safeNumber(matchingProd.purchaseRate || matchingProd.purchasePrice || matchingProd.costPrice) : safeNumber(item.purchaseRate);
         cogs += (pRate * qty);
       });
     });
@@ -762,7 +778,7 @@ function Reports({
             </div>
           )}
 
-          {/* 6. INVENTORY STOCK AUDIT BLOCK (WITH TOTAL AMOUNT & GRAND TOTAL FOOTER) */}
+          {/* 6. INVENTORY STOCK AUDIT BLOCK */}
           {activeReport === 'inventory' && (
             <div className="space-y-4">
               <table className="w-full text-left border-collapse">
@@ -770,7 +786,7 @@ function Reports({
                   <tr className="border-b-2 border-slate-300">
                     <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Item / Product Name</th>
                     <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-center">Available Stock</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Unit Sale Price</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Unit Cost Price</th>
                     <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Total Amount</th>
                   </tr>
                 </thead>
