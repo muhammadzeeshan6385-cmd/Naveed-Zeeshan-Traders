@@ -1,21 +1,42 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Card, DataTable, PageShell, StatCard } from './components/ui';
-import { formatRs, todayISO } from './utils/helpers';
-import { Printer, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Card, DataTable, PageShell, StatCard, Button, Input, Select } from './components/ui';
+import { formatRs, generateId, todayISO } from './utils/helpers';
+import { Printer, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, X, PlusCircle } from 'lucide-react';
 
 // Firebase Database Imports
 import { db } from './firebase'; 
-import { collection, getDocs } from 'firebase/firestore'; 
+import { collection, getDocs, doc, setDoc } from 'firebase/firestore'; 
 
-const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => {
+const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '', currentUser }) => {
+  // Admin Check
+  const activeUsername = String(currentUser?.username || currentUser?.id || '').trim().toLowerCase();
+  const activeRole = String(userRole || currentUser?.role || '').trim().toLowerCase();
+  const isAdmin = activeUsername === 'admin' || activeRole === 'admin';
+
+  // Dynamic Firestore Fetched States
   const [fetchedRecoveries, setFetchedRecoveries] = useState([]);
   const [fetchedExpenses, setFetchedExpenses] = useState([]);
+  const [manualTransactions, setManualTransactions] = useState([]);
 
+  // Manual Entry Modal State
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    date: todayISO(),
+    type: 'add', // 'add' (+) or 'deduct' (-)
+    account: 'Cash',
+    amount: '',
+    description: '',
+  });
+
+  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Custom Toast Notification State
   const [toast, setToast] = useState(null);
 
-  // --- FETCH BOTH PAYMENTS & EXPENSES FROM FIRESTORE ---
+  // --- FETCH ALL FINANCIAL DATA FROM FIRESTORE ---
   useEffect(() => {
     let isMounted = true;
 
@@ -38,10 +59,8 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
           console.warn("Expenses fetch notice:", e);
         }
 
-        // 2. Fetch Recoveries from 'payments', 'recoveries' and 'customers'
+        // 2. Fetch Payments / Recoveries
         const recList = [];
-
-        // Check 'payments' collection (Recovery.jsx writes here)
         try {
           const paySnapshot = await getDocs(collection(db, "payments"));
           paySnapshot.forEach((docSnap) => {
@@ -50,11 +69,8 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
               ...docSnap.data(),
             });
           });
-        } catch (e) {
-          console.warn("Payments fetch notice:", e);
-        }
+        } catch (e) {}
 
-        // Check fallback 'recoveries' collection
         try {
           const recSnapshot = await getDocs(collection(db, "recoveries"));
           recSnapshot.forEach((docSnap) => {
@@ -67,6 +83,21 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
 
         if (isMounted) setFetchedRecoveries(recList);
 
+        // 3. Fetch Manual Cash/Bank Entries
+        try {
+          const manualSnapshot = await getDocs(collection(db, "manual_transactions"));
+          const manualList = [];
+          manualSnapshot.forEach((docSnap) => {
+            manualList.push({
+              id: docSnap.id,
+              ...docSnap.data(),
+            });
+          });
+          if (isMounted) setManualTransactions(manualList);
+        } catch (e) {
+          console.warn("Manual transactions fetch notice:", e);
+        }
+
       } catch (error) {
         console.error("Error loading financial data:", error);
       }
@@ -78,6 +109,55 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
       isMounted = false;
     };
   }, []);
+
+  // --- ADD MANUAL TRANSACTION (FIRESTORE) ---
+  const handleSaveManualTransaction = async () => {
+    if (!manualForm.amount || Number(manualForm.amount) <= 0) {
+      setToast({ type: 'warning', message: 'Please enter a valid amount.' });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const customId = generateId();
+      const numAmt = Number(manualForm.amount);
+      const finalAmount = manualForm.type === 'add' ? numAmt : -numAmt;
+
+      const newEntry = {
+        id: customId,
+        transactionId: `MAN-${customId.slice(0, 8)}`,
+        date: manualForm.date,
+        account: manualForm.account,
+        amount: finalAmount,
+        description: manualForm.description || (manualForm.type === 'add' ? 'Manual Cash Added' : 'Manual Cash Deducted'),
+        entryType: manualForm.type,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Save to Firebase Firestore
+      await setDoc(doc(db, 'manual_transactions', customId), newEntry);
+
+      // Update Local State
+      setManualTransactions([newEntry, ...manualTransactions]);
+
+      // Reset Form & Close Modal
+      setManualForm({
+        date: todayISO(),
+        type: 'add',
+        account: 'Cash',
+        amount: '',
+        description: '',
+      });
+      setShowManualModal(false);
+      setToast({ type: 'success', message: 'Manual entry added successfully!' });
+
+    } catch (error) {
+      console.error("Error saving manual entry:", error);
+      setToast({ type: 'error', message: 'Error saving entry: ' + error.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // COMBINE PROP DATA AND FIRESTORE DATA
   const allRecoveries = useMemo(() => {
@@ -110,11 +190,10 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   const combinedTransactions = useMemo(() => {
     const records = [];
 
-    // Map Recovery Entries -> PLUS (+)
+    // 1. Recovery Entries -> PLUS (+)
     allRecoveries.forEach((rec) => {
       const rawVal = rec.amount ?? rec.credit ?? rec.received ?? rec.payingAmount ?? rec.receivedAmount ?? 0;
       const recAmount = Math.abs(Number(rawVal) || 0);
-
       const custName = rec.customer || rec.customerName || rec.client || rec.name || 'Customer';
 
       if (recAmount > 0) {
@@ -131,7 +210,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
       }
     });
 
-    // Map Expense Entries -> MINUS (-)
+    // 2. Expense Entries -> MINUS (-)
     allExpenses.forEach((exp) => {
       const rawVal = exp.amount ?? exp.expenseAmount ?? 0;
       const expAmount = Math.abs(Number(rawVal) || 0);
@@ -150,13 +229,27 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
       }
     });
 
+    // 3. Manual Entries (Add (+) / Deduct (-))
+    manualTransactions.forEach((man) => {
+      records.push({
+        id: String(man.id),
+        transactionId: man.transactionId || `MAN-${String(man.id).slice(0, 8)}`,
+        date: man.date || todayISO(),
+        account: man.account || 'Cash',
+        description: man.description || 'Manual Entry',
+        amount: Number(man.amount) || 0,
+        type: Number(man.amount) >= 0 ? 'receipt' : 'payment',
+        source: 'Manual',
+      });
+    });
+
     // Sort by Date (Most recent on top)
     return records.sort((a, b) => {
       const dateA = new Date(a.date || 0).getTime();
       const dateB = new Date(b.date || 0).getTime();
       return dateB - dateA;
     });
-  }, [allRecoveries, allExpenses]);
+  }, [allRecoveries, allExpenses, manualTransactions]);
 
   // --- TOTAL CALCULATIONS ---
   const totals = useMemo(() => {
@@ -276,6 +369,8 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   return (
     <PageShell title="Finance Hub">
       <div className="space-y-6 relative">
+        
+        {/* CUSTOM TOAST NOTIFICATION */}
         {toast && (
           <div className="fixed top-5 right-5 z-50 transition-all duration-300">
             <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold ${
@@ -296,14 +391,28 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <StatCard title="Cash in Hand" value={formatRs(totals.cash)} tone="emerald" />
-          <StatCard title="Bank Balance" value={formatRs(totals.bank)} tone="blue" />
+        {/* TOP CONTROLS & STATS */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full sm:w-auto flex-1">
+            <StatCard title="Cash in Hand" value={formatRs(totals.cash)} tone="emerald" />
+            <StatCard title="Bank Balance" value={formatRs(totals.bank)} tone="blue" />
+          </div>
+
+          {/* ADD MANUAL ENTRY BUTTON */}
+          <Button
+            onClick={() => setShowManualModal(true)}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2.5 rounded-xl shadow-lg transition cursor-pointer"
+          >
+            <PlusCircle size={18} />
+            <span>Manual Entry</span>
+          </Button>
         </div>
 
+        {/* TRANSACTIONS TABLE */}
         <Card title="Cash & Bank Ledger">
           <DataTable columns={columns} rows={paginatedTransactions} />
 
+          {/* PAGINATION CONTROLS */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 pt-4 border-t border-slate-800 text-xs text-slate-400">
             <div>
               Showing <span className="text-white font-semibold">{paginatedTransactions.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> to <span className="text-white font-semibold">{Math.min(currentPage * itemsPerPage, combinedTransactions.length)}</span> of <span className="text-white font-semibold">{combinedTransactions.length}</span> entries
@@ -345,6 +454,86 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
             </div>
           </div>
         </Card>
+
+        {/* --- MANUAL ENTRY MODAL PORTAL --- */}
+        {showManualModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h2 className="text-lg font-bold text-white">Manual Cash / Bank Entry</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowManualModal(false)}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg transition"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <Input
+                  label="Date"
+                  type="date"
+                  value={manualForm.date}
+                  onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
+                />
+
+                <Select
+                  label="Action Type"
+                  value={manualForm.type}
+                  onChange={(e) => setManualForm({ ...manualForm, type: e.target.value })}
+                >
+                  <option value="add">Add Money (+)</option>
+                  <option value="deduct">Deduct Money (-)</option>
+                </Select>
+
+                <Select
+                  label="Account"
+                  value={manualForm.account}
+                  onChange={(e) => setManualForm({ ...manualForm, account: e.target.value })}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="Bank">Bank</option>
+                </Select>
+
+                <Input
+                  label="Amount (Rs)"
+                  type="number"
+                  placeholder="e.g. 5000"
+                  value={manualForm.amount}
+                  onChange={(e) => setManualForm({ ...manualForm, amount: e.target.value })}
+                />
+
+                <Input
+                  label="Description / Reason"
+                  type="text"
+                  placeholder="e.g. Opening Balance / Adjustment"
+                  value={manualForm.description}
+                  onChange={(e) => setManualForm({ ...manualForm, description: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <Button
+                  type="button"
+                  onClick={() => setShowManualModal(false)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-2 rounded-xl"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveManualTransaction}
+                  disabled={isSubmitting}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl"
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Entry'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </PageShell>
   );
