@@ -178,7 +178,20 @@ function Reports({
   }, []);
 
   const sales = dbSales !== null ? dbSales : initialSales;
-  const expenses = dbExpenses !== null ? dbExpenses : initialExpenses;
+
+  // STRICT UNIQUE DEDUPLICATION FOR EXPENSES
+  const expenses = useMemo(() => {
+    const rawList = dbSales !== null && dbExpenses !== null ? dbExpenses : (dbExpenses || initialExpenses);
+    const map = new Map();
+    rawList.forEach((item, idx) => {
+      const key = item.id || item.txnId || item.transactionId || `${item.amount}-${item.description}-${item.date}-${idx}`;
+      if (!map.has(key)) {
+        map.set(key, item);
+      }
+    });
+    return Array.from(map.values());
+  }, [dbExpenses, initialExpenses, dbSales]);
+
   const payments = dbPayments !== null ? dbPayments : initialPayments;
   const purchases = dbPurchases !== null ? dbPurchases : initialPurchases;
 
@@ -315,7 +328,7 @@ function Reports({
 
   const totalSales = useMemo(() => filteredSales.reduce((sum, s) => sum + safeNumber(s.netTotal || s.total || s.grandTotal), 0), [filteredSales]);
 
-  // LIVE DATE-WISE EXPENSES FILTER & SORT
+  // LIVE DEDUPLICATED & DATE-FILTERED EXPENSES
   const filteredExpenses = useMemo(() => {
     if (!expenses || expenses.length === 0) return [];
     
@@ -330,7 +343,7 @@ function Reports({
       .sort((a, b) => {
         const dateA = normalizeDateStr(a.date || a.createdAt || a.created_at || a.timestamp);
         const dateB = normalizeDateStr(b.date || b.createdAt || b.created_at || b.timestamp);
-        return dateB.localeCompare(dateA); // Newest date pehle aayegi
+        return dateB.localeCompare(dateA);
       });
   }, [expenses, startDate, endDate]);
 
@@ -629,7 +642,7 @@ function Reports({
             </div>
           )}
 
-          {/* 2. EXPENSE BLOCK (LIVE DATE-WISE INTEGRATED) */}
+          {/* 2. EXPENSE BLOCK (DEDUPLICATED) */}
           {activeReport === 'expense' && (
             <div className="space-y-4">
               <table className="w-full text-left border-collapse">
