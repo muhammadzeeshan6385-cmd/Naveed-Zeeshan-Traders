@@ -315,15 +315,23 @@ function Reports({
 
   const totalSales = useMemo(() => filteredSales.reduce((sum, s) => sum + safeNumber(s.netTotal || s.total || s.grandTotal), 0), [filteredSales]);
 
+  // LIVE DATE-WISE EXPENSES FILTER & SORT
   const filteredExpenses = useMemo(() => {
     if (!expenses || expenses.length === 0) return [];
-    return expenses.filter(e => {
-      const itemDate = normalizeDateStr(e.date || e.createdAt || e.created_at);
-      if (!itemDate) return true;
-      if (startDate && itemDate < startDate) return false;
-      if (endDate && itemDate > endDate) return false;
-      return true;
-    });
+    
+    return expenses
+      .filter(e => {
+        const itemDate = normalizeDateStr(e.date || e.createdAt || e.created_at || e.timestamp);
+        if (!itemDate) return true;
+        if (startDate && itemDate < startDate) return false;
+        if (endDate && itemDate > endDate) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const dateA = normalizeDateStr(a.date || a.createdAt || a.created_at || a.timestamp);
+        const dateB = normalizeDateStr(b.date || b.createdAt || b.created_at || b.timestamp);
+        return dateB.localeCompare(dateA); // Newest date pehle aayegi
+      });
   }, [expenses, startDate, endDate]);
 
   const totalExpenses = useMemo(() => filteredExpenses.reduce((sum, e) => sum + safeNumber(e.amount), 0), [filteredExpenses]);
@@ -591,7 +599,7 @@ function Reports({
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(s.date) || fallbackTodayDate}</td>
+                          <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(s.date || s.createdAt || s.created_at) || fallbackTodayDate}</td>
                           <td className="py-2.5 px-2 font-bold text-slate-900">{s.invoiceNo || `INV-${1000 + idx}`}</td>
                           <td className="py-2.5 px-2 text-slate-800">{s.customerName || s.customer || 'Counter Cash Client'}</td>
                           <td className="py-2.5 px-2">
@@ -621,7 +629,7 @@ function Reports({
             </div>
           )}
 
-          {/* 2. EXPENSE BLOCK */}
+          {/* 2. EXPENSE BLOCK (LIVE DATE-WISE INTEGRATED) */}
           {activeReport === 'expense' && (
             <div className="space-y-4">
               <table className="w-full text-left border-collapse">
@@ -636,13 +644,16 @@ function Reports({
                   {filteredExpenses.length === 0 ? (
                     <tr><td colSpan="3" className="py-6 text-center text-slate-400">No operational expenses logged in this date range.</td></tr>
                   ) : (
-                    filteredExpenses.map((e, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(e.date) || fallbackTodayDate}</td>
-                        <td className="py-2.5 px-2 text-slate-800">{e.description || e.category || e.title}</td>
-                        <td className="py-2.5 px-2 text-right font-bold text-rose-600">-{formatCurrency(e.amount)}</td>
-                      </tr>
-                    ))
+                    filteredExpenses.map((e, idx) => {
+                      const expDate = normalizeDateStr(e.date || e.createdAt || e.created_at || e.timestamp) || fallbackTodayDate;
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-2 text-slate-700 font-semibold">{expDate}</td>
+                          <td className="py-2.5 px-2 text-slate-800">{e.description || e.category || e.title || e.name || 'Business Expense'}</td>
+                          <td className="py-2.5 px-2 text-right font-bold text-rose-600">-{formatCurrency(e.amount)}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
                 {filteredExpenses.length > 0 && (
@@ -679,7 +690,7 @@ function Reports({
                   ) : (
                     filteredRecoveries.map((r, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(r.date) || fallbackTodayDate}</td>
+                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(r.date || r.createdAt || r.created_at) || fallbackTodayDate}</td>
                         <td className="py-2.5 px-2 font-bold text-slate-900">{r.customerName || r.customer || r.client || 'Client Account'}</td>
                         <td className="py-2.5 px-2 text-slate-600">{r.voucherNo || `REC-${5000 + idx}`}</td>
                         <td className="py-2.5 px-2 text-right font-bold text-emerald-600">+{formatCurrency(r.amount)}</td>
@@ -721,7 +732,7 @@ function Reports({
                   ) : (
                     filteredPurchases.map((p, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(p.date) || fallbackTodayDate}</td>
+                        <td className="py-2.5 px-2 text-slate-700">{normalizeDateStr(p.date || p.createdAt || p.created_at) || fallbackTodayDate}</td>
                         <td className="py-2.5 px-2 font-bold text-slate-900">{p.supplierName || p.supplier || p.vendor || 'Vendor Store'}</td>
                         <td className="py-2.5 px-2 text-slate-600">{p.billNo || p.invoiceNo || `PUR-${3000 + idx}`}</td>
                         <td className="py-2.5 px-2 text-right font-bold text-slate-900">{formatCurrency(getPurchaseRowAmount(p))}</td>
