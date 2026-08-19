@@ -21,121 +21,62 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
 
   // --- FETCH RECOVERIES & EXPENSES DIRECTLY FROM FIREBASE ---
   useEffect(() => {
+    let isMounted = true;
+
     const fetchFinancialData = async () => {
       try {
         if (!db) return;
 
-        const recList = [];
-
-        // 1. Direct Collections Check
-        const directCollections = ["recoveries", "recovery", "payment_recoveries", "payments"];
-        for (const colName of directCollections) {
-          try {
-            const recSnapshot = await getDocs(collection(db, colName));
-            recSnapshot.forEach((docSnap) => {
-              const data = docSnap.data();
-              if (Array.isArray(data.history || data.entries || data.payments)) {
-                const list = data.history || data.entries || data.payments;
-                list.forEach((item, idx) => {
-                  recList.push({
-                    id: `${docSnap.id}_${idx}`,
-                    ...item,
-                    customerName: data.customerName || data.name || item.customerName || item.client
-                  });
-                });
-              } else {
-                recList.push({
-                  id: docSnap.id,
-                  ...data,
-                });
-              }
-            });
-          } catch (e) {
-            // Ignore missing collections
-          }
-        }
-
-        // 2. Scan 'customers' collection for nested recovery logs/sub-collections
-        const customerCols = ["customers", "clients"];
-        for (const cCol of customerCols) {
-          try {
-            const custSnapshot = await getDocs(collection(db, cCol));
-            for (const custDoc of custSnapshot.docs) {
-              const custData = custDoc.data();
-              const custName = custData.name || custData.customerName || 'Customer';
-
-              // Check nested arrays inside customer document
-              if (Array.isArray(custData.recoveries || custData.payments || custData.history)) {
-                const arr = custData.recoveries || custData.payments || custData.history;
-                arr.forEach((item, idx) => {
-                  recList.push({
-                    id: `CUST_${custDoc.id}_${idx}`,
-                    customerName: custName,
-                    ...item,
-                  });
-                });
-              }
-
-              // Check nested sub-collection inside customer document
-              try {
-                const subRec = await getDocs(collection(db, cCol, custDoc.id, "recoveries"));
-                subRec.forEach((sDoc) => {
-                  recList.push({
-                    id: sDoc.id,
-                    customerName: custName,
-                    ...sDoc.data(),
-                  });
-                });
-              } catch (e) {}
-
-              try {
-                const subPay = await getDocs(collection(db, cCol, custDoc.id, "payments"));
-                subPay.forEach((sDoc) => {
-                  recList.push({
-                    id: sDoc.id,
-                    customerName: custName,
-                    ...sDoc.data(),
-                  });
-                });
-              } catch (e) {}
-            }
-          } catch (e) {
-            // Ignore missing collections
-          }
-        }
-
-        console.log("Fetched Recoveries Total:", recList.length, recList);
-        setFetchedRecoveries(recList);
-
-        // 3. Fetch Expenses
+        // 1. Fetch Expenses (Guaranteed fetch)
         try {
           const expSnapshot = await getDocs(collection(db, "expenses"));
           const expList = [];
           expSnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
             expList.push({
               id: docSnap.id,
-              ...data,
+              ...docSnap.data(),
             });
           });
-          setFetchedExpenses(expList);
+          if (isMounted) setFetchedExpenses(expList);
         } catch (e) {
           console.warn("Expenses fetch notice:", e);
         }
+
+        // 2. Fetch Recoveries safely
+        try {
+          const recSnapshot = await getDocs(collection(db, "recoveries"));
+          const recList = [];
+          recSnapshot.forEach((docSnap) => {
+            recList.push({
+              id: docSnap.id,
+              ...docSnap.data(),
+            });
+          });
+          if (isMounted) setFetchedRecoveries(recList);
+        } catch (e) {
+          console.warn("Recoveries fetch notice:", e);
+        }
+
       } catch (error) {
         console.error("Error loading financial data:", error);
       }
     };
 
     fetchFinancialData();
-  }, [recoveriesData, expensesData]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // COMBINE PROP DATA AND FIRESTORE DATA (AVOIDING DUPLICATES)
   const allRecoveries = useMemo(() => {
     const map = new Map();
-    [...recoveriesData, ...fetchedRecoveries].forEach((item) => {
-      if (item) {
-        const key = String(item.id || item.docId || item.recoveryId || item.transactionId || Math.random());
+    const combined = [...(Array.isArray(recoveriesData) ? recoveriesData : []), ...fetchedRecoveries];
+    
+    combined.forEach((item) => {
+      if (item && typeof item === 'object') {
+        const key = String(item.id || item.docId || item.transactionId || item.recoveryId || Math.random());
         map.set(key, item);
       }
     });
@@ -144,9 +85,11 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
 
   const allExpenses = useMemo(() => {
     const map = new Map();
-    [...expensesData, ...fetchedExpenses].forEach((item) => {
-      if (item) {
-        const key = String(item.id || item.docId || item.expenseId || item.transactionId || Math.random());
+    const combined = [...(Array.isArray(expensesData) ? expensesData : []), ...fetchedExpenses];
+
+    combined.forEach((item) => {
+      if (item && typeof item === 'object') {
+        const key = String(item.id || item.docId || item.transactionId || item.expenseId || Math.random());
         map.set(key, item);
       }
     });
@@ -159,7 +102,8 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
 
     // Map Recovery Entries -> PLUS (+)
     allRecoveries.forEach((rec) => {
-      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? rec.paidAmount ?? rec.cashReceived ?? rec.recoveryAmount ?? 0;
+      // Catch all possible naming patterns for recovery amount
+      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? rec.paidAmount ?? rec.cashReceived ?? 0;
       const recAmount = Math.abs(Number(rawVal) || 0);
 
       const custName = rec.customerName || rec.customer || rec.client || rec.name || 'Customer';
@@ -170,7 +114,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
           transactionId: rec.transactionId || rec.recoveryId || `REC-${String(rec.id || '').slice(0, 6)}`,
           date: rec.date || todayISO(),
           account: rec.account || rec.paymentMethod || 'Cash',
-          description: rec.description || `Recovery Received - ${custName}`,
+          description: rec.description || `Recovery - ${custName}`,
           amount: recAmount, // PLUS
           type: 'receipt',
           source: 'Recovery',
@@ -208,11 +152,11 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
   // --- TOTAL CALCULATIONS ---
   const totals = useMemo(() => {
     const cash = combinedTransactions
-      .filter((t) => String(t.account).toLowerCase() === 'cash')
+      .filter((t) => String(t.account || '').toLowerCase() === 'cash')
       .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
     const bank = combinedTransactions
-      .filter((t) => String(t.account).toLowerCase() === 'bank')
+      .filter((t) => String(t.account || '').toLowerCase() === 'bank')
       .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
     return { cash, bank };
