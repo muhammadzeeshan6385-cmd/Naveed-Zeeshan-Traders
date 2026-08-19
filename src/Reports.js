@@ -43,11 +43,10 @@ function Reports({
 
   const fallbackTodayDate = new Date().toISOString().split('T')[0];
 
-  // STRICT & UNIVERSAL DATE NORMALIZER (Handles Strings, Timestamps, ISO, Dates)
+  // STRICT & UNIVERSAL DATE NORMALIZER
   const normalizeDateStr = (dateVal) => {
     if (!dateVal) return '';
     
-    // If it's a Firestore Timestamp or Object with seconds
     if (typeof dateVal === 'object' && dateVal !== null) {
       if (typeof dateVal.toDate === 'function') {
         dateVal = dateVal.toDate();
@@ -64,23 +63,19 @@ function Reports({
     const str = String(dateVal).trim();
     if (!str) return '';
 
-    // If ISO or YYYY-MM-DD
     if (str.includes('T')) {
       return str.split('T')[0];
     }
 
-    // Handle DD-MM-YYYY or DD/MM/YYYY
     if (str.includes('-') || str.includes('/')) {
       const parts = str.split(/[-/]/);
       if (parts.length === 3) {
         if (parts[0].length === 4) {
-          // YYYY-MM-DD
           const y = parts[0];
           const m = parts[1].padStart(2, '0');
           const d = parts[2].padStart(2, '0');
           return `${y}-${m}-${d}`;
         } else if (parts[2].length === 4) {
-          // DD-MM-YYYY
           const d = parts[0].padStart(2, '0');
           const m = parts[1].padStart(2, '0');
           const y = parts[2];
@@ -89,7 +84,6 @@ function Reports({
       }
     }
 
-    // Fallback standard JS Date Parse
     const parsedDate = new Date(str);
     if (!isNaN(parsedDate.getTime())) {
       return parsedDate.toISOString().split('T')[0];
@@ -98,7 +92,7 @@ function Reports({
     return str;
   };
 
-  // ULTRA STRICT NUMBER PARSER & EXTRACTOR
+  // ULTRA STRICT NUMBER PARSER
   const safeNumber = (val) => {
     if (val === undefined || val === null || val === '' || val === 'null' || val === 'undefined') return 0;
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -108,27 +102,16 @@ function Reports({
     return isNaN(num) ? 0 : num;
   };
 
-  // DEEP STOCK EXTRACTOR
+  // ACCURATE CURRENT STOCK EXTRACTOR (EXCLUDES minLevel / minStock / threshold)
   const extractStockFromObject = (obj) => {
     if (!obj || typeof obj !== 'object') return 0;
 
-    const priorityKeys = [
-      'resolvedStock', 'stock', 'quantity', 'qty', 'currentStock', 
-      'availableStock', 'totalStock', 'openingStock', 'item_qty', 
-      'p_qty', 'stock_quantity', 'balance', 'units'
-    ];
+    // Direct priority to actual stock fields only
+    const primaryStockKeys = ['stock', 'currentStock', 'quantity', 'qty', 'availableStock', 'totalStock', 'item_qty', 'p_qty', 'stock_quantity', 'balance'];
 
-    for (const key of priorityKeys) {
+    for (const key of primaryStockKeys) {
       if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
-        const parsed = safeNumber(obj[key]);
-        if (parsed !== 0) return parsed;
-      }
-    }
-
-    for (const key in obj) {
-      if (key.toLowerCase().includes('stock') || key.toLowerCase().includes('qty') || key.toLowerCase().includes('quantity')) {
-        const parsed = safeNumber(obj[key]);
-        if (parsed !== 0) return parsed;
+        return safeNumber(obj[key]);
       }
     }
 
@@ -139,37 +122,30 @@ function Reports({
   useEffect(() => {
     if (!db) return;
 
-    // 1. Sales Collection
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
       setDbSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => console.log('Sales fetch error:', err));
 
-    // 2. Expenses Collection
     const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
       setDbExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => console.log('Expenses fetch error:', err));
 
-    // 3. Payments Collection
     const unsubPayments = onSnapshot(collection(db, 'payments'), (snapshot) => {
       setDbPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => console.log('Payments fetch error:', err));
 
-    // 4. Purchases Collection
     const unsubPurchases = onSnapshot(collection(db, 'purchases'), (snapshot) => {
       setDbPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => console.log('Purchases fetch error:', err));
 
-    // 5. Products Collection
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       setDbProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => console.log('Products fetch error:', err));
 
-    // 6. Inventory Collection
     const unsubInventory = onSnapshot(collection(db, 'inventory'), (snapshot) => {
       setDbInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => console.log('Inventory collection fetch error:', err));
 
-    // 7. Inventory Logs
     const unsubLogs = onSnapshot(collection(db, 'inventory_logs'), (snapshot) => {
       const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDbInventoryLogs(logs);
@@ -186,7 +162,6 @@ function Reports({
     };
   }, []);
 
-  // Merge Firebase state with Props (Firebase listener prioritized if attached)
   const sales = dbSales !== null ? dbSales : initialSales;
   const expenses = dbExpenses !== null ? dbExpenses : initialExpenses;
   const payments = dbPayments !== null ? dbPayments : initialPayments;
@@ -208,47 +183,19 @@ function Reports({
     return combined;
   }, [dbProducts, dbInventory, initialProducts, initialInventory]);
 
-  // COMPLETE RESOLVED INVENTORY ENGINE
+  // RESOLVED ACTUAL CURRENT INVENTORY STOCK
   const activeInventory = useMemo(() => {
     if (!rawBaseProducts || rawBaseProducts.length === 0) return [];
 
     return rawBaseProducts.map(item => {
-      const pName = (item.name || item.productName || item.title || item.itemName || '').trim().toLowerCase();
-      const pId = item.id;
-
-      let directDocStock = extractStockFromObject(item);
-
-      const matchingLogs = dbInventoryLogs.filter(log => {
-        const logId = log.productId || log.itemId || log.id;
-        const logName = (log.productName || log.name || log.title || '').trim().toLowerCase();
-        return (pId && logId === pId) || (pName && pName === logName);
-      });
-
-      let logCalculatedStock = 0;
-
-      if (matchingLogs.length > 0) {
-        const lastLog = matchingLogs[matchingLogs.length - 1];
-        const logSnapshot = extractStockFromObject(lastLog);
-
-        if (logSnapshot > 0) {
-          logCalculatedStock = logSnapshot;
-        } else {
-          logCalculatedStock = matchingLogs.reduce((sum, l) => {
-            const added = safeNumber(l.qtyAdded || l.inQty || l.addQty || l.receivedQty || l.qty || l.quantity);
-            const removed = safeNumber(l.qtyRemoved || l.outQty || l.subQty || l.deductQty || l.soldQty);
-            return sum + added - removed;
-          }, 0);
-        }
-      }
-
-      const finalResolvedStock = (logCalculatedStock !== 0) ? logCalculatedStock : directDocStock;
+      const directDocStock = extractStockFromObject(item);
 
       return {
         ...item,
-        resolvedStock: finalResolvedStock
+        resolvedStock: directDocStock
       };
     });
-  }, [rawBaseProducts, dbInventoryLogs]);
+  }, [rawBaseProducts]);
 
   useEffect(() => {
     if (selectedReport) {
@@ -331,7 +278,7 @@ function Reports({
     return 'Cash';
   };
 
-  // --- UNIVERSAL ACCURATE FILTER ENGINE WITH STRICT DATE SYNC ---
+  // --- UNIVERSAL ACCURATE FILTER ENGINE ---
   const filteredSales = useMemo(() => {
     if (!sales || sales.length === 0) return [];
     return sales.filter(s => {
@@ -829,7 +776,7 @@ function Reports({
                           {item.resolvedStock}
                         </td>
                         <td className="py-2.5 px-2 text-right font-semibold text-slate-600">
-                          {formatCurrency(item.salePrice || item.price || item.rate)}
+                          {formatCurrency(item.salePrice || item.price || item.rate || item.unitPrice)}
                         </td>
                       </tr>
                     ))
