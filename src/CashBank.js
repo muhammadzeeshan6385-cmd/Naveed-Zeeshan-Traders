@@ -25,24 +25,22 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
       try {
         if (!db) return;
 
-        // 1. Fetch Recoveries (Checking 'recoveries' and 'recovery' collections)
         const recList = [];
-        const targetCollections = ["recoveries", "recovery", "payment_recoveries"];
 
-        for (const colName of targetCollections) {
+        // 1. Direct Collections Check
+        const directCollections = ["recoveries", "recovery", "payment_recoveries", "payments"];
+        for (const colName of directCollections) {
           try {
             const recSnapshot = await getDocs(collection(db, colName));
             recSnapshot.forEach((docSnap) => {
               const data = docSnap.data();
-              
-              // Handle Nested Array inside recovery docs if any
-              if (Array.isArray(data.history || data.entries)) {
-                const list = data.history || data.entries;
+              if (Array.isArray(data.history || data.entries || data.payments)) {
+                const list = data.history || data.entries || data.payments;
                 list.forEach((item, idx) => {
                   recList.push({
                     id: `${docSnap.id}_${idx}`,
                     ...item,
-                    customerName: data.customerName || data.name || item.customerName
+                    customerName: data.customerName || data.name || item.customerName || item.client
                   });
                 });
               } else {
@@ -53,13 +51,63 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
               }
             });
           } catch (e) {
-            // collection might not exist
+            // Ignore missing collections
           }
         }
+
+        // 2. Scan 'customers' collection for nested recovery logs/sub-collections
+        const customerCols = ["customers", "clients"];
+        for (const cCol of customerCols) {
+          try {
+            const custSnapshot = await getDocs(collection(db, cCol));
+            for (const custDoc of custSnapshot.docs) {
+              const custData = custDoc.data();
+              const custName = custData.name || custData.customerName || 'Customer';
+
+              // Check nested arrays inside customer document
+              if (Array.isArray(custData.recoveries || custData.payments || custData.history)) {
+                const arr = custData.recoveries || custData.payments || custData.history;
+                arr.forEach((item, idx) => {
+                  recList.push({
+                    id: `CUST_${custDoc.id}_${idx}`,
+                    customerName: custName,
+                    ...item,
+                  });
+                });
+              }
+
+              // Check nested sub-collection inside customer document
+              try {
+                const subRec = await getDocs(collection(db, cCol, custDoc.id, "recoveries"));
+                subRec.forEach((sDoc) => {
+                  recList.push({
+                    id: sDoc.id,
+                    customerName: custName,
+                    ...sDoc.data(),
+                  });
+                });
+              } catch (e) {}
+
+              try {
+                const subPay = await getDocs(collection(db, cCol, custDoc.id, "payments"));
+                subPay.forEach((sDoc) => {
+                  recList.push({
+                    id: sDoc.id,
+                    customerName: custName,
+                    ...sDoc.data(),
+                  });
+                });
+              } catch (e) {}
+            }
+          } catch (e) {
+            // Ignore missing collections
+          }
+        }
+
         console.log("Fetched Recoveries Total:", recList.length, recList);
         setFetchedRecoveries(recList);
 
-        // 2. Fetch Expenses
+        // 3. Fetch Expenses
         try {
           const expSnapshot = await getDocs(collection(db, "expenses"));
           const expList = [];
@@ -87,7 +135,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
     const map = new Map();
     [...recoveriesData, ...fetchedRecoveries].forEach((item) => {
       if (item) {
-        const key = String(item.id || item.docId || item.recoveryId || Math.random());
+        const key = String(item.id || item.docId || item.recoveryId || item.transactionId || Math.random());
         map.set(key, item);
       }
     });
@@ -98,7 +146,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
     const map = new Map();
     [...expensesData, ...fetchedExpenses].forEach((item) => {
       if (item) {
-        const key = String(item.id || item.docId || item.expenseId || Math.random());
+        const key = String(item.id || item.docId || item.expenseId || item.transactionId || Math.random());
         map.set(key, item);
       }
     });
@@ -111,8 +159,7 @@ const CashBank = ({ recoveriesData = [], expensesData = [], userRole = '' }) => 
 
     // Map Recovery Entries -> PLUS (+)
     allRecoveries.forEach((rec) => {
-      // Extraction of amount from all possible key names
-      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? rec.paidAmount ?? rec.cashReceived ?? 0;
+      const rawVal = rec.amount ?? rec.payingAmount ?? rec.receivedAmount ?? rec.recAmount ?? rec.paidAmount ?? rec.cashReceived ?? rec.recoveryAmount ?? 0;
       const recAmount = Math.abs(Number(rawVal) || 0);
 
       const custName = rec.customerName || rec.customer || rec.client || rec.name || 'Customer';
