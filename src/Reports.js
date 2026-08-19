@@ -106,7 +106,6 @@ function Reports({
   const extractStockFromObject = (obj) => {
     if (!obj || typeof obj !== 'object') return 0;
 
-    // Direct priority to actual stock fields only
     const primaryStockKeys = ['stock', 'currentStock', 'quantity', 'qty', 'availableStock', 'totalStock', 'item_qty', 'p_qty', 'stock_quantity', 'balance'];
 
     for (const key of primaryStockKeys) {
@@ -183,19 +182,27 @@ function Reports({
     return combined;
   }, [dbProducts, dbInventory, initialProducts, initialInventory]);
 
-  // RESOLVED ACTUAL CURRENT INVENTORY STOCK
+  // RESOLVED ACTUAL CURRENT INVENTORY STOCK & PRICE
   const activeInventory = useMemo(() => {
     if (!rawBaseProducts || rawBaseProducts.length === 0) return [];
 
     return rawBaseProducts.map(item => {
       const directDocStock = extractStockFromObject(item);
+      const unitPrice = safeNumber(item.salePrice || item.price || item.rate || item.unitPrice);
 
       return {
         ...item,
-        resolvedStock: directDocStock
+        resolvedStock: directDocStock,
+        resolvedUnitPrice: unitPrice,
+        totalStockValue: directDocStock * unitPrice
       };
     });
   }, [rawBaseProducts]);
+
+  // Total Inventory Value Calculation for Footer
+  const totalInventoryGrandValue = useMemo(() => {
+    return activeInventory.reduce((sum, item) => sum + item.totalStockValue, 0);
+  }, [activeInventory]);
 
   useEffect(() => {
     if (selectedReport) {
@@ -385,6 +392,7 @@ function Reports({
             th { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #475569; border-bottom: 2px solid #cbd5e1; padding: 8px 10px; letter-spacing: 0.03em; }
             td { font-size: 11px; font-weight: 500; color: #334155; border-bottom: 1px solid #e2e8f0; padding: 8px 10px; }
             .text-right { text-align: right; }
+            .text-center { text-align: center; }
             .badge-method { background: #e2e8f0; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; color: #334155; text-transform: uppercase; }
             .badge-credit { background: #ffe4e6; color: #e11d48; }
             .footer-container { border-top: 1px dashed #cbd5e1; margin-top: 48px; padding-top: 16px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
@@ -754,34 +762,54 @@ function Reports({
             </div>
           )}
 
-          {/* 6. INVENTORY STOCK AUDIT BLOCK */}
+          {/* 6. INVENTORY STOCK AUDIT BLOCK (WITH TOTAL AMOUNT & GRAND TOTAL FOOTER) */}
           {activeReport === 'inventory' && (
             <div className="space-y-4">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b-2 border-slate-300">
                     <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2">Item / Product Name</th>
-                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Available Stock</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-center">Available Stock</th>
                     <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Unit Sale Price</th>
+                    <th className="text-[10px] font-bold uppercase text-slate-600 py-2 px-2 text-right">Total Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {activeInventory.length === 0 ? (
-                    <tr><td colSpan="3" className="py-6 text-center text-slate-400">No inventory products registered.</td></tr>
+                    <tr><td colSpan="4" className="py-6 text-center text-slate-400">No inventory products registered.</td></tr>
                   ) : (
                     activeInventory.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
                         <td className="py-2.5 px-2 font-bold text-slate-900">{item.name || item.productName || item.title || 'Product Item'}</td>
-                        <td className="py-2.5 px-2 text-right font-black text-slate-800">
+                        <td className="py-2.5 px-2 text-center font-black text-slate-800">
                           {item.resolvedStock}
                         </td>
                         <td className="py-2.5 px-2 text-right font-semibold text-slate-600">
-                          {formatCurrency(item.salePrice || item.price || item.rate || item.unitPrice)}
+                          {formatCurrency(item.resolvedUnitPrice)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right font-bold text-slate-900">
+                          {formatCurrency(item.totalStockValue)}
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
+                {activeInventory.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-900 bg-slate-50">
+                      <td className="py-3 px-2 font-extrabold text-slate-900 uppercase text-xs">
+                        Grand Total Value:
+                      </td>
+                      <td className="py-3 px-2 text-center font-black text-slate-900 text-xs">
+                        {activeInventory.reduce((sum, item) => sum + item.resolvedStock, 0)}
+                      </td>
+                      <td className="py-3 px-2 text-right text-slate-400">-</td>
+                      <td className="py-3 px-2 text-right font-black text-emerald-600 text-sm">
+                        {formatCurrency(totalInventoryGrandValue)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}
