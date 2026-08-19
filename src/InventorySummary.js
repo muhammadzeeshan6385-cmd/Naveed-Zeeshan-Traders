@@ -1,18 +1,62 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Button, Card, DataTable, Input, PageShell, StatCard } from './components/ui';
-import { Search, Layers, List } from 'lucide-react';
+import { Search, Layers, List, Edit2, Check, X } from 'lucide-react';
+// Firebase Firestore setup
+import { db } from './firebase'; // Apna firebase config path check kar lein
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
-// userRole ka default fallback 'admin' rakh diya hai taake automatic detect ho jaye
-const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'admin' }) => {
+const InventorySummary = ({ products: initialProducts = [], getStock, sales = [], userRole = 'admin' }) => {
+  const [products, setProducts] = useState(initialProducts);
   const [selectedProduct, setSelectedProduct] = useState(null);
   
+  // --- EDIT STOCK STATES ---
+  const [editingId, setEditingId] = useState(null);
+  const [editStockValue, setEditStockValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
   // --- SEARCH & VIEW STATES ---
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAll, setShowAll] = useState(false); // Ikatha view karne ki state
+  const [showAll, setShowAll] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Strict Admin Boolean check for protection
+  // Real-time Firebase Synchronization
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const liveProducts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      if (liveProducts.length > 0) {
+        setProducts(liveProducts);
+      }
+    }, (error) => {
+      console.error("Firebase read error: ", error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Firebase me Stock Save/Update karne ka function
+  const handleSaveStock = async (productId) => {
+    if (editStockValue === '' || isNaN(editStockValue)) return;
+    setSaving(true);
+    try {
+      const productRef = doc(db, 'products', productId);
+      await updateDoc(productRef, {
+        stock: Number(editStockValue),
+        updatedAt: new Date()
+      });
+      setEditingId(null);
+      setEditStockValue('');
+    } catch (error) {
+      console.error("Firebase Stock Update Error:", error);
+      alert("Stock update nahi ho saka: " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const isAdmin = useMemo(() => {
     return String(userRole).toLowerCase() === 'admin';
   }, [userRole]);
@@ -20,7 +64,8 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
   // 1. Raw rows generate karna aur dynamic status nikalna
   const rows = useMemo(() => 
     products.map((product) => {
-      const stock = typeof getStock === 'function' ? getStock(product.name) : 0;
+      // Direct product.stock secondary fallback if getStock is not defined
+      const stock = typeof getStock === 'function' ? getStock(product.name) : Number(product.stock || 0);
       const minStock = Number(product.minStock || 5);
       return {
         id: product.id,
@@ -50,26 +95,23 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
   
   const finalDisplayedRows = useMemo(() => {
     if (showAll) {
-      return filteredRows; // Agar ikatha dekhna ho to saare filtered rows show honge
+      return filteredRows;
     }
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredRows.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredRows, showAll, currentPage]);
 
-  // Handle Page Change Safely
   const goToPage = (pageNumber) => {
     if (pageNumber >= 1 && pageNumber <= totalPages) {
       setCurrentPage(pageNumber);
     }
   };
 
-  // Search input change handler
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
-    setCurrentPage(1); // Nayi search par page 1 par wapas le jaye
+    setCurrentPage(1);
   };
 
-  // Ledger function: ID ke zariye sale record dhoondhna
   const getProductLedger = (productId) => {
     return (sales || []).flatMap(invoice => 
       (invoice.items || [])
@@ -83,13 +125,53 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
     );
   };
 
-  // Dynamic columns definition based on strict admin access
   const columns = useMemo(() => {
     const baseCols = [
       { key: 'name', label: 'Product' },
       { key: 'category', label: 'Category' },
       { key: 'unit', label: 'Unit' },
-      { key: 'stock', label: 'Current Stock' },
+      { 
+        key: 'stock', 
+        label: 'Current Stock',
+        render: (row) => (
+          editingId === row.id ? (
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                value={editStockValue}
+                onChange={(e) => setEditStockValue(e.target.value)}
+                className="w-20 bg-slate-900 border border-slate-700 text-slate-100 rounded px-2 py-1 text-xs"
+                autoFocus
+              />
+              <button 
+                onClick={() => handleSaveStock(row.id)} 
+                disabled={saving}
+                className="p-1 bg-emerald-500/20 text-emerald-400 rounded hover:bg-emerald-500/30"
+              >
+                <Check size={14} />
+              </button>
+              <button 
+                onClick={() => setEditingId(null)} 
+                className="p-1 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/30"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span>{row.stock}</span>
+              {isAdmin && (
+                <button 
+                  onClick={() => { setEditingId(row.id); setEditStockValue(row.stock); }}
+                  className="text-slate-500 hover:text-slate-300"
+                >
+                  <Edit2 size={12} />
+                </button>
+              )}
+            </div>
+          )
+        )
+      },
       { key: 'minStock', label: 'Min Level' },
       {
         key: 'status',
@@ -102,7 +184,6 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
       },
     ];
 
-    // Ledger view ka action button sirf authentic admin ko milega
     if (isAdmin) {
       baseCols.push({
         key: 'action',
@@ -116,13 +197,12 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
     }
 
     return baseCols;
-  }, [isAdmin]);
+  }, [isAdmin, editingId, editStockValue, saving]);
 
   return (
     <PageShell title="Inventory Logs">
       <StatCard title="Items Needing Attention" value={String(lowStockCount)} tone="amber" />
 
-      {/* SEARCH AND VIEW CONTROL BAR */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 items-end">
         <div className="md:col-span-2 relative">
           <Input 
@@ -159,7 +239,6 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
           rows={finalDisplayedRows}
         />
 
-        {/* --- PAGINATION CONTROLS BAR --- */}
         {!showAll && totalPages > 1 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-4 border-t border-slate-800">
             <span className="text-xs font-semibold text-slate-400">
@@ -176,7 +255,6 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
                 Previous
               </Button>
 
-              {/* Dynamic Page Number Buttons */}
               {Array.from({ length: totalPages }, (_, idx) => {
                 const pageNum = idx + 1;
                 return (
@@ -207,7 +285,6 @@ const InventorySummary = ({ products = [], getStock, sales = [], userRole = 'adm
         )}
       </Card>
 
-      {/* Ledger history block strictly checks isAdmin boolean and verification */}
       {isAdmin && selectedProduct && (
         <Card title={`Ledger History: ${selectedProduct.name}`} className="mt-6">
           <DataTable 
