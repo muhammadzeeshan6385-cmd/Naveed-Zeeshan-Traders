@@ -1,14 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Button, Card, DataTable, Input, PageShell, Select, StatCard } from './components/ui';
 import { formatRs, generateId, todayISO } from './utils/helpers';
 import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 // Firebase Database Imports (Firestore Primary Alignment)
 import { db } from './firebase'; // Ensure path matches your firebaseConfig location
-import { doc, deleteDoc, updateDoc, setDoc } from 'firebase/firestore'; 
+import { doc, deleteDoc, updateDoc, setDoc, collection, getDocs } from 'firebase/firestore'; 
+
+// Helper to generate Auto Transaction ID Code
+const generateTransactionId = () => {
+  const dateStr = todayISO().replace(/-/g, '');
+  const randomStr = Math.floor(1000 + Math.random() * 9000);
+  return `TXN-${dateStr}-${randomStr}`;
+};
 
 const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
   const [form, setForm] = useState({
+    transactionId: generateTransactionId(),
     date: todayISO(),
     account: 'Cash',
     amount: '',
@@ -19,6 +27,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
   // Edit Modal State
   const [editingItem, setEditingItem] = useState(null);
   const [editForm, setEditForm] = useState({
+    transactionId: '',
     date: todayISO(),
     account: 'Cash',
     amount: '',
@@ -43,6 +52,48 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
   const isAdmin = useMemo(() => {
     return String(userRole || '').trim().toLowerCase() === 'admin';
   }, [userRole]);
+
+  // --- FIREBASE LIVE FETCH ON MOUNT WITH AUTO CODE ALLOCATION FOR OLD ENTRIES ---
+  useEffect(() => {
+    const fetchCashDataFromFirebase = async () => {
+      try {
+        if (!db) return;
+        const querySnapshot = await getDocs(collection(db, "cashData"));
+        const firebaseCash = [];
+        let indexCounter = 1000;
+
+        for (const docSnap of querySnapshot.docs) {
+          const data = docSnap.data();
+          let allocatedTxnId = data.transactionId;
+
+          // If old record does not have transactionId, allot code and sync back to Firebase
+          if (!allocatedTxnId) {
+            indexCounter += 1;
+            allocatedTxnId = `TXN-OLD-${indexCounter}`;
+            try {
+              await updateDoc(doc(db, "cashData", docSnap.id), { transactionId: allocatedTxnId });
+            } catch (err) {
+              console.error("Auto Code Allocation Error:", err);
+            }
+          }
+
+          firebaseCash.push({
+            id: docSnap.id,
+            ...data,
+            transactionId: allocatedTxnId
+          });
+        }
+
+        if (firebaseCash.length > 0) {
+          setCashData(firebaseCash);
+        }
+      } catch (error) {
+        console.error("Firebase Cash Fetch Error:", error);
+      }
+    };
+
+    fetchCashDataFromFirebase();
+  }, [setCashData]);
 
   const totals = useMemo(() => {
     const cash = cashData.filter((entry) => entry.account === 'Cash').reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
@@ -78,9 +129,11 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
 
     const signedAmount = form.type === 'payment' ? -Math.abs(Number(form.amount)) : Math.abs(Number(form.amount));
     const customId = generateId();
+    const finalTxnId = form.transactionId || generateTransactionId();
 
     const newEntry = {
       id: customId,
+      transactionId: finalTxnId,
       date: form.date,
       account: form.account,
       amount: signedAmount,
@@ -94,7 +147,14 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
       }
       setCashData([newEntry, ...cashData]);
       showToast('Transaction added successfully!', 'success');
-      setForm({ date: todayISO(), account: 'Cash', amount: '', description: '', type: 'receipt' });
+      setForm({
+        transactionId: generateTransactionId(),
+        date: todayISO(),
+        account: 'Cash',
+        amount: '',
+        description: '',
+        type: 'receipt',
+      });
     } catch (err) {
       console.error("Firebase add transaction error:", err);
       showToast('Failed to save transaction to database.', 'error');
@@ -110,6 +170,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     setEditingItem(row);
     const isPayment = Number(row.amount) < 0;
     setEditForm({
+      transactionId: row.transactionId || generateTransactionId(),
       date: row.date || todayISO(),
       account: row.account || 'Cash',
       amount: Math.abs(Number(row.amount)),
@@ -134,6 +195,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
     const signedAmount = editForm.type === 'payment' ? -Math.abs(Number(editForm.amount)) : Math.abs(Number(editForm.amount));
 
     const updatedData = {
+      transactionId: editForm.transactionId,
       date: editForm.date,
       account: editForm.account,
       amount: signedAmount,
@@ -244,9 +306,9 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
         <body>
           <div class="ticket">
             <div class="title">${isReceipt ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}</div>
-            <div class="sub-title">Naveed & Zeeshan Traders Mailsi</div>
+            <div class="sub-title">Naveed & Zeeshan Traders Address A Rakha Colony, Mailsi</div>
             <div class="line"></div>
-            <div class="row"><span>Voucher ID:</span> <span>${row.id || row._id || '-'}</span></div>
+            <div class="row"><span>Txn ID:</span> <span>${row.transactionId || row.id || row._id || '-'}</span></div>
             <div class="row"><span>Date:</span> <span>${row.date}</span></div>
             <div class="row"><span>Account:</span> <span>${row.account}</span></div>
             <div class="line"></div>
@@ -271,6 +333,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
 
   const columns = useMemo(() => {
     return [
+      { key: 'transactionId', label: 'Txn ID', render: (row) => <span className="font-mono text-xs text-blue-400">{row.transactionId || '-'}</span> },
       { key: 'date', label: 'Date' },
       { key: 'account', label: 'Account' },
       { key: 'description', label: 'Description' },
@@ -365,6 +428,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
         {isAdmin && (
           <Card title="Manual Transaction">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <Input label="Transaction ID" value={form.transactionId} onChange={(e) => setForm({ ...form, transactionId: e.target.value })} readOnly />
               <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               <Select label="Account" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
                 <option value="Cash">Cash</option>
@@ -407,6 +471,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
               </div>
 
               <form onSubmit={handleConfirmUpdate} className="space-y-3">
+                <Input label="Transaction ID" value={editForm.transactionId} readOnly />
                 <Input label="Date" type="date" value={editForm.date} onChange={(e) => setEditForm({ ...editForm, date: e.target.value })} />
                 <Select label="Account" value={editForm.account} onChange={(e) => setEditForm({ ...editForm, account: e.target.value })}>
                   <option value="Cash">Cash</option>
@@ -457,7 +522,7 @@ const CashBank = ({ cashData = [], setCashData, userRole = '' }) => {
               </div>
 
               <p className="text-xs text-slate-300 leading-relaxed">
-                Are you sure you want to delete this transaction permanently from Firebase Database?
+                Are you sure you want to delete this transaction (<strong className="text-white font-bold">{deletingItem.transactionId || deletingItem.id}</strong>) permanently from Firebase Database?
               </p>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
