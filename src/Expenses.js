@@ -7,8 +7,16 @@ import { Edit2, Printer, Trash2, X, AlertCircle, CheckCircle2 } from 'lucide-rea
 import { db } from './firebase';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 
+// Helper to generate Auto Transaction ID Code
+const generateTransactionId = () => {
+  const dateStr = todayISO().replace(/-/g, '');
+  const randomStr = Math.floor(1000 + Math.random() * 9000);
+  return `TXN-${dateStr}-${randomStr}`;
+};
+
 const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, currentRole = '' }) => {
   const [form, setForm] = useState({
+    transactionId: generateTransactionId(),
     category: '',
     amount: '',
     date: todayISO(),
@@ -36,15 +44,37 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     return String(currentRole || '').trim().toLowerCase() === 'admin';
   }, [currentRole]);
 
-  // --- FIREBASE LIVE FETCH ON MOUNT ---
+  // --- FIREBASE LIVE FETCH ON MOUNT WITH AUTO CODE ALLOCATION FOR OLD ENTRIES ---
   useEffect(() => {
     const fetchExpensesFromFirebase = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, "expenses"));
         const firebaseExpenses = [];
-        querySnapshot.forEach((docSnap) => {
-          firebaseExpenses.push({ docId: docSnap.id, id: docSnap.id, ...docSnap.data() });
-        });
+        let indexCounter = 1000;
+
+        for (const docSnap of querySnapshot.docs) {
+          const data = docSnap.data();
+          let allocatedTxnId = data.transactionId;
+
+          // If old record does not have transactionId, allot code and sync back to Firebase
+          if (!allocatedTxnId) {
+            indexCounter += 1;
+            allocatedTxnId = `TXN-OLD-${indexCounter}`;
+            try {
+              await updateDoc(doc(db, "expenses", docSnap.id), { transactionId: allocatedTxnId });
+            } catch (err) {
+              console.error("Auto Code Allocation Error:", err);
+            }
+          }
+
+          firebaseExpenses.push({
+            docId: docSnap.id,
+            id: docSnap.id,
+            ...data,
+            transactionId: allocatedTxnId
+          });
+        }
+
         if (firebaseExpenses.length > 0) {
           setExpenses(firebaseExpenses);
         }
@@ -58,6 +88,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
   const resetForm = () => {
     setForm({
+      transactionId: generateTransactionId(),
       category: '',
       amount: '',
       date: todayISO(),
@@ -77,9 +108,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
     const amount = Number(form.amount);
     const customId = generateId();
+    const finalTxnId = form.transactionId || generateTransactionId();
 
     const newExpense = {
       id: customId,
+      transactionId: finalTxnId,
       category: form.category,
       amount,
       date: form.date,
@@ -96,10 +129,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       // 2. Save Cash Register entry to Firebase "cashData"
       const cashEntry = {
         id: generateId(),
+        transactionId: finalTxnId,
         date: form.date,
         account: form.account,
         amount: -amount,
-        description: `Expense: ${form.category}`,
+        description: `Expense (${finalTxnId}): ${form.category}`,
         type: 'payment',
         expenseDocId: docRef.id
       };
@@ -136,6 +170,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
     try {
       const updatedData = {
+        transactionId: form.transactionId,
         category: form.category,
         amount,
         date: form.date,
@@ -192,7 +227,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       // 2. Delete linked Cash Entry in Firestore
       const cashQ = query(
         collection(db, "cashData"),
-        where("description", "==", `Expense: ${targetExpense.category}`)
+        where("expenseDocId", "==", targetDocId)
       );
       const cashSnapshot = await getDocs(cashQ);
       for (const cashSnap of cashSnapshot.docs) {
@@ -210,7 +245,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
       // 4. Remove corresponding cash entry locally
       setCashData(
         cashData.filter(
-          (c) => !(c.description === `Expense: ${targetExpense.category}` && c.date === targetExpense.date)
+          (c) => c.expenseDocId !== targetDocId && !(c.description.includes(targetExpense.category) && c.date === targetExpense.date)
         )
       );
 
@@ -230,6 +265,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
     }
     setEditingItem(row);
     setForm({
+      transactionId: row.transactionId || generateTransactionId(),
       category: row.category,
       amount: row.amount,
       date: row.date,
@@ -267,7 +303,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
             <div class="title">EXPENSE VOUCHER</div>
             <div class="sub-title">Naveed & Zeeshan Traders Address A Rakha Colony, Mailsi</div>
             <div class="line"></div>
-            <div class="row"><span>Voucher ID:</span> <span>${row.docId || row.id}</span></div>
+            <div class="row"><span>Txn ID:</span> <span>${row.transactionId || row.docId || row.id}</span></div>
             <div class="row"><span>Date:</span> <span>${row.date}</span></div>
             <div class="row"><span>Category:</span> <span>${row.category}</span></div>
             <div class="row"><span>Paid From:</span> <span>${row.account}</span></div>
@@ -295,6 +331,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
 
   const columns = useMemo(() => {
     return [
+      { key: 'transactionId', label: 'Txn ID', render: (row) => <span className="font-mono text-xs text-blue-400">{row.transactionId || '-'}</span> },
       { key: 'date', label: 'Date' },
       { key: 'category', label: 'Category' },
       { key: 'amount', label: 'Amount', render: (row) => `Rs. ${Number(row.amount).toLocaleString()}` },
@@ -377,6 +414,13 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
         <Card title="Expense Entry">
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Input
+              label="Transaction ID"
+              value={form.transactionId}
+              onChange={(e) => setForm({ ...form, transactionId: e.target.value })}
+              placeholder="TXN-001"
+              readOnly
+            />
+            <Input
               label="Category"
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -437,6 +481,11 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
               </div>
 
               <form onSubmit={handleConfirmUpdate} className="space-y-3">
+                <Input
+                  label="Transaction ID"
+                  value={form.transactionId}
+                  readOnly
+                />
                 <Input
                   label="Category"
                   value={form.category}
@@ -504,7 +553,7 @@ const Expenses = ({ expenses = [], setExpenses, cashData = [], setCashData, curr
               </div>
 
               <p className="text-xs text-slate-300 leading-relaxed">
-                Are you sure you want to delete the <strong className="text-white font-bold">{deletingItem.category} (Rs. {deletingItem.amount})</strong> record?
+                Are you sure you want to delete the <strong className="text-white font-bold">{deletingItem.category} ({deletingItem.transactionId || deletingItem.id})</strong> record?
               </p>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
