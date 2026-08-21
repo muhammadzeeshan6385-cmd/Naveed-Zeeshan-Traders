@@ -26,6 +26,13 @@ import {
   Check
 } from 'lucide-react';
 
+// --- UNIQUE TRANSACTION CODE GENERATOR HELPER ---
+const generateTransactionCode = (prefix = 'TXN') => {
+  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const randomHash = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `${prefix}-${dateStr}-${randomHash}`;
+};
+
 const KhataLedger = ({ 
   customers = [], 
   sales = [], 
@@ -426,7 +433,7 @@ const KhataLedger = ({
     }
   };
 
-  // Submit Vendor Payment
+  // Submit Vendor Payment (WITH UNIQUE TRANSACTION CODES)
   const handleSubmitVendorPayment = async (e) => {
     e.preventDefault();
     const payAmt = Math.round(Number(paymentAmount));
@@ -439,8 +446,11 @@ const KhataLedger = ({
     setIsProcessingPayment(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
+      const txnCode = generateTransactionCode('TXN');
+      const vpayCode = generateTransactionCode('VP');
       
       const paymentRef = await addDoc(collection(db, 'vendorPayments'), {
+        transactionCode: vpayCode,
         vendor: payingVendor.name,
         vendorId: payingVendor.id,
         amount: payAmt,
@@ -451,6 +461,7 @@ const KhataLedger = ({
       });
 
       await addDoc(collection(db, 'transactions'), {
+        transactionCode: txnCode,
         type: 'Expense / Vendor Payment',
         category: 'Vendor Payment',
         amount: payAmt,
@@ -487,6 +498,7 @@ const KhataLedger = ({
         date: '-',
         type: 'Opening Balance',
         reference: '-',
+        transactionCode: '-',
         description: 'Previous Ledger Opening Balance',
         debit: Math.round(selectedCustomer.previousBalance),
         credit: 0,
@@ -499,6 +511,7 @@ const KhataLedger = ({
         date: sale.date || new Date(sale.createdAt).toLocaleDateString('en-CA'),
         type: 'Invoice',
         reference: sale.invoiceNo || sale.billNo || '-',
+        transactionCode: sale.transactionCode || sale.id || '-',
         description: 'Goods Supplied on Credit Khata',
         debit: Math.round(Number(sale.netTotal || sale.netAmount || sale.grandTotal || sale.totalAmount || 0)),
         credit: 0,
@@ -510,6 +523,7 @@ const KhataLedger = ({
         date: payment.date || new Date(payment.createdAt).toLocaleDateString('en-CA'),
         type: 'Recovery',
         reference: payment.receiptNo || payment.reference || '-',
+        transactionCode: payment.transactionCode || payment.id || '-',
         description: payment.paymentMethod ? `Cash Received via ${payment.paymentMethod}` : 'Cash Recovery Payment',
         debit: 0,
         credit: Math.round(Number(payment.amount || 0)),
@@ -521,6 +535,7 @@ const KhataLedger = ({
         date: returnItem.date || new Date(returnItem.createdAt).toLocaleDateString('en-CA'),
         type: 'Return',
         reference: returnItem.returnNo || '-',
+        transactionCode: returnItem.transactionCode || returnItem.id || '-',
         description: 'Product Returned (Credit Adjustment)',
         debit: 0,
         credit: Math.round(Number(returnItem.refundAmount || returnItem.netTotal || 0)),
@@ -541,6 +556,7 @@ const KhataLedger = ({
         date: '-',
         type: 'Opening Balance',
         reference: '-',
+        transactionCode: '-',
         description: 'Previous Ledger Opening Balance',
         debit: Math.round(selectedVendor.previousBalance),
         credit: 0,
@@ -563,6 +579,7 @@ const KhataLedger = ({
           totalAmount: 0,
           purchaseCount: 0,
           totalItems: 0,
+          code: p.transactionCode || p.id || '-'
         };
       }
       groupedPurchasesMap[pDate].totalAmount += amt;
@@ -574,6 +591,7 @@ const KhataLedger = ({
       date: grp.date,
       type: 'Stock Purchase',
       reference: '-',
+      transactionCode: grp.code,
       description: `Purchased Stock (${grp.purchaseCount} Bill(s), Total Items: ${grp.totalItems || '-'})`,
       debit: Math.round(grp.totalAmount),
       credit: 0,
@@ -585,6 +603,7 @@ const KhataLedger = ({
         date: vp.date || (vp.createdAt ? new Date(vp.createdAt).toLocaleDateString('en-CA') : '-'),
         type: 'Vendor Payment',
         reference: vp.receiptNo || vp.reference || '-',
+        transactionCode: vp.transactionCode || vp.id || '-',
         description: vp.paymentMethod ? `Paid via ${vp.paymentMethod} (${vp.notes || ''})` : 'Cash Paid to Vendor',
         debit: 0,
         credit: Math.round(Number(vp.amount || 0)),
@@ -596,6 +615,7 @@ const KhataLedger = ({
         date: vr.date || (vr.createdAt ? new Date(vr.createdAt).toLocaleDateString('en-CA') : '-'),
         type: 'Purchase Return',
         reference: vr.returnNo || '-',
+        transactionCode: vr.transactionCode || vr.id || '-',
         description: 'Stock Returned to Supplier',
         debit: 0,
         credit: Math.round(Number(vr.refundAmount || vr.total || 0)),
@@ -769,426 +789,329 @@ const KhataLedger = ({
     const isCust = activeTab === 'customers';
     const activeRows = isCust ? customerRows : vendorRows;
     const headers = isCust 
-      ? ['Customer Name', 'Shop Name', 'Previous Balance', 'Total Sales', 'Total Paid', 'Total Returned', 'Current Balance\n']
-      : ['Vendor Name', 'Company Name', 'Previous Balance', 'Total Purchases', 'Total Paid', 'Total Returned', 'Current Balance\n'];
-      
-    const csvRows = activeRows.map(r => `"${r.name}","${r.shopName || r.companyName}",${Math.round(r.previousBalance)},${Math.round(r.totalSales || r.totalPurchases)},${Math.round(r.totalPaid)},${Math.round(r.totalReturned || 0)},${Math.round(r.balance)}\n`);
-    const blob = new Blob([headers.join(','), ...csvRows], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.setAttribute('href', url);
-    a.setAttribute('download', `${isCust ? 'Customer' : 'Vendor'}_Khata_Ledger.csv`);
-    a.click();
+      ? ['Customer Name', 'Shop Name', 'Previous Balance', 'Total Sales', 'Total Paid', 'Total Returned', 'Net Balance']
+      : ['Vendor Name', 'Company Name', 'Previous Balance', 'Total Purchases', 'Total Paid', 'Total Returned', 'Net Balance'];
+
+    const csvData = activeRows.map(row => [
+      `"${row.name}"`,
+      `"${row.shopName || row.companyName || ''}"`,
+      row.previousBalance,
+      isCust ? row.totalSales : row.totalPurchases,
+      row.totalPaid,
+      row.totalReturned,
+      row.balance
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...csvData.map(e => e.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${activeTab}_ledger_report.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <PageShell title="Khata Ledger Management">
-      {/* Toast Notification Container */}
+    <PageShell title="Khata Ledger & Financial Accounts">
+      {/* Toast Alert */}
       {toast && (
-        <div style={{
-          position: 'fixed',
-          top: '20px',
-          right: '20px',
-          zIndex: 9999,
-          padding: '12px 20px',
-          borderRadius: '8px',
-          backgroundColor: '#0f172a',
-          color: '#ffffff',
-          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          borderLeft: toast.type === 'error' ? '4px solid #ef4444' : toast.type === 'warning' ? '4px solid #f59e0b' : '4px solid #10b981'
-        }}>
-          {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-red-400" />}
-          {toast.type === 'warning' && <AlertCircle className="w-5 h-5 text-yellow-400" />}
-          {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
-          <span style={{ fontSize: '14px', fontWeight: '500' }}>{toast.message}</span>
+        <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-lg shadow-xl text-white font-medium flex items-center gap-2 ${
+          toast.type === 'error' ? 'bg-red-600' : toast.type === 'warning' ? 'bg-amber-600' : 'bg-emerald-600'
+        }`}>
+          {toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+          <span>{toast.message}</span>
         </div>
       )}
 
-      {/* Main Container */}
-      <div className="p-4 space-y-6 bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100">
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
+      {/* Header Controls */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700">
           <button
-            onClick={() => setActiveTab('vendors')}
-            className={`py-3 px-6 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${
-              activeTab === 'vendors'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            onClick={() => { setActiveTab('vendors'); setSelectedVendor(null); setSelectedCustomer(null); }}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+              activeTab === 'vendors' 
+                ? 'bg-amber-500 text-slate-950 shadow-md' 
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <Truck className="w-4 h-4" />
-            Vendor / Supplier Khata
+            Vendor / Suppliers Ledger
           </button>
           <button
-            onClick={() => setActiveTab('customers')}
-            className={`py-3 px-6 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${
-              activeTab === 'customers'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            onClick={() => { setActiveTab('customers'); setSelectedCustomer(null); setSelectedVendor(null); }}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+              activeTab === 'customers' 
+                ? 'bg-amber-500 text-slate-950 shadow-md' 
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <Users className="w-4 h-4" />
-            Customer / Client Khata
+            Customer Khata Ledger
           </button>
         </div>
 
-        {/* Analytics Top Cards */}
-        {activeTab === 'customers' ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-4 border-l-4 border-amber-500 bg-white dark:bg-gray-800 dark:border-gray-700">
-              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Total Arrears / Outstanding</div>
-              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-1">{formatRs(ledgerMetrics.totalOutstanding)}</div>
-            </Card>
-            <Card className="p-4 border-l-4 border-emerald-500 bg-white dark:bg-gray-800 dark:border-gray-700">
-              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Recovered This Month</div>
-              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatRs(ledgerMetrics.totalRecoveredThisMonth)}</div>
-            </Card>
-            <Card className="p-4 border-l-4 border-indigo-500 bg-white dark:bg-gray-800 dark:border-gray-700">
-              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Active Debtors</div>
-              <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{ledgerMetrics.activeDebtorsCount}</div>
-            </Card>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-4 border-l-4 border-rose-500 bg-white dark:bg-gray-800 dark:border-gray-700">
-              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Total Vendor Payable</div>
-              <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">{formatRs(vendorMetrics.totalPayable)}</div>
-            </Card>
-            <Card className="p-4 border-l-4 border-blue-500 bg-white dark:bg-gray-800 dark:border-gray-700">
-              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Paid to Suppliers This Month</div>
-              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">{formatRs(vendorMetrics.totalPaidThisMonth)}</div>
-            </Card>
-            <Card className="p-4 border-l-4 border-purple-500 bg-white dark:bg-gray-800 dark:border-gray-700">
-              <div className="text-gray-500 dark:text-gray-400 text-xs font-medium uppercase">Active Suppliers/Creditors</div>
-              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">{vendorMetrics.activeCreditorsCount}</div>
-            </Card>
-          </div>
-        )}
-
-        {/* Search & Action Bar */}
-        <div className="flex flex-col sm:flex-row gap-3 justify-between items-center bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400 dark:text-gray-500" />
-            <input
-              type="text"
-              placeholder={`Search ${activeTab === 'customers' ? 'customer or shop...' : 'vendor or company...'}`}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-400"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            >
-              <option value="all">All Accounts</option>
-              <option value="debtors">Active Balances (&gt; 0)</option>
-              <option value="clear">Cleared / Zero Balance</option>
-            </select>
-
-            <button
-              onClick={handleRefreshData}
-              className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600"
-              title="Refresh Data"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Export CSV
-            </button>
-          </div>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <button
+            onClick={handleRefreshData}
+            className={`p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition ${isRefreshing ? 'animate-spin' : ''}`}
+            title="Refresh Ledger Data"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={exportToCSV}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 text-sm font-medium transition"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
         </div>
+      </div>
 
-        {/* Table Rendering */}
-        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm border-collapse">
-              <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium">
-                <tr>
-                  <th className="p-3">#</th>
-                  <th className="p-3">{activeTab === 'customers' ? 'Customer Name' : 'Vendor Name'}</th>
-                  <th className="p-3">{activeTab === 'customers' ? 'Shop / Company' : 'Brand / Company'}</th>
-                  <th className="p-3">Phone</th>
-                  <th className="p-3 text-right">Prev Balance</th>
-                  <th className="p-3 text-right">{activeTab === 'customers' ? 'Total Sales' : 'Total Purchases'}</th>
-                  <th className="p-3 text-right">Total Paid</th>
-                  <th className="p-3 text-right">Current Balance</th>
-                  <th className="p-3 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {(activeTab === 'customers' ? customerRows : vendorRows).length > 0 ? (
-                  (activeTab === 'customers' ? customerRows : vendorRows).map((row, idx) => (
-                    <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="p-3 text-gray-400 dark:text-gray-500 text-xs">{idx + 1}</td>
-                      <td className="p-3 font-semibold text-gray-800 dark:text-gray-100">{row.name}</td>
-                      <td className="p-3 text-gray-600 dark:text-gray-300">{row.shopName || row.companyName}</td>
-                      <td className="p-3 text-gray-600 dark:text-gray-300">{row.phone}</td>
-                      <td className="p-3 text-right font-medium text-gray-500 dark:text-gray-400">{formatRs(row.previousBalance)}</td>
-                      <td className="p-3 text-right text-gray-700 dark:text-gray-200">{formatRs(row.totalSales || row.totalPurchases)}</td>
-                      <td className="p-3 text-right text-emerald-600 dark:text-emerald-400 font-medium">{formatRs(row.totalPaid)}</td>
-                      <td className="p-3 text-right font-bold text-amber-700 dark:text-amber-400">{formatRs(row.balance)}</td>
+      {/* Main Content Area */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Table & Master List */}
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="p-4 bg-slate-900 border-slate-800">
+            <div className="flex flex-col sm:flex-row justify-between gap-4 mb-4">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder={`Search ${activeTab === 'customers' ? 'Customers' : 'Suppliers'} by name or phone...`}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFilterType('all')}
+                  className={`px-3 py-2 text-xs rounded-lg font-medium border ${
+                    filterType === 'all' ? 'bg-slate-800 border-amber-500 text-amber-400' : 'border-slate-800 text-slate-400'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setFilterType('debtors')}
+                  className={`px-3 py-2 text-xs rounded-lg font-medium border ${
+                    filterType === 'debtors' ? 'bg-slate-800 border-amber-500 text-amber-400' : 'border-slate-800 text-slate-400'
+                  }`}
+                >
+                  Payable/Receivable Only
+                </button>
+              </div>
+            </div>
+
+            {/* Render List Rows */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-950 text-slate-400 text-xs uppercase border-b border-slate-800">
+                  <tr>
+                    <th className="p-3">Name & Info</th>
+                    <th className="p-3 text-right">Prev Balance</th>
+                    <th className="p-3 text-right">{activeTab === 'customers' ? 'Sales' : 'Purchases'}</th>
+                    <th className="p-3 text-right">Paid/Recovered</th>
+                    <th className="p-3 text-right">Net Balance</th>
+                    <th className="p-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {(activeTab === 'customers' ? customerRows : vendorRows).map((row) => (
+                    <tr 
+                      key={row.id} 
+                      className={`hover:bg-slate-800/50 transition cursor-pointer ${
+                        (selectedCustomer?.id === row.id || selectedVendor?.id === row.id) ? 'bg-slate-800/80 border-l-2 border-amber-500' : ''
+                      }`}
+                      onClick={() => {
+                        if (activeTab === 'customers') setSelectedCustomer(row);
+                        else setSelectedVendor(row);
+                      }}
+                    >
                       <td className="p-3">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => activeTab === 'customers' ? setSelectedCustomer(row) : setSelectedVendor(row)}
-                            className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"
-                            title="View Statement"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          
-                          {activeTab === 'vendors' && (
-                            <button
-                              onClick={() => setPayingVendor(row)}
-                              className="p-1 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded"
-                              title="Pay Supplier"
-                            >
-                              <Wallet className="w-4 h-4" />
-                            </button>
-                          )}
-
+                        <div className="font-semibold text-slate-100">{row.name}</div>
+                        <div className="text-xs text-slate-500">{row.shopName || row.companyName} • {row.phone}</div>
+                      </td>
+                      <td className="p-3 text-right text-slate-400">{formatRs(row.previousBalance)}</td>
+                      <td className="p-3 text-right text-slate-300">
+                        {formatRs(activeTab === 'customers' ? row.totalSales : row.totalPurchases)}
+                      </td>
+                      <td className="p-3 text-right text-emerald-400">{formatRs(row.totalPaid)}</td>
+                      <td className="p-3 text-right font-bold text-amber-400">{formatRs(row.balance)}</td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => handlePrintLedger(row, activeTab === 'customers' ? 'customer' : 'vendor')}
-                            className="p-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            className="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg hover:bg-slate-800"
                             title="Print Ledger"
                           >
                             <Printer className="w-4 h-4" />
                           </button>
-
+                          {activeTab === 'vendors' && (
+                            <button
+                              onClick={() => setPayingVendor(row)}
+                              className="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg hover:bg-slate-800"
+                              title="Pay Vendor"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                            </button>
+                          )}
                           {isAdmin && (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setEditingItem(row);
-                                  setNewPrevBalance(row.previousBalance);
-                                }}
-                                className="p-1 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded"
-                                title="Edit Opening Balance"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-
-                              <button
-                                onClick={() => setDeletingItem(row)}
-                                className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
-                                title="Delete Record"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
+                            <button
+                              onClick={() => { setEditingItem(row); setNewPrevBalance(row.previousBalance); }}
+                              className="p-1.5 text-slate-400 hover:text-blue-400 rounded-lg hover:bg-slate-800"
+                              title="Edit Opening Balance"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
                       </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="9" className="p-8 text-center text-gray-400 dark:text-gray-500">
-                      No ledger accounts found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
-
-      {/* MODAL: CUSTOMER / VENDOR STATEMENT */}
-      {(selectedCustomer || selectedVendor) && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl border border-gray-200 dark:border-gray-700">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 rounded-t-lg">
-              <div>
-                <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100">
-                  {selectedCustomer ? `Customer Statement: ${selectedCustomer.name}` : `Vendor Statement: ${selectedVendor.name}`}
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Complete Debit / Credit Ledger History</p>
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedCustomer(null);
-                  setSelectedVendor(null);
-                }}
-                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto flex-1">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-gray-100 dark:bg-gray-700/60 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold">
-                  <tr>
-                    <th className="p-2">Date</th>
-                    <th className="p-2">Type</th>
-                    <th className="p-2">Ref / Doc No.</th>
-                    <th className="p-2">Description</th>
-                    <th className="p-2 text-right">Debit</th>
-                    <th className="p-2 text-right">Credit</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {(selectedCustomer ? customerHistory : vendorHistory).map((h, i) => (
-                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="p-2 text-gray-500 dark:text-gray-400">{h.date}</td>
-                      <td className="p-2 font-medium">{h.type}</td>
-                      <td className="p-2 text-gray-600 dark:text-gray-300">{h.reference}</td>
-                      <td className="p-2 text-gray-500 dark:text-gray-400">{h.description}</td>
-                      <td className="p-2 text-right text-gray-700 dark:text-gray-200 font-medium">{h.debit > 0 ? formatRs(h.debit) : '-'}</td>
-                      <td className="p-2 text-right text-emerald-600 dark:text-emerald-400 font-medium">{h.credit > 0 ? formatRs(h.credit) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          </Card>
+        </div>
 
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex justify-between items-center rounded-b-lg">
-              <div className="text-sm font-bold text-amber-800 dark:text-amber-400">
-                Current Net Balance: {formatRs(selectedCustomer ? selectedCustomer.balance : selectedVendor.balance)}
+        {/* Selected Details / Statement Sidebar */}
+        <div className="space-y-4">
+          {(selectedCustomer || selectedVendor) ? (
+            <Card className="p-4 bg-slate-900 border-slate-800">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3">
+                <div>
+                  <h3 className="font-bold text-slate-100">{selectedCustomer?.name || selectedVendor?.name}</h3>
+                  <p className="text-xs text-slate-400">Transaction History Statement</p>
+                </div>
+                <button
+                  onClick={() => handlePrintLedger(
+                    selectedCustomer || selectedVendor, 
+                    selectedCustomer ? 'customer' : 'vendor'
+                  )}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print
+                </button>
               </div>
-              <button
-                onClick={() => handlePrintLedger(selectedCustomer || selectedVendor, selectedCustomer ? 'customer' : 'vendor')}
-                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
-              >
-                <Printer className="w-4 h-4" /> Print Full Ledger
+
+              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                {(selectedCustomer ? customerHistory : vendorHistory).map((item, idx) => (
+                  <div key={idx} className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-xs flex justify-between items-center">
+                    <div>
+                      <div className="font-semibold text-slate-200">{item.type}</div>
+                      <div className="text-slate-500">{item.date} • Ref: {item.reference}</div>
+                      {item.transactionCode && item.transactionCode !== '-' && (
+                        <div className="text-[10px] text-amber-500/80 font-mono">Code: {item.transactionCode}</div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      {item.debit > 0 && <div className="text-amber-400 font-medium">+ {formatRs(item.debit)}</div>}
+                      {item.credit > 0 && <div className="text-emerald-400 font-medium">- {formatRs(item.credit)}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-6 bg-slate-900 border-slate-800 text-center text-slate-500">
+              <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
+              <p>Select a customer or supplier to view complete statement history.</p>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Pay Vendor Modal */}
+      {payingVendor && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-100">Pay Supplier: {payingVendor.name}</h3>
+              <button onClick={() => setPayingVendor(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
               </button>
             </div>
+            <form onSubmit={handleSubmitVendorPayment} className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-400">Payment Amount (Rs.)</label>
+                <input
+                  type="number"
+                  required
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:border-amber-500"
+                  placeholder="e.g. 50000"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:border-amber-500"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Cheque">Cheque</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Notes / Remarks</label>
+                <input
+                  type="text"
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:border-amber-500"
+                  placeholder="Optional details"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isProcessingPayment}
+                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl transition"
+              >
+                {isProcessingPayment ? 'Processing...' : 'Confirm Payment'}
+              </button>
+            </form>
           </div>
         </div>
       )}
 
-      {/* MODAL: EDIT PREVIOUS BALANCE */}
+      {/* Edit Previous Balance Modal */}
       {editingItem && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-md p-6 shadow-xl space-y-4 border border-gray-200 dark:border-gray-700">
-            <h3 className="font-bold text-gray-800 dark:text-gray-100 text-base">Edit Opening / Previous Balance</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Update starting balance for {editingItem.name}.</p>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-slate-100">Edit Opening Balance</h3>
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Previous Balance (Rs.)</label>
+              <label className="text-xs text-slate-400">Previous Balance Amount</label>
               <input
                 type="number"
                 value={newPrevBalance}
                 onChange={(e) => setNewPrevBalance(e.target.value)}
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:border-amber-500"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex gap-2">
               <button
                 onClick={() => setEditingItem(null)}
-                className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-xl text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSavePreviousBalance}
                 disabled={isSaving}
-                className="px-4 py-2 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                className="flex-1 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-sm"
               >
                 {isSaving ? 'Saving...' : 'Save Balance'}
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* MODAL: DELETE RECORD CONFIRMATION */}
-      {deletingItem && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-md p-6 shadow-xl space-y-4 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-3 text-red-600 dark:text-red-400">
-              <AlertCircle className="w-6 h-6" />
-              <h3 className="font-bold text-gray-800 dark:text-gray-100 text-base">Confirm Deletion</h3>
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-300">
-              Are you sure you want to delete <strong>{deletingItem.name}</strong> from database? This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setDeletingItem(null)}
-                className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteRecord}
-                disabled={isDeleting}
-                className="px-4 py-2 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-              >
-                {isDeleting ? 'Deleting...' : 'Delete Permanently'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: VENDOR PAYMENT */}
-      {payingVendor && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleSubmitVendorPayment} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg w-full max-w-md p-6 shadow-xl space-y-4 border border-gray-200 dark:border-gray-700">
-            <h3 className="font-bold text-gray-800 dark:text-gray-100 text-base">Pay Supplier: {payingVendor.name}</h3>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Amount to Pay (Rs.)</label>
-              <input
-                type="number"
-                required
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                placeholder="0"
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Payment Method</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="Cash">Cash</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Cheque">Cheque</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Notes / Remarks</label>
-              <input
-                type="text"
-                value={paymentNotes}
-                onChange={(e) => setPaymentNotes(e.target.value)}
-                placeholder="e.g. Ledger Payment"
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setPayingVendor(null)}
-                className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isProcessingPayment}
-                className="px-4 py-2 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {isProcessingPayment ? 'Processing...' : 'Submit Payment'}
-              </button>
-            </div>
-          </form>
         </div>
       )}
     </PageShell>
